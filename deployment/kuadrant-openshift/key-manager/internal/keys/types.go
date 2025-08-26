@@ -2,11 +2,11 @@ package keys
 
 // API key structures
 type CreateTeamKeyRequest struct {
-	UserID            string                 `json:"user_id" binding:"required"`
-	UserEmail         string                 `json:"user_email"`
-	Alias             string                 `json:"alias"`
-	Models            []string               `json:"models"`
-	InheritTeamLimits bool                   `json:"inherit_team_limits"`
+	UserID            string   `json:"user_id" binding:"required"`
+	UserEmail         string   `json:"user_email"`
+	Alias             string   `json:"alias"`
+	Models            []string `json:"models"`
+	InheritTeamLimits bool     `json:"inherit_team_limits"`
 	// Rate limit overrides
 	TokenLimit   int                    `json:"token_limit,omitempty"`
 	RequestLimit int                    `json:"request_limit,omitempty"`

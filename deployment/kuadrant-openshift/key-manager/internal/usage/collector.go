@@ -19,11 +19,11 @@ import (
 
 // Collector handles usage data collection from Istio Prometheus metrics
 type Collector struct {
-	clientset     *kubernetes.Clientset
-	config        *rest.Config
-	namespace     string
-	metricsURL    string
-	httpClient    *http.Client
+	clientset  *kubernetes.Clientset
+	config     *rest.Config
+	namespace  string
+	metricsURL string
+	httpClient *http.Client
 }
 
 // NewCollector creates a new usage collector
@@ -31,7 +31,7 @@ func NewCollector(clientset *kubernetes.Clientset, config *rest.Config, namespac
 	// Construct the service URL for envoy metrics
 	// Format: http://service-name.namespace.svc.cluster.local:port/path
 	metricsURL := fmt.Sprintf("http://inference-gateway-envoy-metrics.%s.svc.cluster.local:15090/stats/prometheus", namespace)
-	
+
 	return &Collector{
 		clientset:  clientset,
 		config:     config,
@@ -61,7 +61,7 @@ func (c *Collector) GetUserUsage(userID string) (*types.UserUsage, error) {
 	var userMetricsFound []string
 
 	log.Printf("DEBUG: Looking for user metrics containing: user___%s___", userID)
-	
+
 	for _, metric := range metrics {
 		if strings.Contains(metric.Name, fmt.Sprintf("user___%s___", userID)) {
 			userMetricsFound = append(userMetricsFound, fmt.Sprintf("%s = %d", metric.Name, metric.Value))
@@ -69,7 +69,7 @@ func (c *Collector) GetUserUsage(userID string) (*types.UserUsage, error) {
 			// Convert underscores back to hyphens for policy name (reverse the transformation)
 			policyName = strings.ReplaceAll(policyName, "_", "-")
 			log.Printf("DEBUG: Found user metric: %s, extracted policy: %s", metric.Name, policyName)
-			
+
 			if policyName == "" {
 				log.Printf("DEBUG: Skipping metric - no policy extracted: %s", metric.Name)
 				continue
@@ -100,7 +100,7 @@ func (c *Collector) GetUserUsage(userID string) (*types.UserUsage, error) {
 			}
 		}
 	}
-	
+
 	log.Printf("DEBUG: Found %d user metrics for %s:", len(userMetricsFound), userID)
 	for i, metric := range userMetricsFound {
 		if i < 3 { // Show first 3 user metrics
@@ -137,7 +137,7 @@ func (c *Collector) GetTeamUsage(teamID string, policyName string) (*types.TeamU
 
 	// Convert hyphens to underscores for metrics lookup (Kuadrant/Envoy converts hyphens to underscores)
 	metricsPolicy := strings.ReplaceAll(policyName, "-", "_")
-	
+
 	log.Printf("DEBUG: GetTeamUsage called for teamID: %s, policyName: %s", teamID, policyName)
 	log.Printf("DEBUG: Looking for team metrics containing: group___%s___ (converted from %s)", metricsPolicy, policyName)
 
@@ -146,7 +146,7 @@ func (c *Collector) GetTeamUsage(teamID string, policyName string) (*types.TeamU
 			teamMetricsFound = append(teamMetricsFound, fmt.Sprintf("%s = %d", metric.Name, metric.Value))
 			userID := extractUserFromMetric(metric.Name)
 			log.Printf("DEBUG: Found team metric: %s, extracted user: %s", metric.Name, userID)
-			
+
 			if userID == "" {
 				log.Printf("DEBUG: Skipping metric - no user extracted: %s", metric.Name)
 				continue
@@ -191,7 +191,7 @@ func (c *Collector) GetTeamUsage(teamID string, policyName string) (*types.TeamU
 // collectPrometheusMetrics makes HTTP request directly to istio-proxy metrics endpoint
 func (c *Collector) collectPrometheusMetrics() ([]types.PrometheusMetric, error) {
 	log.Printf("Fetching metrics from: %s", c.metricsURL)
-	
+
 	resp, err := c.httpClient.Get(c.metricsURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch metrics from %s: %w", c.metricsURL, err)
@@ -208,7 +208,7 @@ func (c *Collector) collectPrometheusMetrics() ([]types.PrometheusMetric, error)
 	}
 
 	log.Printf("Successfully fetched %d bytes of metrics data", len(body))
-	
+
 	// Debug: show first few lines of metrics
 	lines := strings.Split(string(body), "\n")
 	log.Printf("DEBUG: First 10 lines of metrics data:")
@@ -218,7 +218,7 @@ func (c *Collector) collectPrometheusMetrics() ([]types.PrometheusMetric, error)
 		}
 		log.Printf("DEBUG: Line %d: %s", i, line)
 	}
-	
+
 	return c.parsePrometheusOutput(string(body))
 }
 
@@ -232,7 +232,7 @@ func (c *Collector) parsePrometheusOutput(output string) ([]types.PrometheusMetr
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		if line == "" || strings.HasPrefix(line, "#") {
 			if strings.HasPrefix(line, "# HELP") {
 				currentHelp = strings.TrimPrefix(line, "# HELP ")
@@ -260,7 +260,7 @@ func (c *Collector) parsePrometheusOutput(output string) ([]types.PrometheusMetr
 			log.Printf("DEBUG: Token metric %d: %s", i, metric)
 		}
 	}
-	
+
 	// Show specific metrics we're looking for
 	log.Printf("DEBUG: Searching for specific testuser token metrics...")
 	for _, metric := range tokenMetricsFound {
@@ -268,7 +268,7 @@ func (c *Collector) parsePrometheusOutput(output string) ([]types.PrometheusMetr
 			log.Printf("DEBUG: Found testuser token usage: %s", metric)
 		}
 	}
-	
+
 	log.Printf("DEBUG: Parsed %d total metrics from output", len(metrics))
 	return metrics, scanner.Err()
 }

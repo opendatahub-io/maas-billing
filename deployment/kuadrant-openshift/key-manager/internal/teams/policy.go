@@ -79,21 +79,21 @@ func (p *PolicyManager) GetPolicyLimits(policyName string) (int, string, error) 
 	if spec, ok := policyObj.Object["spec"].(map[string]interface{}); ok {
 		if limits, ok := spec["limits"].(map[string]interface{}); ok {
 			limitName := fmt.Sprintf("%s", policyName)
-			
+
 			if limitConfig, exists := limits[limitName]; exists {
 				if limitMap, ok := limitConfig.(map[string]interface{}); ok {
 					if rates, ok := limitMap["rates"].([]interface{}); ok && len(rates) > 0 {
 						if rate, ok := rates[0].(map[string]interface{}); ok {
 							tokenLimit := 100000 // default
 							timeWindow := "1h"   // default
-							
+
 							if limit, ok := rate["limit"].(float64); ok {
 								tokenLimit = int(limit)
 							}
 							if window, ok := rate["window"].(string); ok {
 								timeWindow = window
 							}
-							
+
 							return tokenLimit, timeWindow, nil
 						}
 					}

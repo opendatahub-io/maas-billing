@@ -26,7 +26,7 @@ type UsageHandler struct {
 // NewUsageHandler creates a new usage handler
 func NewUsageHandler(clientset *kubernetes.Clientset, config *rest.Config, keyNamespace string) *UsageHandler {
 	collector := usage.NewCollector(clientset, config, keyNamespace)
-	
+
 	return &UsageHandler{
 		clientset:    clientset,
 		config:       config,
@@ -108,11 +108,11 @@ func (h *UsageHandler) enrichUserUsage(userUsage *types.UserUsage) error {
 	}
 
 	// Create policy -> team mapping
-	policyToTeam := make(map[string]struct{
+	policyToTeam := make(map[string]struct {
 		teamID   string
 		teamName string
 	})
-	
+
 	for _, secret := range secrets.Items {
 		policy := secret.Annotations["maas/policy"]
 		if policy != "" {
@@ -141,9 +141,9 @@ func (h *UsageHandler) enrichUserUsage(userUsage *types.UserUsage) error {
 func (h *UsageHandler) enrichTeamUsage(teamUsage *types.TeamUsage) error {
 	for i, userUsage := range teamUsage.UserBreakdown {
 		// Find user's API key secret to get email
-		labelSelector := fmt.Sprintf("kuadrant.io/apikeys-by=rhcl-keys,maas/team-id=%s,maas/user-id=%s", 
+		labelSelector := fmt.Sprintf("kuadrant.io/apikeys-by=rhcl-keys,maas/team-id=%s,maas/user-id=%s",
 			teamUsage.TeamID, userUsage.UserID)
-		
+
 		secrets, err := h.clientset.CoreV1().Secrets(h.keyNamespace).List(
 			context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 		if err != nil {

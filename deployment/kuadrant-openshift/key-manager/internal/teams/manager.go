@@ -115,7 +115,7 @@ func (m *Manager) List() ([]map[string]interface{}, error) {
 	teams := make([]map[string]interface{}, 0)
 	for _, secret := range secrets.Items {
 		teamID := secret.Labels["maas/team-id"]
-		
+
 		// Get team key count
 		keyCount := 0
 		userCount := 0
@@ -127,13 +127,13 @@ func (m *Manager) List() ([]map[string]interface{}, error) {
 		}
 
 		team := map[string]interface{}{
-			"team_id":    secret.Labels["maas/team-id"],
-			"team_name":  secret.Annotations["maas/team-name"],
+			"team_id":     secret.Labels["maas/team-id"],
+			"team_name":   secret.Annotations["maas/team-name"],
 			"description": secret.Annotations["maas/description"],
-			"policy":     secret.Annotations["maas/policy"],
-			"created_at": secret.Annotations["maas/created-at"],
-			"key_count":  keyCount,
-			"user_count": userCount,
+			"policy":      secret.Annotations["maas/policy"],
+			"created_at":  secret.Annotations["maas/created-at"],
+			"key_count":   keyCount,
+			"user_count":  userCount,
 		}
 		teams = append(teams, team)
 	}
@@ -228,7 +228,7 @@ func (m *Manager) Update(teamID string, req *UpdateTeamRequest) error {
 			// Use existing values as defaults, override only what's specified
 			tokenLimit := currentTokenLimit
 			timeWindow := currentTimeWindow
-			
+
 			if req.TokenLimit != nil {
 				tokenLimit = *req.TokenLimit
 			}

@@ -8,7 +8,6 @@ metadata:
   name: gateway-default-unlimited
   namespace: llm
   labels:
-    maas/managed-by: "key-manager"
     maas/resource-type: "default-rate-limit"
   annotations:
     maas/description: "Default unlimited rate policy - teams can override with specific limits"

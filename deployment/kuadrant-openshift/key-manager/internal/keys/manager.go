@@ -12,7 +12,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/teams"
@@ -100,17 +99,6 @@ func (m *Manager) CreateTeamKey(teamID string, req *CreateTeamKeyRequest) (*Crea
 	keySecret, err := m.createKeySecret(teamID, req, apiKey, teamMember)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create key secret: %w", err)
-	}
-
-	log.Printf("API key created for team %s, team policies will apply automatically", teamID)
-
-	// Restart Authorino to reload API key configuration immediately
-	// This is critical for the new API key to be discovered by Kuadrant
-	err = m.restartAuthorino()
-	if err != nil {
-		log.Printf("Warning: Failed to restart Authorino after key creation: %v", err)
-	} else {
-		log.Printf("Restarted Authorino to reload API key configuration")
 	}
 
 	// Get inherited policies
@@ -333,14 +321,15 @@ func (m *Manager) createKeySecret(teamID string, req *CreateTeamKeyRequest, apiK
 			Name:      secretName,
 			Namespace: m.keyNamespace,
 			Labels: map[string]string{
-				"kuadrant.io/auth-secret": "true",        // Required for working AuthPolicy
-				"kuadrant.io/apikeys-by":  "rhcl-keys",   // Required for key listing functions
-				"app":                     "llm-gateway", // Required for working AuthPolicy
-				"maas/user-id":            req.UserID,
-				"maas/team-id":            teamID,
-				"maas/team-role":          teamMember.Role,
-				"maas/key-sha256":         keyHash[:32],
-				"maas/resource-type":      "team-key",
+				"kuadrant.io/auth-secret":              "true",        // Required for working AuthPolicy
+				"kuadrant.io/apikeys-by":               "rhcl-keys",   // Required for key listing functions
+				"app":                                  "llm-gateway", // Required for working AuthPolicy
+				"authorino.kuadrant.io/managed-by":     "authorino",   // Ensure Authorino always sees it
+				"maas/user-id":                         req.UserID,
+				"maas/team-id":                         teamID,
+				"maas/team-role":                       teamMember.Role,
+				"maas/key-sha256":                      keyHash[:32],
+				"maas/resource-type":                   "team-key",
 				// Policy targeting label - this is how Kuadrant policies find API keys
 				fmt.Sprintf("maas/policy-%s", teamMember.Policy): "true",
 			},
@@ -384,20 +373,4 @@ func (m *Manager) buildInheritedPolicies(teamMember *teams.TeamMember) map[strin
 		"team_name": teamMember.TeamName,
 		"role":      teamMember.Role,
 	}
-}
-
-// restartAuthorino restarts the Authorino deployment to reload API key configuration
-func (m *Manager) restartAuthorino() error {
-	// Create patch to trigger rolling restart
-	restartPatch := []byte(fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"%s"}}}}}`, time.Now().Format(time.RFC3339)))
-
-	// Apply patch to Authorino deployment
-	_, err := m.clientset.AppsV1().Deployments("kuadrant-system").Patch(
-		context.Background(),
-		"authorino",
-		types.StrategicMergePatchType,
-		restartPatch,
-		metav1.PatchOptions{})
-
-	return err
 }
