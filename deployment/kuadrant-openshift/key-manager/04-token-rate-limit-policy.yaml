@@ -5,10 +5,11 @@
 apiVersion: kuadrant.io/v1alpha1
 kind: TokenRateLimitPolicy
 metadata:
-  name: gateway-default-unlimited
+  name: gateway-token-rate-limits
   namespace: llm
   labels:
     maas/resource-type: "default-rate-limit"
+    # kuadrant.io/managed-by: "kuadrant-operator" TODO: figure out why this breaks limit policy
   annotations:
     maas/description: "Default unlimited rate policy - teams can override with specific limits"
 spec:
@@ -19,7 +20,7 @@ spec:
   limits:
     # Very high default limits = effectively unlimited
     # Teams with specific policies will override this for their users
-    default-unlimited:
+    default:
       rates:
         - limit: 999999999
           window: "1h"
