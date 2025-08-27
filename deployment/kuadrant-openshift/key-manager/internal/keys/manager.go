@@ -68,13 +68,13 @@ func (m *Manager) CreateTeamKey(teamID string, req *CreateTeamKeyRequest) (*Crea
 			if userEmail == "" {
 				userEmail = fmt.Sprintf("%s@company.com", req.UserID)
 			}
-			
+
 			// Get team details for member creation
 			teamDetails, err := m.teamMgr.Get(teamID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get team details: %w", err)
 			}
-			
+
 			teamMember = &teams.TeamMember{
 				UserID:    req.UserID,
 				UserEmail: userEmail,
@@ -321,15 +321,15 @@ func (m *Manager) createKeySecret(teamID string, req *CreateTeamKeyRequest, apiK
 			Name:      secretName,
 			Namespace: m.keyNamespace,
 			Labels: map[string]string{
-				"kuadrant.io/auth-secret":              "true",        // Required for working AuthPolicy
-				"kuadrant.io/apikeys-by":               "rhcl-keys",   // Required for key listing functions
-				"app":                                  "llm-gateway", // Required for working AuthPolicy
-				"authorino.kuadrant.io/managed-by":     "authorino",   // Ensure Authorino always sees it
-				"maas/user-id":                         req.UserID,
-				"maas/team-id":                         teamID,
-				"maas/team-role":                       teamMember.Role,
-				"maas/key-sha256":                      keyHash[:32],
-				"maas/resource-type":                   "team-key",
+				"kuadrant.io/auth-secret":          "true",        // Required for working AuthPolicy
+				"kuadrant.io/apikeys-by":           "rhcl-keys",   // Required for key listing functions
+				"app":                              "llm-gateway", // Required for working AuthPolicy
+				"authorino.kuadrant.io/managed-by": "authorino",   // Ensure Authorino always sees it
+				"maas/user-id":                     req.UserID,
+				"maas/team-id":                     teamID,
+				"maas/team-role":                   teamMember.Role,
+				"maas/key-sha256":                  keyHash[:32],
+				"maas/resource-type":               "team-key",
 				// Policy targeting label - this is how Kuadrant policies find API keys
 				fmt.Sprintf("maas/policy-%s", teamMember.Policy): "true",
 			},

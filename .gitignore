@@ -6,3 +6,8 @@ dist/
 build/
 .idea/
 .claude
+
+# Go test coverage files
+deployment/kuadrant-openshift/key-manager/coverage.out
+deployment/kuadrant-openshift/key-manager/coverage.html
+bin/
