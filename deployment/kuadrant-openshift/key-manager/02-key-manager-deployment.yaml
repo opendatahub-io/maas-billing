@@ -25,7 +25,7 @@ spec:
         runAsNonRoot: true
       containers:
       - name: key-manager
-        image: ghcr.io/nerdalert/maas-key-manager:teams
+        image: ghcr.io/redhat-et/maas-key-manager:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
