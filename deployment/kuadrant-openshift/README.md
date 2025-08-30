@@ -432,20 +432,7 @@ done
 
 ### 9. Deploy Observability
 
-Deploy ServiceMonitors to integrate with OpenShift's existing Prometheus monitoring:
-
-```bash
-# Deploy ServiceMonitors for Kuadrant components (no additional Prometheus needed)
-kubectl apply -k kustomize/prometheus/
-
-# Verify ServiceMonitors are created
-kubectl get servicemonitor -n kuadrant-system
-
-# Access Grafana Dashboard via OpenShift Route
-# Grafana: https://grafana-route-llm-d-observability.apps.summit-gpu.octo-emerging.redhataicoe.com
-```
-
-**Note:** This deployment uses OpenShift's built-in user workload monitoring instead of deploying a separate Prometheus instance.
+See [README-observability.md](./README-observability.md) for deploying observability.
 
 ### Query the Limitador Scrape Endpoint
 

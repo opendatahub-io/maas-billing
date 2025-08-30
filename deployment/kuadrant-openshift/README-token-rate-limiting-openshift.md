@@ -477,20 +477,14 @@ kubectl -n llm exec -it $GATEWAY_POD -c istio-proxy -- \
 
 ### 10. Access Grafana Dashboard via OpenShift Route
 
-Deploy the user workload monitoring data source and token usage dashboard:
-
-```bash
-# Deploy user workload monitoring data source for Grafana
-kubectl apply -f kustomize/prometheus/user-workload-datasource.yaml
-
-# Import token usage dashboard (requires Grafana UI or API)
-# Dashboard JSON available at: kustomize/prometheus/token-dashboard-import.json
+See [README-observability.md](./README-observability.md) for deploying observability.
 
 # Verify data source is created
-kubectl get grafanadatasource -n llm-d-observability
+kubectl get grafanadatasource -n maas-observability
 ```
 
-Access Grafana dashboard:
+Access the Demo Grafana dashboard:
+
 - **Grafana URL**: https://grafana-route-llm-d-observability.apps.summit-gpu.octo-emerging.redhataicoe.com
 - **Dashboard**: Import `kustomize/prometheus/token-dashboard-import.json` through Grafana UI
 

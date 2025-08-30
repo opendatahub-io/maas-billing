@@ -1,0 +1,20 @@
+# OpenShift Route for Grafana Observability
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: grafana-route
+  namespace: maas-observability
+  labels:
+    app: grafana
+spec:
+  host: grafana.apps.maas2.octo-emerging.redhataicoe.com
+  port:
+    targetPort: grafana
+  tls:
+    termination: edge
+  to:
+    kind: Service
+    name: grafana-service
+    weight: 100
+  wildcardPolicy: None

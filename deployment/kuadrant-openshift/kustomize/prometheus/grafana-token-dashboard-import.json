@@ -1,4 +1,13 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
   "annotations": {
     "list": [
       {
@@ -18,13 +27,13 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 4,
+  "id": null,
   "links": [],
   "panels": [
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -38,10 +47,6 @@
               {
                 "color": "blue",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 10000
               }
             ]
           },
@@ -87,7 +92,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -134,10 +139,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           },
@@ -229,7 +230,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -313,7 +314,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+            "uid": "${DS_PROMETHEUS}"
           },
           "expr": "token_usage_with_user_and_group",
           "legendFormat": "{{user}} ({{group}})",
@@ -327,12 +328,12 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
           "mappings": [],
           "thresholds": {
@@ -398,12 +399,12 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "axisBorderShow": false,
@@ -489,7 +490,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -584,7 +585,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -596,7 +597,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "yellow",
@@ -650,7 +652,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -662,7 +664,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red"
+                "color": "red",
+                "value": null
               },
               {
                 "color": "yellow",
@@ -716,7 +719,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -728,7 +731,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               }
             ]
           },
@@ -782,107 +786,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "currencyUSD"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^free$"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#06b6d4",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^premium$"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#a855f7",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 47
-      },
-      "id": 9,
-      "options": {
-        "colorMode": "palette-classic",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": true
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "pluginVersion": "11.3.0",
-      "targets": [
-        {
-          "expr": "sum by (group) (token_usage_with_user_and_group{group=\"free\"}) * 0.005",
-          "instant": true,
-          "legendFormat": "free",
-          "refId": "A"
-        },
-        {
-          "expr": "sum by (group) (token_usage_with_user_and_group{group=\"premium\"}) * 0.008",
-          "instant": true,
-          "legendFormat": "premium",
-          "refId": "B"
-        }
-      ],
-      "title": "💳 Revenue by Tier (current)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -898,7 +802,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "yellow",
@@ -1001,8 +906,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 24,
+        "x": 0,
         "y": 47
       },
       "id": 12,
@@ -1045,208 +950,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "continuous-GrYlRd"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Revenue Rate ($/hour)",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 30,
-            "gradientMode": "opacity",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "currencyUSD"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 55
-      },
-      "id": 18,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max",
-            "mean"
-          ],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "pluginVersion": "11.3.0",
-      "targets": [
-        {
-          "expr": "sum(rate(token_usage_with_user_and_group{group=\"free\"}[1h]) * 3600 * 0.005) + sum(rate(token_usage_with_user_and_group{group=\"premium\"}[1h]) * 3600 * 0.008)",
-          "legendFormat": "Total Revenue Rate",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "expr": "sum(rate(token_usage_with_user_and_group{group=\"free\"}[1h]) * 3600 * 0.005)",
-          "legendFormat": "Free Tier Revenue Rate",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "expr": "sum(rate(token_usage_with_user_and_group{group=\"premium\"}[1h]) * 3600 * 0.008)",
-          "legendFormat": "Premium Tier Revenue Rate",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "⚡ Real-Time Revenue Velocity (Hourly Rate Trends)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "continuous-BlPu"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Cost per User ($)",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 25,
-            "gradientMode": "opacity",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "pointSize": 4,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "currencyUSD"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 63
-      },
-      "id": 19,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "pluginVersion": "11.3.0",
-      "targets": [
-        {
-          "expr": "sum by (user) ((token_usage_with_user_and_group{group=\"free\"} * 0.005) or (token_usage_with_user_and_group{group=\"premium\"} * 0.008))",
-          "legendFormat": "{{user}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "📊 Individual Customer Value Over Time",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1255,7 +959,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1317,7 +1022,7 @@
         "h": 11,
         "w": 6,
         "x": 0,
-        "y": 71
+        "y": 55
       },
       "id": 3,
       "options": {
@@ -1352,7 +1057,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "1e33abde-3300-4ef2-9a35-5a0caafea5df"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1368,7 +1073,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "dark-green"
+                "color": "dark-green",
+                "value": null
               }
             ]
           },
@@ -1435,7 +1141,7 @@
         "h": 11,
         "w": 18,
         "x": 6,
-        "y": 71
+        "y": 55
       },
       "id": 7,
       "options": {
@@ -1476,13 +1182,14 @@
     "list": []
   },
   "time": {
-    "from": "now-5m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "MaaS - User Token Usage",
-  "uid": "llm-tokens-clean",
-  "version": 4,
+  "uid": null,
+  "version": 1,
   "weekStart": ""
 }
+

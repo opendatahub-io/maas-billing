@@ -6,9 +6,11 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 
-namespace: llm-observability
+namespace: maas-observability
 
 resources:
+  # Grafana deployment
+  - grafana-deployment.yaml
   # Enhanced Prometheus
   - ../prometheus
 

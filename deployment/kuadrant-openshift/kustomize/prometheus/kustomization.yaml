@@ -3,6 +3,10 @@ kind: Kustomization
 
 resources:
   - kuadrant-servicemonitors.yaml
+  - grafana-rbac.yaml
+  - openshift-monitoring-rbac.yaml
+  - prometheus-datasource.yaml
+  - user-workload-datasource.yaml
 
 labels:
   - pairs:
