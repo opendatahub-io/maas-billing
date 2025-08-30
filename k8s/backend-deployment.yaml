@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-backend
+  template:
+    metadata:
+      labels:
+        app: maas-backend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      serviceAccountName: maas-backend-sa
+      securityContext:
+        runAsUser: 1001030000
+        runAsGroup: 1001030000
+        fsGroup: 1001030000
+      containers:
+      - name: backend
+        image: node:20-alpine
+        workingDir: /tmp/app
+        securityContext:
+          runAsUser: 1001030000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Set proper npm cache directory
+          export npm_config_cache=/tmp/.npm
+          export HOME=/tmp
+          
+          # Create app directory 
+          mkdir -p /tmp/app/src
+          
+          # List ConfigMap contents
+          echo "ConfigMap contents:"
+          find /source -type f -name "*.json" -o -name "*.ts" -o -name "*.js" | head -20
+          
+          # Copy files using cat to avoid symlink issues
+          echo "Copying package.json..."
+          cat /source/package.json > /tmp/app/package.json 2>/dev/null || echo "package.json copy failed"
+          
+          echo "Copying tsconfig.json..."
+          cat /source/tsconfig.json > /tmp/app/tsconfig.json 2>/dev/null || echo "tsconfig.json copy failed"
+          
+          # Copy source files
+          echo "Copying source files..."
+          find /source -name "*.ts" -o -name "*.js" | while read file; do
+            # Remove /source prefix to get relative path
+            relative_path=${file#/source/}
+            target_file="/tmp/app/${relative_path}"
+            target_dir=$(dirname "$target_file")
+            mkdir -p "$target_dir"
+            cat "$file" > "$target_file" 2>/dev/null || echo "Failed to copy $file"
+          done
+          
+          # List what we have
+          echo "App directory contents:"
+          find /tmp/app -type f | head -20
+          
+          cd /tmp/app
+          
+          # Install dependencies globally to avoid permission issues
+          npm install -g tsx --unsafe-perm
+          npm install --unsafe-perm
+          
+          # Start the server
+          npm run dev
+        ports:
+        - containerPort: 3002
+        env:
+        - name: NODE_ENV
+          value: "development"
+        - name: PORT
+          value: "3002"
+        volumeMounts:
+        - name: app-source
+          mountPath: /source
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+      volumes:
+      - name: app-source
+        configMap:
+          name: maas-backend-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  selector:
+    app: maas-backend
+  ports:
+  - port: 3002
+    targetPort: 3002
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-backend-route
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  to:
+    kind: Service
+    name: maas-backend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None

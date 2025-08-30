@@ -1,6 +1,6 @@
 import express from 'express';
 import { logger } from '../utils/logger';
-import { kuadrantService } from '../services/kuadrantService';
+import kuadrantService from '../services/kuadrantService';
 
 const router: express.Router = express.Router();
 

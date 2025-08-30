@@ -172,4 +172,6 @@ export interface SimulationRequest {
   timeOfDay: string;
   queryText: string;
   count: number;
+  tier: string;
+  maxTokens: number;
 }

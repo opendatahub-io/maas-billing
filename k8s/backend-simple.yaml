@@ -1,0 +1,371 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-backend
+  template:
+    metadata:
+      labels:
+        app: maas-backend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 1001060000
+        runAsGroup: 1001060000
+        fsGroup: 1001060000
+      containers:
+      - name: backend
+        image: node:20-alpine
+        workingDir: /tmp/app
+        securityContext:
+          runAsUser: 1001060000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Set environment
+          export npm_config_cache=/tmp/.npm
+          export HOME=/tmp
+          export NODE_ENV=development
+          export PORT=3002
+          
+          # Create a minimal backend server
+          mkdir -p /tmp/app
+          cd /tmp/app
+          
+          # Create package.json
+          cat > package.json << 'EOF'
+          {
+            "name": "maas-backend",
+            "version": "1.0.0",
+            "main": "server.js",
+            "scripts": {
+              "start": "node server.js"
+            },
+            "dependencies": {
+              "express": "^4.18.0",
+              "cors": "^2.8.5"
+            }
+          }
+          EOF
+          
+          # Create server.js
+          cat > server.js << 'EOF'
+          const express = require('express');
+          const cors = require('cors');
+          
+          const app = express();
+          const PORT = process.env.PORT || 3002;
+          
+          // Middleware
+          app.use(cors());
+          app.use(express.json());
+          
+          // Mock policies data
+          const mockPolicies = [
+            {
+              id: "noyitz-llm/gateway-auth-policy",
+              name: "gateway-auth-policy", 
+              description: "AuthPolicy for inference-gateway",
+              type: "auth",
+              namespace: "noyitz-llm",
+              targetRef: {
+                group: "gateway.networking.k8s.io",
+                kind: "Gateway",
+                name: "inference-gateway"
+              },
+              created: "2025-08-25T14:44:52Z",
+              modified: new Date().toISOString(),
+              isActive: true,
+              items: [
+                {
+                  id: "auth-api-key-users",
+                  type: "authentication",
+                  config: {
+                    apiKey: { allNamespaces: true },
+                    credentials: { authorizationHeader: { prefix: "APIKEY" } },
+                    metrics: true
+                  }
+                },
+                {
+                  id: "authz-allow-groups", 
+                  type: "authorization",
+                  config: {
+                    opa: {
+                      rego: "allow { input.auth.identity.groups[_] == \"free\" }"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              id: "noyitz-llm/rate-limit-policy",
+              name: "rate-limit-policy",
+              description: "Rate limiting for API access", 
+              type: "ratelimit",
+              namespace: "noyitz-llm",
+              targetRef: {
+                group: "gateway.networking.k8s.io", 
+                kind: "Gateway",
+                name: "inference-gateway"
+              },
+              created: "2025-08-28T10:00:00Z",
+              modified: new Date().toISOString(),
+              isActive: true,
+              items: [
+                {
+                  id: "limit-requests",
+                  type: "limit",
+                  config: {
+                    rates: [
+                      { limit: 100, duration: "1m" },
+                      { limit: 1000, duration: "1h" }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              id: "noyitz-llm/premium-policy", 
+              name: "premium-policy",
+              description: "Premium tier access policy",
+              type: "auth", 
+              namespace: "noyitz-llm",
+              targetRef: {
+                group: "gateway.networking.k8s.io",
+                kind: "Gateway", 
+                name: "premium-gateway"
+              },
+              created: "2025-08-28T09:30:00Z",
+              modified: new Date().toISOString(),
+              isActive: false,
+              items: [
+                {
+                  id: "premium-auth",
+                  type: "authentication", 
+                  config: {
+                    apiKey: { selector: { matchLabels: { tier: "premium" } } }
+                  }
+                }
+              ]
+            }
+          ];
+          
+          // Mock metrics data
+          const mockMetrics = {
+            totalRequests: 1247,
+            acceptedRequests: 1156,
+            rejectedRequests: 91,
+            authFailedRequests: 45,
+            rateLimitedRequests: 46,
+            policyEnforcedRequests: 91,
+            source: 'mock-data',
+            kuadrantStatus: {
+              istioConnected: true,
+              authorinoConnected: true
+            },
+            authorinoStats: {
+              authConfigs: 3,
+              reconcileOperations: 127
+            }
+          };
+          
+          // Mock live requests
+          const mockLiveRequests = [
+            {
+              id: "req-001",
+              timestamp: new Date(Date.now() - 30000).toISOString(),
+              team: "ml-team",
+              model: "gpt-4", 
+              endpoint: "/v1/chat/completions",
+              decision: "accept",
+              policyType: "AuthPolicy",
+              reason: "Valid API key",
+              totalResponseTime: 245,
+              modelInference: {
+                inputTokens: 150,
+                outputTokens: 75,
+                totalTokens: 225
+              },
+              authentication: {
+                method: "API Key",
+                isValid: true,
+                principal: "user-premium"
+              }
+            },
+            {
+              id: "req-002", 
+              timestamp: new Date(Date.now() - 60000).toISOString(),
+              team: "research-team",
+              model: "claude-3",
+              endpoint: "/v1/completions", 
+              decision: "reject",
+              policyType: "RateLimitPolicy",
+              reason: "Rate limit exceeded",
+              totalResponseTime: 12,
+              authentication: {
+                method: "API Key",
+                isValid: true, 
+                principal: "user-free"
+              }
+            }
+          ];
+          
+          // Health check
+          app.get('/health', (req, res) => {
+            res.json({ status: 'ok', timestamp: new Date().toISOString() });
+          });
+          
+          // Policies endpoint
+          app.get('/api/v1/policies', (req, res) => {
+            console.log('📋 GET /api/v1/policies - returning mock policies');
+            res.json({
+              success: true,
+              data: mockPolicies,
+              timestamp: new Date().toISOString()
+            });
+          });
+          
+          // Metrics endpoints
+          app.get('/api/v1/metrics/dashboard', (req, res) => {
+            console.log('📊 GET /api/v1/metrics/dashboard - returning mock metrics');
+            res.json({
+              success: true,
+              data: mockMetrics,
+              timestamp: new Date().toISOString()
+            });
+          });
+          
+          app.get('/api/v1/metrics/live-requests', (req, res) => {
+            console.log('📈 GET /api/v1/metrics/live-requests - returning mock requests');
+            res.json({
+              success: true,
+              data: mockLiveRequests,
+              timestamp: new Date().toISOString()
+            });
+          });
+          
+          // Request simulator endpoint
+          app.post('/api/v1/simulator/chat/completions', (req, res) => {
+            console.log('🔄 POST /api/v1/simulator/chat/completions - simulating request');
+            
+            // Simulate different responses based on tier
+            const tier = req.body.tier || 'free';
+            const authHeader = req.headers.authorization;
+            
+            if (!authHeader || authHeader === 'APIKEY ') {
+              return res.status(401).json({
+                error: 'Unauthorized: Invalid or missing API key',
+                debug: {
+                  requestUrl: req.url,
+                  requestHeaders: req.headers,
+                  requestBody: req.body
+                }
+              });
+            }
+            
+            if (tier === 'free' && Math.random() > 0.7) {
+              return res.status(429).json({
+                error: 'Rate limit exceeded for free tier',
+                debug: {
+                  requestUrl: req.url,
+                  requestHeaders: req.headers, 
+                  requestBody: req.body
+                }
+              });
+            }
+            
+            // Success response
+            res.json({
+              data: {
+                id: 'chatcmpl-' + Math.random().toString(36).substr(2, 9),
+                object: 'chat.completion',
+                created: Math.floor(Date.now() / 1000),
+                model: req.body.model,
+                choices: [{
+                  index: 0,
+                  message: {
+                    role: 'assistant',
+                    content: `Mock response for ${req.body.model} (${tier} tier): ${req.body.messages[0]?.content || 'Hello!'}`
+                  },
+                  finish_reason: 'stop'
+                }],
+                usage: {
+                  prompt_tokens: 20,
+                  completion_tokens: 15,
+                  total_tokens: 35
+                }
+              },
+              debug: {
+                requestUrl: req.url,
+                requestHeaders: req.headers,
+                requestBody: req.body
+              }
+            });
+          });
+          
+          // Start server
+          app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 MaaS Backend server running on port ${PORT}`);
+            console.log(`📋 Policies endpoint: http://localhost:${PORT}/api/v1/policies`);
+            console.log(`📊 Metrics endpoint: http://localhost:${PORT}/api/v1/metrics/dashboard`);
+            console.log(`🏥 Health endpoint: http://localhost:${PORT}/health`);
+          });
+          EOF
+          
+          echo "📦 Installing dependencies..."
+          npm install
+          
+          echo "🚀 Starting backend server..."
+          npm start
+        ports:
+        - containerPort: 3002
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  selector:
+    app: maas-backend
+  ports:
+  - port: 3002
+    targetPort: 3002
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-backend-route
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  to:
+    kind: Service
+    name: maas-backend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None

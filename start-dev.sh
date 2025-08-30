@@ -15,12 +15,14 @@ check_port() {
 # Check prerequisites
 echo "🔍 Checking prerequisites..."
 
-# Check if Kuadrant is deployed
-if ! kubectl get pods -n kuadrant-system >/dev/null 2>&1; then
-    echo "❌ Kuadrant is not deployed. Please run the Kuadrant deployment first:"
-    echo "   cd deployment/kuadrant && ./install.sh"
+# Check if connected to OpenShift cluster
+if ! oc whoami >/dev/null 2>&1; then
+    echo "❌ Not connected to OpenShift cluster. Please login first:"
+    echo "   oc login <cluster-url>"
     exit 1
 fi
+
+echo "✅ Connected to OpenShift cluster as: $(oc whoami)"
 
 # Check ports
 if ! check_port 3000; then

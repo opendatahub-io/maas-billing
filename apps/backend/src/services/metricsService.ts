@@ -1,5 +1,7 @@
 import axios from 'axios';
+import * as k8s from '@kubernetes/client-node';
 import { logger } from '../utils/logger';
+import fs from 'fs';
 
 export interface ModelInferenceData {
   requestId: string;
@@ -47,1562 +49,386 @@ export interface RateLimitDetails {
   window: string;
   remaining: number;
   resetTime: string;
-  tier: string;
 }
 
-export interface RealMetricsRequest {
-  id: string;
+export interface RequestLogEntry {
   timestamp: string;
-  
-  // Request details
-  team: string;
-  model: string;
-  endpoint: string;
-  httpMethod: string;
+  requestId: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  responseTime: number;
   userAgent?: string;
-  clientIp?: string;
-  
-  // High-level decision
-  decision: 'accept' | 'reject';
-  finalReason?: string;
-  
-  // Authentication data
+  sourceIP?: string;
+  policyDecisions?: PolicyDecisionDetails[];
   authentication?: AuthenticationDetails;
-  
-  // Policy decisions (can be multiple)
-  policyDecisions: PolicyDecisionDetails[];
-  
-  // Rate limiting info
-  rateLimitStatus?: RateLimitDetails;
-  
-  // Model inference data (only if request was approved and processed)
+  rateLimits?: RateLimitDetails[];
+  decision: 'accept' | 'reject';
+  policyType?: 'AuthPolicy' | 'RateLimitPolicy';
   modelInference?: ModelInferenceData;
-  
-  // Request content
-  queryText: string;
-  
-  // Timing and performance
-  totalResponseTime?: number;
-  gatewayLatency?: number;
-  
-  // Cost and billing
-  estimatedCost?: number;
-  billingTier?: string;
-  
-  // Source and tracing
-  source: 'limitador' | 'authorino' | 'envoy' | 'kuadrant' | 'kserve' | 'istio';
-  traceId?: string;
-  spanId?: string;
-  
-  // Legacy fields for compatibility
-  policyType?: 'AuthPolicy' | 'RateLimitPolicy' | 'None';
-  reason?: string;
-  tokens: number;
-  
-  // Raw log data from Envoy access logs
-  rawLogData?: {
-    responseCode: number;
-    flags: string;
-    route: string;
-    bytesReceived: number;
-    bytesSent: number;
-    host: string;
-    upstreamHost: string;
-  };
+  namespace?: string;
+  service?: string;
+  headers?: Record<string, string>;
 }
 
-export class MetricsService {
-  private limitadorUrl = 'http://localhost:8082';
-  private authorinoUrl = 'http://localhost:8084'; // Controller metrics with deep metrics enabled
-  private istioUrl = 'http://localhost:15000'; // Envoy/Istio gateway metrics
-  private recentRequests: RealMetricsRequest[] = [];
-  private lastRequestTime = 0;
-  private kubernetesNamespace = 'kuadrant-system';
+class MetricsService {
+  private kc: k8s.KubeConfig;
+  private k8sApi: k8s.CoreV1Api;
+  private serviceAccountToken: string | null = null;
   
-  // Enhanced tracking for better timestamp accuracy
-  private lastMetricsHash: string = '';
-  private cachedRequests: RealMetricsRequest[] = [];
-  private lastMetricsUpdate: number = Date.now();
-  private previousMetrics: any = null;
-  private metricsHistory: Array<{timestamp: number, metrics: any}> = [];
-
-  constructor() {}
-
-  // Fetch and parse real Envoy access logs from kubectl
-  async fetchEnvoyAccessLogs(): Promise<RealMetricsRequest[]> {
+  constructor() {
+    this.kc = new k8s.KubeConfig();
+    this.kc.loadFromCluster();
+    this.k8sApi = this.kc.makeApiClient(k8s.CoreV1Api);
+    
+    // Load service account token for making authenticated requests
     try {
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-
-      // Get gateway pod name
-      const podsResult = await execAsync('kubectl get pods -n llm | grep gateway');
-      const podLine = podsResult.stdout.trim().split('\n')[0];
-      const podName = podLine ? podLine.split(/\s+/)[0] : '';
-      
-      if (!podName) {
-        logger.warn('No Istio gateway pod found');
-        return [];
-      }
-
-      // Get ALL logs to capture historical HTTP requests (real access logs from earlier)
-      const logsResult = await execAsync(`kubectl logs -n llm ${podName} --tail=1000`);
-      const logLines = logsResult.stdout.split('\n');
-
-      // Parse access log entries using actual Envoy log format
-      const requests: RealMetricsRequest[] = [];
-      // Flexible regex to handle varying Envoy log formats
-      // [timestamp] "METHOD path HTTP/version" response_code rest_of_line
-      const accessLogRegex = /^\[([^\]]+)\] "([A-Z]+) ([^\s]+) ([^"]+)" (\d+) (.+)/;
-
-      for (const line of logLines) {
-        const match = line.match(accessLogRegex);
-        if (match) {
-          const [
-            , timestamp, method, path, protocol, responseCode, restOfLine
-          ] = match;
-
-          // Parse the rest of the line to extract quoted fields
-          const quotedFields = [];
-          const quotedRegex = /"([^"]*)"/g;
-          let quotedMatch;
-          while ((quotedMatch = quotedRegex.exec(restOfLine)) !== null) {
-            quotedFields.push(quotedMatch[1]);
-          }
-
-          // Extract numeric fields (bytes, duration, etc.)
-          const numericFields = restOfLine.replace(/"[^"]*"/g, '').split(/\s+/).filter((f: string) => f && f !== '-');
-          
-          // Map to expected fields based on typical Envoy format
-          const clientIp = quotedFields[1] || 'unknown';
-          const userAgent = quotedFields[2] || 'unknown';
-          const requestId = quotedFields[3] || `envoy-${Date.now()}-${Math.random()}`;
-          const host = quotedFields[4] || 'unknown';
-          const upstreamHost = quotedFields[5] || 'unknown';
-          
-          // Extract numeric values safely
-          const duration = numericFields.find((f: string) => /^\d+$/.test(f) && parseInt(f) > 0) || '0';
-          const bytesReceived = numericFields[numericFields.length - 4] || '0';
-          const bytesSent = numericFields[numericFields.length - 3] || '0';
-          const flags = numericFields[0] || '-';
-          const route = numericFields[1] || '-';
-
-          // Create request object from real Envoy log data AS-IS
-          const request: RealMetricsRequest = {
-            // Real data from Envoy logs
-            id: requestId,
-            timestamp: timestamp, // Use exact timestamp from log
-            
-            // Real request details from logs
-            team: this.inferBillingTier(userAgent, host, requestId), // MOCK: Billing tier inferred from user agent/host patterns
-            model: this.extractModelFromPath(path, host), // Model name from path and host
-            endpoint: path, // Exact endpoint from log
-            httpMethod: method, // Exact HTTP method from log
-            userAgent: userAgent, // Exact user agent from log
-            clientIp: clientIp, // Exact client IP from log
-            
-            // Real response data - decision based on policy enforcement, not just HTTP status
-            decision: this.inferPolicyDecision(parseInt(responseCode), flags, route),
-            finalReason: this.inferReasonFromResponseCode(parseInt(responseCode), flags),
-            
-            // Policy inference from real response codes and flags
-            authentication: this.inferAuthenticationFromRequest(path, parseInt(responseCode)),
-            policyDecisions: this.inferPolicyDecisions(parseInt(responseCode), flags, path),
-            rateLimitStatus: undefined, // Not displayed in UI
-            
-            // Model inference for successful API calls
-            modelInference: parseInt(responseCode) === 200 && path.includes('v1/') ? 
-              this.createModelInference(path, parseInt(responseCode), parseInt(duration)) : undefined,
-            
-            // Real request data
-            queryText: `${method} ${path}`, // Exact request from log
-            totalResponseTime: parseInt(duration) || 0, // Real duration from log
-            gatewayLatency: undefined, // Not extractable from current format
-            
-            // Additional real log data
-            estimatedCost: this.estimateCost(path, parseInt(responseCode)),
-            billingTier: this.inferBillingTier(userAgent, host, requestId), // MOCK: Tier inference
-            
-            // Source tracking
-            source: 'envoy',
-            traceId: requestId, // Real request ID from log
-            spanId: `span-${Math.random().toString(36).substr(2, 9)}`,
-            
-            // Legacy fields
-            policyType: this.inferPolicyType(parseInt(responseCode)),
-            reason: this.inferReasonFromResponseCode(parseInt(responseCode), flags),
-            tokens: this.estimateTokens(path, parseInt(responseCode)),
-            
-            // Store raw log data for debugging
-            rawLogData: {
-              responseCode: parseInt(responseCode),
-              flags,
-              route,
-              bytesReceived: parseInt(bytesReceived) || 0,
-              bytesSent: parseInt(bytesSent) || 0,
-              host,
-              upstreamHost
-            }
-          };
-
-          requests.push(request);
-        }
-      }
-
-      // Sort by timestamp (newest first)
-      requests.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      
-      logger.info(`Parsed ${requests.length} real requests from Envoy access logs`);
-      return requests;
-
+      this.serviceAccountToken = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/token', 'utf8');
     } catch (error) {
-      logger.warn('Failed to fetch Envoy access logs:', error);
-      return [];
+      logger.warn('Could not read service account token:', error);
     }
   }
 
-  // Helper methods for inferring data from log entries
-  private inferTeamFromPath(path: string): string {
-    if (path.includes('v1/')) return 'team-mock-data';
-    if (path.includes('health')) return 'system-mock';
-    return 'unknown-mock';
-  }
-
-  private extractModelFromPath(path: string, host?: string): string {
-    // Try to extract real model from host name first (most accurate)
-    if (host) {
-      if (host.includes('qwen3')) return 'qwen3-0-6b-instruct';
-      if (host.includes('vllm-simulator')) return 'vllm-simulator';
-      if (host.includes('llama')) return 'LLaMA-2-70B';
-      if (host.includes('mistral')) return 'Mistral-7B';
-    }
-    
-    // Fallback to path-based detection
-    if (path.includes('v1/')) {
-      // Use popular model names for mock data when we can't determine real model
-      const popularModels = [
-        'GPT-4-turbo',
-        'Claude-3-Sonnet', 
-        'LLaMA-2-70B',
-        'Mistral-7B',
-        'Gemini-Pro',
-        'GPT-3.5-turbo',
-        'Claude-3-Haiku',
-        'Code-Llama-34B'
-      ];
-      return popularModels[Math.floor(Math.random() * popularModels.length)];
-    }
-    return 'unknown';
-  }
-
-  private inferPolicyDecision(code: number, flags: string, route: string): 'accept' | 'reject' {
-    // Route not found means request never reached policy enforcement
-    if (flags === 'NR' || route === 'route_not_found') {
-      return 'reject'; // Rejected due to routing, not policy
-    }
-    
-    // 401 = Auth policy rejected
-    if (code === 401) return 'reject';
-    
-    // 429 = Rate limit policy rejected  
-    if (code === 429) return 'reject';
-    
-    // 403 = Authorization policy rejected
-    if (code === 403) return 'reject';
-    
-    // 200 = All policies passed, request accepted
-    if (code === 200) return 'accept';
-    
-    // Other codes (400, 500, etc.) = rejected by backend, but policies may have passed
-    if (code >= 400 && code < 500) return 'reject'; // Client errors
-    if (code >= 500) return 'reject'; // Server errors
-    
-    // Default to accept if no clear rejection
-    return 'accept';
-  }
-
-  private inferReasonFromResponseCode(code: number, flags: string): string {
-    if (code === 200) return 'Request processed successfully';
-    if (code === 401) return 'Authentication failed';
-    if (code === 403) return 'Authorization denied';
-    if (code === 404 && flags === 'NR') return 'Route not found - request bypassed policies';
-    if (code === 404) return 'Route not found';
-    if (code === 429) return 'Rate limit exceeded';
-    if (code >= 500) return 'Internal server error';
-    if (flags.includes('NR')) return 'No route found';
-    return `HTTP ${code}`;
-  }
-
-  private inferAuthenticationFromRequest(path: string, responseCode: number): AuthenticationDetails {
-    if (path.includes('health')) {
-      return {
-        method: 'none',
-        isValid: true
-      };
-    }
-    
-    return {
-      method: 'api-key',
-      isValid: responseCode !== 401,
-      validationErrors: responseCode === 401 ? ['Authentication failed'] : undefined
-    };
-  }
-
-  private inferPolicyDecisions(responseCode: number, flags: string, path: string): PolicyDecisionDetails[] {
-    const decisions: PolicyDecisionDetails[] = [];
-    
-    // If route not found (NR flag), no policies were evaluated
-    if (flags === 'NR') {
-      decisions.push({
-        policyId: 'routing-decision',
-        policyName: 'Route Resolution',
-        policyType: 'AuthPolicy', // Closest category
-        decision: 'deny',
-        reason: 'Route not found - request bypassed policy enforcement',
-        enforcementPoint: 'envoy',
-        processingTime: 1
-      });
-      return decisions;
-    }
-    
-    // Authentication policy (only evaluated if route exists)
-    if (path.includes('v1/') || path.includes('models')) {
-      decisions.push({
-        policyId: 'gateway-auth-policy',
-        policyName: 'Gateway Authentication',
-        policyType: 'AuthPolicy',
-        decision: responseCode === 401 ? 'deny' : 'allow',
-        reason: responseCode === 401 ? 'Authentication failed' : 'Valid authentication',
-        enforcementPoint: 'authorino',
-        processingTime: Math.floor(Math.random() * 10) + 3
-      });
-    }
-    
-    // Rate limiting policy (only evaluated if auth passed)
-    if (responseCode === 429) {
-      decisions.push({
-        policyId: 'gateway-rate-limits',
-        policyName: 'Rate Limiting Policy',
-        policyType: 'RateLimitPolicy',
-        decision: 'deny',
-        reason: 'Rate limit exceeded',
-        enforcementPoint: 'limitador',
-        processingTime: Math.floor(Math.random() * 5) + 2
-      });
-    } else if (path.includes('v1/') && responseCode !== 401) {
-      // Only add rate limit success if auth didn't fail
-      decisions.push({
-        policyId: 'gateway-rate-limits',
-        policyName: 'Rate Limiting Policy',
-        policyType: 'RateLimitPolicy',
-        decision: 'allow',
-        reason: 'Within rate limits',
-        enforcementPoint: 'limitador',
-        processingTime: Math.floor(Math.random() * 5) + 2
-      });
-    }
-    
-    return decisions;
-  }
-
-  // Removed createRateLimitStatus() - rate limit details not displayed in UI
-
-  private createModelInference(path: string, responseCode: number, duration: number): ModelInferenceData | undefined {
-    if (responseCode !== 200 || !path.includes('v1/')) {
-      return undefined;
-    }
-    
-    const inputTokens = Math.floor(Math.random() * 100) + 10;
-    const outputTokens = Math.floor(Math.random() * 200) + 20;
-    
-    return {
-      requestId: `inference-${Date.now()}`,
-      modelName: this.extractModelFromPath('/v1/chat/completions').replace(' (mock)', ''),
-      modelVersion: '1.0.0',
-      inputTokens,
-      outputTokens,
-      totalTokens: inputTokens + outputTokens,
-      responseTime: duration,
-      temperature: Math.round((Math.random() * 1.5 + 0.1) * 100) / 100,
-      maxTokens: outputTokens + Math.floor(Math.random() * 50),
-      finishReason: Math.random() > 0.9 ? 'length' : 'stop'
-    };
-  }
-
-  private estimateCost(path: string, responseCode: number): number {
-    if (responseCode !== 200 || !path.includes('v1/')) {
-      return 0;
-    }
-    return Math.round((Math.random() * 0.01) * 100) / 100; // $0.00-$0.01
-  }
-
-  private inferBillingTier(userAgent: string, host?: string, requestId?: string): string {
-    // MOCK DATA: Show all 3 tiers for demonstration since tier info is not in logs
-    const tiers = ['free', 'premium', 'enterprise'];
-    
-    // Simple random distribution for mock data
-    return tiers[Math.floor(Math.random() * 3)];
-  }
-
-  private inferPolicyType(responseCode: number): 'AuthPolicy' | 'RateLimitPolicy' | 'None' {
-    if (responseCode === 401) return 'AuthPolicy';
-    if (responseCode === 429) return 'RateLimitPolicy';
-    return 'None';
-  }
-
-  private estimateTokens(path: string, responseCode: number): number {
-    if (responseCode !== 200 || !path.includes('v1/')) {
-      return 0;
-    }
-    return Math.floor(Math.random() * 300) + 30;
-  }
-
-  // Method to track actual request attempts (can be called when real traffic is detected)
-  addRealRequest(request: Partial<RealMetricsRequest>): void {
-    const realRequest: RealMetricsRequest = {
-      id: request.id || `real-${Date.now()}`,
-      timestamp: request.timestamp || new Date().toISOString(),
-      
-      // Request details
-      team: request.team || 'unknown',
-      model: request.model || this.extractModelFromPath('/v1/chat/completions'),
-      endpoint: request.endpoint || '/v1/chat/completions',
-      httpMethod: request.httpMethod || 'POST',
-      userAgent: request.userAgent,
-      clientIp: request.clientIp,
-      
-      // High-level decision
-      decision: request.decision || 'reject',
-      finalReason: request.finalReason || 'Policy enforcement',
-      
-      // Policy decisions - always create at least one
-      policyDecisions: request.policyDecisions || [{
-        policyId: 'gateway-auth-policy',
-        policyName: 'Gateway Authentication',
-        policyType: 'AuthPolicy',
-        decision: request.decision === 'accept' ? 'allow' : 'deny',
-        reason: request.reason || 'Policy enforcement',
-        enforcementPoint: 'authorino'
-      }],
-      
-      // Request content
-      queryText: request.queryText || 'Unknown request',
-      
-      // Source and tracing
-      source: request.source || 'limitador',
-      
-      // Legacy compatibility
-      policyType: request.policyType || 'AuthPolicy',
-      reason: request.reason || 'Policy enforcement',
-      tokens: request.tokens || 0
-    };
-    
-    this.recentRequests.push(realRequest);
-    logger.info(`Real request tracked: ${realRequest.queryText} - ${realRequest.decision}`);
-  }
-
-  async fetchLimitadorMetrics(): Promise<any> {
+  // Core Prometheus metrics fetching with HTTP API
+  async fetchPrometheusMetrics(): Promise<any> {
     try {
-      const response = await axios.get(`${this.limitadorUrl}/metrics`, {
-        timeout: 5000
-      });
-      return this.parseLimitadorPrometheusMetrics(response.data);
-    } catch (error) {
-      logger.warn('Failed to fetch Limitador metrics:', error);
-      return null;
-    }
-  }
-
-  // Enhanced Prometheus metrics parsing using proper API endpoints
-  private parseLimitadorPrometheusMetrics(metricsText: string): any {
-    const lines = metricsText.split('\n');
-    const metrics = {
-      up: false,
-      totalRequests: 0,
-      rateLimitedRequests: 0,
-      allowedRequests: 0,
-      lastActivity: new Date().toISOString(),
-      // Enhanced metrics with detailed request information
-      requestsByNamespace: new Map(),
-      rateLimitsByNamespace: new Map(),
-      requestsByCounter: new Map(),
-      countersStatus: new Map(),
-      currentTimestamp: Date.now(),
-      // Rate limiting details
-      rateLimitDetails: [] as any[]
-    };
-
-    for (const line of lines) {
-      if (line.startsWith('limitador_up ')) {
-        metrics.up = line.includes('1');
-      }
+      logger.info('Fetching metrics directly from Prometheus...');
       
-      // Parse authorized_calls (total requests)
-      if (line.includes('authorized_calls{')) {
-        const match = line.match(/authorized_calls{limitador_namespace="([^"]+)"}\s+(\d+(?:\.\d+)?)/);
-        if (match) {
-          const namespace = match[1];
-          const value = parseFloat(match[2]);
-          
-          const currentCount = metrics.requestsByNamespace.get(namespace) || 0;
-          metrics.requestsByNamespace.set(namespace, currentCount + value);
-          metrics.totalRequests += value;
-          
-          // Store detailed counter info
-          metrics.requestsByCounter.set(`${namespace}:authorized`, {
-            namespace,
-            counterName: 'authorized_calls',
-            value,
-            labels: { limitador_namespace: namespace }
-          });
-        }
-      }
-      
-      // Parse limited_calls (rate limited requests)
-      if (line.includes('limited_calls{')) {
-        const match = line.match(/limited_calls{limitador_namespace="([^"]+)"}\s+(\d+(?:\.\d+)?)/);
-        if (match) {
-          const namespace = match[1];
-          const value = parseFloat(match[2]);
-          
-          const currentCount = metrics.rateLimitsByNamespace.get(namespace) || 0;
-          metrics.rateLimitsByNamespace.set(namespace, currentCount + value);
-          metrics.rateLimitedRequests += value;
-          
-          // Store rate limit details
-          metrics.rateLimitDetails.push({
-            namespace,
-            counterName: 'limited_calls',
-            limitName: 'rate_limit',
-            rateLimited: value,
-            labels: { limitador_namespace: namespace }
-          });
-        }
-      }
-      
-      // Parse counter status/hits
-      if (line.includes('limitador_counter_hits{')) {
-        const hitsMatch = line.match(/limitador_counter_hits{([^}]+)}\s+(\d+(?:\.\d+)?)/);
-        if (hitsMatch) {
-          const labelsStr = hitsMatch[1];
-          const hits = parseFloat(hitsMatch[2]);
-          
-          const labels: Record<string, string> = {};
-          const labelMatches = labelsStr.matchAll(/([^=,]+)="([^"]*)"/g);
-          for (const match of labelMatches) {
-            labels[match[1]] = match[2];
-          }
-          
-          if (labels.limitador_namespace) {
-            metrics.countersStatus.set(`${labels.limitador_namespace}:${labels.counter_name || 'default'}`, {
-              namespace: labels.limitador_namespace,
-              counterName: labels.counter_name,
-              hits,
-              labels
-            });
-          }
-        }
-      }
-    }
-
-    metrics.allowedRequests = metrics.totalRequests - metrics.rateLimitedRequests;
-    
-    logger.info(`Limitador Prometheus metrics: ${metrics.totalRequests} total, ${metrics.rateLimitedRequests} limited, ${metrics.allowedRequests} allowed`);
-    logger.info(`Active namespaces: ${Array.from(metrics.requestsByNamespace.keys()).join(', ')}`);
-    
-    return metrics;
-  }
-
-  async fetchIstioMetrics(): Promise<any> {
-    try {
-      logger.info(`Fetching Istio metrics from: ${this.istioUrl}/stats/prometheus`);
-      const response = await axios.get(`${this.istioUrl}/stats/prometheus`, {
-        timeout: 5000
-      });
-      logger.info(`Istio metrics response size: ${response.data.length} characters`);
-      return this.parseIstioMetrics(response.data);
-    } catch (error) {
-      logger.error('Failed to fetch Istio metrics:', error);
-      return null;
-    }
-  }
-
-  private parseIstioMetrics(metricsText: string): any {
-    const lines = metricsText.split('\n');
-    const currentTime = Date.now();
-    const metrics = {
-      successRequests: 0,      // 200 responses
-      authFailedRequests: 0,   // 401 responses  
-      rateLimitedRequests: 0,  // 429 responses
-      notFoundRequests: 0,     // 404 responses
-      totalRequests: 0,
-      lastActivity: new Date().toISOString(),
-      timestamp: currentTime,
-      // Detailed breakdown
-      requestsByResponseCode: new Map(),
-      requestsByService: new Map(),
-      // Enhanced request details
-      requestDetails: [] as any[],
-      averageResponseTime: 0,
-      requestRates: new Map(),
-      // User agent tracking
-      userAgents: [] as string[],
-      // Request size information
-      requestSizes: [] as number[],
-      responseSizes: [] as number[]
-    };
-
-    for (const line of lines) {
-      if (line.includes('istio_requests_total{') && line.includes('source_workload="inference-gateway-istio"')) {
-        const match = line.match(/istio_requests_total\{([^}]+)\}\s+(\d+(?:\.\d+)?)/);
-        if (match) {
-          const labelsStr = match[1];
-          const value = parseFloat(match[2]);
-          
-          // Parse response code from labels
-          const responseCodeMatch = labelsStr.match(/response_code="(\d+)"/);
-          if (responseCodeMatch) {
-            const responseCode = responseCodeMatch[1];
-            
-            metrics.requestsByResponseCode.set(responseCode, 
-              (metrics.requestsByResponseCode.get(responseCode) || 0) + value);
-            
-            // Categorize by response code
-            switch (responseCode) {
-              case '200':
-                metrics.successRequests += value;
-                break;
-              case '401':
-                metrics.authFailedRequests += value;
-                break;
-              case '429':
-                metrics.rateLimitedRequests += value;
-                break;
-              case '404':
-                metrics.notFoundRequests += value;
-                logger.info(`Found 404 request with value: ${value}`);
-                break;
-            }
-            
-            metrics.totalRequests += value;
-          }
-        }
-      }
-    }
-
-    logger.info(`Istio Prometheus metrics: ${metrics.totalRequests} total (${metrics.successRequests} success, ${metrics.authFailedRequests} auth failed, ${metrics.rateLimitedRequests} rate limited, ${metrics.notFoundRequests} not found)`);
-    
-    return metrics;
-  }
-
-  async fetchAuthorinoMetrics(): Promise<any> {
-    try {
-      const response = await axios.get(`${this.authorinoUrl}/metrics`, {
-        timeout: 5000
-      });
-      const parsed = this.parseAuthorinoMetrics(response.data);
-      
-      // Note: Authorino doesn't expose request-level metrics by default
-      // Only controller/management metrics are available
-      logger.info('Authorino metrics: Controller metrics only - no request-level data available');
-      return parsed;
-    } catch (error) {
-      logger.warn('Failed to fetch Authorino metrics:', error);
-      return {
-        authRequests: 0,
-        authSuccesses: 0,
-        authFailures: 0,
-        note: 'Authorino request metrics not available - using inference from Limitador data'
-      };
-    }
-  }
-
-  private parseLimitadorMetrics(metricsText: string): any {
-    const lines = metricsText.split('\n');
-    const metrics = {
-      up: false,
-      totalRequests: 0,
-      rateLimitedRequests: 0,
-      allowedRequests: 0,
-      lastActivity: null as string | null
-    };
-
-    for (const line of lines) {
-      if (line.startsWith('limitador_up ')) {
-        metrics.up = line.includes('1');
-      }
-      // Look for rate limiting specific metrics
-      if (line.includes('limitador_rate_limited_total')) {
-        const match = line.match(/limitador_rate_limited_total.*?(\d+)$/);
-        if (match) {
-          metrics.rateLimitedRequests = parseInt(match[1]);
-        }
-      }
-      if (line.includes('limitador_counter')) {
-        const match = line.match(/limitador_counter.*?(\d+)$/);
-        if (match) {
-          metrics.totalRequests += parseInt(match[1]);
-        }
-      }
-    }
-
-    metrics.allowedRequests = metrics.totalRequests - metrics.rateLimitedRequests;
-    return metrics;
-  }
-
-  // Enhanced Authorino Prometheus metrics parsing
-  private parseAuthorinoMetrics(metricsText: string): any {
-    const lines = metricsText.split('\n');
-    const metrics = {
-      authRequests: 0,
-      authSuccesses: 0,
-      authFailures: 0,
-      lastActivity: new Date().toISOString(),
-      // Enhanced metrics with detailed breakdown
-      authByNamespace: new Map(),
-      authByPolicy: new Map(),
-      authByMethod: new Map(),
-      responseTimes: [] as any[],
-      authDetails: [] as any[],
-      // Real controller metrics
-      totalReconciles: 0,
-      successfulReconciles: 0,
-      failedReconciles: 0,
-      avgReconcileTime: 0
-    };
-
-    for (const line of lines) {
-      // Parse auth server requests with labels
-      if (line.includes('authorino_server_requests_total{')) {
-        const match = line.match(/authorino_server_requests_total{([^}]+)}\s+(\d+(?:\.\d+)?)/);
-        if (match) {
-          const labelsStr = match[1];
-          const value = parseFloat(match[2]);
-          
-          const labels: Record<string, string> = {};
-          const labelMatches = labelsStr.matchAll(/([^=,]+)="([^"]*)"/g);
-          for (const match of labelMatches) {
-            labels[match[1]] = match[2];
-          }
-          
-          metrics.authRequests += value;
-          
-          // Track by response code
-          if (labels.code) {
-            const isSuccess = labels.code.startsWith('2'); // 2xx codes are successful
-            if (isSuccess) {
-              metrics.authSuccesses += value;
-            }
-            
-            metrics.authDetails.push({
-              namespace: labels.namespace || 'default',
-              method: labels.method || 'unknown',
-              code: labels.code,
-              count: value,
-              success: isSuccess,
-              labels
-            });
-          }
-        }
-      }
-      
-      // Parse auth server duration (response times)
-      if (line.includes('authorino_server_request_duration_seconds{')) {
-        const match = line.match(/authorino_server_request_duration_seconds{([^}]+)}\s+(\d+(?:\.\d+)?)/);
-        if (match) {
-          const labelsStr = match[1];
-          const duration = parseFloat(match[2]);
-          
-          const labels: Record<string, string> = {};
-          const labelMatches = labelsStr.matchAll(/([^=,]+)="([^"]*)"/g);
-          for (const match of labelMatches) {
-            labels[match[1]] = match[2];
-          }
-          
-          metrics.responseTimes.push({
-            duration: duration * 1000, // Convert to milliseconds
-            namespace: labels.namespace || 'default',
-            method: labels.method,
-            labels
-          });
-        }
-      }
-      
-      // Parse evaluation metrics
-      if (line.includes('authorino_evaluator_total{')) {
-        const match = line.match(/authorino_evaluator_total{([^}]+)}\s+(\d+(?:\.\d+)?)/);
-        if (match) {
-          const labelsStr = match[1];
-          const value = parseFloat(match[2]);
-          
-          const labels: Record<string, string> = {};
-          const labelMatches = labelsStr.matchAll(/([^=,]+)="([^"]*)"/g);
-          for (const match of labelMatches) {
-            labels[match[1]] = match[2];
-          }
-          
-          if (labels.namespace) {
-            const currentCount = metrics.authByNamespace.get(labels.namespace) || 0;
-            metrics.authByNamespace.set(labels.namespace, currentCount + value);
-          }
-          
-          if (labels.evaluator_name) {
-            const currentCount = metrics.authByPolicy.get(labels.evaluator_name) || 0;
-            metrics.authByPolicy.set(labels.evaluator_name, currentCount + value);
-          }
-        }
-      }
-      
-      // Parse real controller reconcile metrics
-      if (line.includes('controller_runtime_reconcile_total{')) {
-        const match = line.match(/controller_runtime_reconcile_total{controller="([^"]+)",result="([^"]+)"}\s+(\d+(?:\.\d+)?)/);
-        if (match) {
-          const controller = match[1];
-          const result = match[2];
-          const value = parseFloat(match[3]);
-          
-          if (controller === 'authconfig') {
-            metrics.totalReconciles += value;
-            if (result === 'success') {
-              metrics.successfulReconciles += value;
-            } else if (result === 'error') {
-              metrics.failedReconciles += value;
-            }
-          }
-        }
-      }
-      
-      // Legacy metrics parsing for backward compatibility
-      if (line.includes('authorino_auth_total')) {
-        const match = line.match(/authorino_auth_total.*?(\d+)$/);
-        if (match) {
-          metrics.authRequests = Math.max(metrics.authRequests, parseInt(match[1]));
-        }
-      }
-      if (line.includes('authorino_auth_success')) {
-        const match = line.match(/authorino_auth_success.*?(\d+)$/);
-        if (match) {
-          metrics.authSuccesses = Math.max(metrics.authSuccesses, parseInt(match[1]));
-        }
-      }
-    }
-
-    metrics.authFailures = metrics.authRequests - metrics.authSuccesses;
-    
-    logger.info(`Authorino Prometheus metrics: ${metrics.authRequests} total, ${metrics.authSuccesses} success, ${metrics.authFailures} failures`);
-    logger.info(`Active namespaces: ${Array.from(metrics.authByNamespace.keys()).join(', ')}`);
-    
-    return metrics;
-  }
-
-  async getRealLiveRequests(): Promise<RealMetricsRequest[]> {
-    try {
-      // ALWAYS try to get real data from Envoy access logs first
-      const envoyLogRequests = await this.fetchEnvoyAccessLogs();
-      if (envoyLogRequests.length > 0) {
-        logger.info(`Using REAL Envoy access log data AS-IS: ${envoyLogRequests.length} requests from actual logs`);
-        // Return the real log data immediately - no synthetic data needed
-        return envoyLogRequests;
-      }
-
-      // Fallback to Prometheus metrics
-      const [limitadorMetrics, authorinoMetrics, istioMetrics] = await Promise.all([
-        this.fetchLimitadorMetrics(),
-        this.fetchAuthorinoMetrics(),
-        this.fetchIstioMetrics()
+      const [istioRequests, limitadorRejected, authorinoResponses] = await Promise.all([
+        this.fetchFromPrometheus('istio_requests_total'),
+        this.fetchFromPrometheus('limitador_limit_checks_total'),
+        this.fetchFromPrometheus('http_requests_total{job=~".*authorino.*"}')
       ]);
 
-      // Use Istio metrics as secondary source if available
-      if (istioMetrics && istioMetrics.totalRequests > 0) {
-        logger.info('Using Istio Prometheus metrics as fallback');
-        return this.generateIndividualRequestsFromIstio(istioMetrics);
-      }
+      // Parse and aggregate results
+      const totalRequests = this.sumMetricValues(istioRequests);
+      const authFailedRequests = this.sumMetricValues(authorinoResponses.filter((m: any) => 
+        m.metric?.status_code && parseInt(m.metric.status_code) === 401
+      ));
+      const rateLimitedRequests = this.sumMetricValues(limitadorRejected.filter((m: any) => 
+        m.metric?.result === 'over_limit'
+      ));
+      const successRequests = totalRequests - authFailedRequests - rateLimitedRequests;
 
-      // Fallback to Limitador data to generate individual requests
-      if (limitadorMetrics && limitadorMetrics.totalRequests > 0) {
-        logger.info('Using Limitador Prometheus metrics as fallback');
-        return this.generateIndividualRequestsFromPrometheus(limitadorMetrics, authorinoMetrics);
-      }
+      logger.info(`Prometheus metrics fetched: ${totalRequests} total, ${successRequests} success, ${authFailedRequests} auth failures, ${rateLimitedRequests} rate limited`);
 
-      // Fall back to sample data only if no real Prometheus data
-      if (this.recentRequests.length === 0) {
-        // Show the current state of policy enforcement with comprehensive observability data
-        const baseTime = new Date('2025-08-06T22:00:00.000Z').getTime();
-        const currentState: RealMetricsRequest[] = [
-          {
-            id: 'policy-status-1',
-            timestamp: new Date(baseTime + 60000).toISOString(),
-            team: 'engineering',
-            model: 'vllm-simulator',
-            endpoint: '/v1/models',
-            httpMethod: 'GET',
-            userAgent: 'MaaS-Client/1.0',
-            clientIp: '192.168.1.100',
-            decision: 'reject',
-            finalReason: 'Authentication failed',
-            authentication: {
-              method: 'api-key',
-              isValid: false,
-              validationErrors: ['Missing authorization header']
-            },
-            policyDecisions: [{
-              policyId: 'gateway-auth-policy',
-              policyName: 'Gateway Authentication',
-              policyType: 'AuthPolicy',
-              decision: 'deny',
-              reason: 'Missing or invalid API key',
-              enforcementPoint: 'authorino',
-              processingTime: 12
-            }],
-            queryText: 'GET /v1/models',
-            totalResponseTime: 15,
-            gatewayLatency: 3,
-            source: 'authorino',
-            traceId: 'trace-auth-001',
-            policyType: 'AuthPolicy',
-            reason: 'Missing or invalid credentials',
-            tokens: 0
-          },
-          {
-            id: 'policy-status-2',
-            timestamp: new Date(baseTime + 120000).toISOString(),
-            team: 'product',
-            model: 'vllm-simulator',
-            endpoint: '/v1/chat/completions',
-            httpMethod: 'POST',
-            userAgent: 'Python/3.9 aiohttp/3.8.1',
-            clientIp: '192.168.1.101',
-            decision: 'reject',
-            finalReason: 'Rate limit exceeded',
-            authentication: {
-              method: 'api-key',
-              principal: 'product-team-key',
-              groups: ['premium'],
-              isValid: true
-            },
-            policyDecisions: [
-              {
-                policyId: 'gateway-auth-policy',
-                policyName: 'Gateway Authentication',
-                policyType: 'AuthPolicy',
-                decision: 'allow',
-                reason: 'Valid API key',
-                enforcementPoint: 'authorino',
-                processingTime: 8
-              },
-              {
-                policyId: 'gateway-rate-limits',
-                policyName: 'Premium Rate Limits',
-                policyType: 'RateLimitPolicy',
-                decision: 'deny',
-                reason: 'Premium tier limit of 20 requests per 2 minutes exceeded',
-                ruleTriggered: 'premium-user-requests',
-                enforcementPoint: 'limitador',
-                processingTime: 5
-              }
-            ],
-            rateLimitStatus: undefined, // Not displayed in UI
-            queryText: 'POST /v1/chat/completions {"model": "vllm-simulator", "messages": [...]}',
-            totalResponseTime: 18,
-            gatewayLatency: 5,
-            billingTier: 'premium',
-            source: 'limitador',
-            traceId: 'trace-rate-001',
-            policyType: 'RateLimitPolicy',
-            reason: 'Rate limit exceeded',
-            tokens: 0
-          },
-          {
-            id: 'policy-status-3',
-            timestamp: new Date(baseTime + 180000).toISOString(),
-            team: 'marketing',
-            model: 'vllm-simulator',
-            endpoint: '/health',
-            httpMethod: 'GET',
-            userAgent: 'curl/7.68.0',
-            clientIp: '192.168.1.102',
-            decision: 'accept',
-            finalReason: 'Request approved',
-            authentication: {
-              method: 'none',
-              isValid: true
-            },
-            policyDecisions: [{
-              policyId: 'health-check-policy',
-              policyName: 'Health Check Bypass',
-              policyType: 'AuthPolicy',
-              decision: 'allow',
-              reason: 'Health check endpoint bypasses authentication',
-              enforcementPoint: 'envoy',
-              processingTime: 2
-            }],
-            queryText: 'GET /health',
-            totalResponseTime: 25,
-            gatewayLatency: 3,
-            source: 'envoy',
-            traceId: 'trace-health-001',
-            policyType: 'None',
-            reason: 'Request approved',
-            tokens: 15
-          },
-          {
-            id: 'policy-status-4',
-            timestamp: new Date(baseTime + 240000).toISOString(),
-            team: 'cto',
-            model: 'vllm-simulator',
-            endpoint: '/v1/chat/completions',
-            httpMethod: 'POST',
-            userAgent: 'MaaS-Dashboard/2.1',
-            clientIp: '192.168.1.103',
-            decision: 'accept',
-            finalReason: 'Request processed successfully',
-            authentication: {
-              method: 'api-key',
-              principal: 'cto-team-key',
-              groups: ['enterprise'],
-              keyId: 'cto-enterprise-001',
-              isValid: true
-            },
-            policyDecisions: [
-              {
-                policyId: 'gateway-auth-policy',
-                policyName: 'Gateway Authentication',
-                policyType: 'AuthPolicy',
-                decision: 'allow',
-                reason: 'Valid enterprise API key',
-                enforcementPoint: 'authorino',
-                processingTime: 7
-              },
-              {
-                policyId: 'gateway-rate-limits',
-                policyName: 'Enterprise Rate Limits',
-                policyType: 'RateLimitPolicy',
-                decision: 'allow',
-                reason: 'Within enterprise tier limits',
-                ruleTriggered: 'enterprise-user-requests',
-                enforcementPoint: 'limitador',
-                processingTime: 3
-              }
-            ],
-            rateLimitStatus: undefined, // Not displayed in UI
-            modelInference: {
-              requestId: 'policy-status-4',
-              modelName: this.extractModelFromPath('/v1/chat/completions').replace(' (mock)', ''),
-              modelVersion: '1.0.0',
-              inputTokens: 45,
-              outputTokens: 128,
-              totalTokens: 173,
-              responseTime: 1250,
-              temperature: 0.7,
-              maxTokens: 150,
-              finishReason: 'stop'
-            },
-            queryText: 'POST /v1/chat/completions {"model": "vllm-simulator", "messages": [{"role": "user", "content": "Explain quantum computing"}]}',
-            totalResponseTime: 1280,
-            gatewayLatency: 8,
-            estimatedCost: 0.0034,
-            billingTier: 'enterprise',
-            source: 'kserve',
-            traceId: 'trace-success-001',
-            policyType: 'None',
-            reason: 'Request approved',
-            tokens: 173
-          }
-        ];
+      return {
+        totalRequests,
+        successRequests,
+        authFailedRequests,
+        rateLimitedRequests,
+        authByNamespace: this.groupMetricsByNamespace(authorinoResponses),
+        limitsByNamespace: this.groupMetricsByNamespace(limitadorRejected)
+      };
+    } catch (error: any) {
+      logger.error('Failed to fetch Prometheus metrics:', error.message);
+      return null;
+    }
+  }
+
+  // Fetch metrics from Prometheus with multiple endpoint fallbacks
+  private async fetchFromPrometheus(query: string): Promise<any[]> {
+    const prometheusEndpoints = [
+      'http://thanos-querier.openshift-monitoring.svc.cluster.local:9091',
+      'http://prometheus-k8s.openshift-monitoring.svc.cluster.local:9090',
+      'http://prometheus-user-workload.openshift-user-workload-monitoring.svc.cluster.local:9091'
+    ];
+
+    for (const endpoint of prometheusEndpoints) {
+      try {
+        const url = `${endpoint}/api/v1/query?query=${encodeURIComponent(query)}`;
         
-        this.recentRequests.push(...currentState);
-        logger.info('Kuadrant policies are active and enforcing traffic rules');
+        const headers: Record<string, string> = {
+          'Accept': 'application/json'
+        };
+
+        // Add authorization header if we have a service account token
+        if (this.serviceAccountToken) {
+          headers['Authorization'] = `Bearer ${this.serviceAccountToken}`;
+        }
+
+        const response = await axios.get(url, {
+          headers,
+          timeout: 10000
+        });
+
+        if (response.data && response.data.status === 'success') {
+          return response.data.data.result || [];
+        }
+      } catch (error: any) {
+        logger.warn(`Failed to connect to ${endpoint}: ${error.message}`);
+      }
+    }
+
+    logger.error('All Prometheus endpoints failed');
+    return [];
+  }
+
+  // Get pod logs using Kubernetes API instead of kubectl
+  async getRealLiveRequests(): Promise<RequestLogEntry[]> {
+    try {
+      logger.info('Fetching live requests from Kubernetes API...');
+      
+      const namespace = process.env.NAMESPACE || 'llm';
+      const requests: RequestLogEntry[] = [];
+
+      // Get gateway pods
+      const gatewayPods = await this.findPods(namespace, { 'app': 'gateway' });
+      
+      for (const pod of gatewayPods) {
+        try {
+          const logs = await this.getPodLogs(namespace, pod.metadata?.name || '', { tailLines: 100, sinceSeconds: 3600 });
+          const parsedRequests = this.parseAccessLogs(logs);
+          requests.push(...parsedRequests);
+        } catch (error: any) {
+          logger.warn(`Failed to get logs from pod ${pod.metadata?.name}: ${error.message}`);
+        }
       }
 
-
-      // Return sorted by timestamp (newest first)
-      return this.recentRequests.sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-
-    } catch (error) {
-      logger.error('Failed to get real live requests:', error);
+      logger.info(`Parsed ${requests.length} live requests from logs`);
+      return requests.slice(0, 100); // Limit to recent 100 requests
+    } catch (error: any) {
+      logger.error('Failed to fetch live requests:', error.message);
       return [];
     }
   }
 
-  // Removed old fake request generation method
+  // Get Kuadrant component status using Kubernetes API
+  async getMetricsStatus(): Promise<any> {
+    try {
+      logger.info('Checking Kuadrant components status...');
+      
+      const status = {
+        limitadorConnected: false,
+        authorinoConnected: false,
+        hasRealTraffic: false,
+        lastUpdate: new Date().toISOString()
+      };
 
-  // Removed log parsing - using pure Prometheus metrics approach
+      // Check Limitador pods
+      const limitadorPods = await this.findPods('kuadrant-system', { 'app': 'limitador' });
+      status.limitadorConnected = limitadorPods.length > 0 && 
+        limitadorPods.some(pod => pod.status?.phase === 'Running');
 
-  
-  // Removed fake request generation methods
-  
-  // Removed fake correlation methods
-  
-  // Generate individual requests from Istio/Envoy metrics (most accurate)
-  private generateIndividualRequestsFromIstio(istioMetrics: any): RealMetricsRequest[] {
-    const metricsHash = `istio-${istioMetrics.totalRequests}-${istioMetrics.authFailedRequests}-${istioMetrics.rateLimitedRequests}`;
+      // Check Authorino pods  
+      const authorinoPods = await this.findPods('kuadrant-system', { 'control-plane': 'controller-manager' });
+      status.authorinoConnected = authorinoPods.length > 0 && 
+        authorinoPods.some(pod => pod.status?.phase === 'Running');
+
+      // Check for recent traffic by looking at recent requests
+      const recentRequests = await this.getRealLiveRequests();
+      status.hasRealTraffic = recentRequests.length > 0;
+
+      logger.info('Component status check completed', status);
+      return status;
+    } catch (error: any) {
+      logger.error('Failed to check component status:', error.message);
+      return {
+        limitadorConnected: false,
+        authorinoConnected: false,
+        hasRealTraffic: false,
+        lastUpdate: new Date().toISOString(),
+        error: error.message
+      };
+    }
+  }
+
+  // Helper methods using Kubernetes API
+
+  private async findPods(namespace: string, labels: Record<string, string>): Promise<k8s.V1Pod[]> {
+    try {
+      const labelSelector = Object.entries(labels)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(',');
+
+      const response = await this.k8sApi.listNamespacedPod(
+        namespace,
+        undefined, // pretty
+        undefined, // allowWatchBookmarks
+        undefined, // continue
+        undefined, // fieldSelector
+        labelSelector // labelSelector
+      );
+
+      return response.body.items || [];
+    } catch (error: any) {
+      logger.warn(`Failed to find pods in namespace ${namespace} with labels ${JSON.stringify(labels)}: ${error.message}`);
+      return [];
+    }
+  }
+
+  private async getPodLogs(namespace: string, podName: string, options: { tailLines?: number, sinceSeconds?: number } = {}): Promise<string> {
+    try {
+      const response = await this.k8sApi.readNamespacedPodLog(
+        podName,
+        namespace,
+        undefined, // container
+        undefined, // follow
+        undefined, // insecureSkipTLSVerifyBackend
+        undefined, // limitBytes
+        undefined, // pretty
+        undefined, // previous
+        options.sinceSeconds, // sinceSeconds
+        options.tailLines, // tailLines
+        undefined // timestamps
+      );
+
+      return response.body || '';
+    } catch (error: any) {
+      logger.warn(`Failed to get logs for pod ${podName}: ${error.message}`);
+      return '';
+    }
+  }
+
+  // Direct HTTP access to component metrics endpoints
+  private async fetchComponentMetrics(serviceName: string, namespace: string, port: number, path: string = '/metrics'): Promise<string> {
+    try {
+      const url = `http://${serviceName}.${namespace}.svc.cluster.local:${port}${path}`;
+      
+      const headers: Record<string, string> = {};
+      if (this.serviceAccountToken) {
+        headers['Authorization'] = `Bearer ${this.serviceAccountToken}`;
+      }
+
+      const response = await axios.get(url, {
+        headers,
+        timeout: 5000
+      });
+
+      return response.data || '';
+    } catch (error: any) {
+      logger.warn(`Failed to fetch metrics from ${serviceName}.${namespace}:${port}${path}: ${error.message}`);
+      return '';
+    }
+  }
+
+  async fetchLimitadorMetrics(): Promise<string> {
+    return this.fetchComponentMetrics('limitador', 'kuadrant-system', 8080);
+  }
+
+  async fetchAuthorinoMetrics(): Promise<string> {
+    return this.fetchComponentMetrics('authorino-controller-manager-metrics-service', 'kuadrant-system', 8080);
+  }
+
+  async fetchIstioMetrics(): Promise<string> {
+    // Try to get Istio metrics from the gateway
+    const namespace = process.env.NAMESPACE || 'llm';
+    return this.fetchComponentMetrics('inference-gateway-istio', namespace, 15090, '/stats/prometheus');
+  }
+
+  // Utility methods for parsing metrics data
+
+  private sumMetricValues(metrics: any[]): number {
+    return metrics.reduce((sum, metric) => {
+      const value = parseFloat(metric.value?.[1] || '0');
+      return sum + value;
+    }, 0);
+  }
+
+  private groupMetricsByNamespace(metrics: any[]): Map<string, number> {
+    const byNamespace = new Map<string, number>();
     
-    // Track metrics history for better timestamp accuracy
-    this.metricsHistory.push({
-      timestamp: istioMetrics.timestamp,
-      metrics: istioMetrics
+    metrics.forEach(metric => {
+      const namespace = metric.metric?.namespace || 'unknown';
+      const value = parseFloat(metric.value?.[1] || '0');
+      byNamespace.set(namespace, (byNamespace.get(namespace) || 0) + value);
     });
-    
-    // Keep only last 10 metrics snapshots
-    if (this.metricsHistory.length > 10) {
-      this.metricsHistory.shift();
-    }
-    
-    // If metrics haven't changed, return cached requests
-    if (this.lastMetricsHash === metricsHash && this.cachedRequests.length > 0) {
-      logger.info(`Returning cached Istio requests - no metrics change detected (${metricsHash})`);
-      return this.cachedRequests;
-    }
-    
-    // Calculate new requests since last check
-    const previousMetrics = this.previousMetrics;
-    const newSuccessRequests = previousMetrics ? 
-      istioMetrics.successRequests - (previousMetrics.successRequests || 0) : istioMetrics.successRequests;
-    const newAuthFailedRequests = previousMetrics ? 
-      istioMetrics.authFailedRequests - (previousMetrics.authFailedRequests || 0) : istioMetrics.authFailedRequests;
-    const newRateLimitedRequests = previousMetrics ? 
-      istioMetrics.rateLimitedRequests - (previousMetrics.rateLimitedRequests || 0) : istioMetrics.rateLimitedRequests;
-    
-    // Metrics have changed, generate individual requests from Istio counters
-    const currentTime = Date.now();
-    logger.info(`Istio metrics changed (${this.lastMetricsHash} -> ${metricsHash}), generating individual requests`);
-    logger.info(`New requests since last check: ${newSuccessRequests} success, ${newAuthFailedRequests} auth failed, ${newRateLimitedRequests} rate limited`);
-    
-    this.lastMetricsHash = metricsHash;
-    this.lastMetricsUpdate = currentTime;
-    this.previousMetrics = istioMetrics;
-    
-    const requests: RealMetricsRequest[] = [];
-    const metricsChangeTime = this.lastMetricsUpdate;
-    
-    // Define common arrays used in request generation
-    const userAgents = [
-      'curl/8.7.1',
-      'Python/3.9 aiohttp/3.8.1',
-      'MaaS-Client/1.0',
-      'PostmanRuntime/7.32.2',
-      'Mozilla/5.0 (compatible; APIClient/1.0)'
-    ];
-    
-    const suspiciousUserAgents = [
-      'Unknown-Client/1.0',
-      'curl/7.68.0',
-      'python-requests/2.28.0',
-      'HTTPClient/1.0',
-      'Generic-Bot/1.0'
-    ];
-    
-    const successRequests = istioMetrics.successRequests;      // 200 responses
-    const authFailedRequests = istioMetrics.authFailedRequests; // 401 responses
-    const rateLimitedRequests = istioMetrics.rateLimitedRequests; // 429 responses
-    const totalRequests = successRequests + authFailedRequests + rateLimitedRequests;
-    
-    logger.info(`Generating ${totalRequests} individual requests from Istio metrics: ${successRequests} success, ${authFailedRequests} auth failed, ${rateLimitedRequests} rate limited`);
-    
-    // Generate successful requests (200) with enhanced details
-    for (let i = 0; i < successRequests; i++) {
-      // Use more realistic timing: spread requests over last few minutes to show historical data
-      const requestTime = metricsChangeTime - (i * 30000) - (Math.random() * 120000); // Spread over last 2-4 minutes
-      
-      // Enhanced request details
-      
-      const endpoints = [
-        '/v1/chat/completions',
-        '/v1/models',
-        '/v1/completions',
-        '/health'
-      ];
-      
-      const responseTime = Math.floor(Math.random() * 2000) + 200; // 200-2200ms
-      const inputTokens = Math.floor(Math.random() * 100) + 10;
-      const outputTokens = Math.floor(Math.random() * 200) + 20;
-      
-      requests.push({
-        id: `istio-success-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(userAgents[i % userAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: endpoints[i % endpoints.length],
-        httpMethod: endpoints[i % endpoints.length].includes('health') ? 'GET' : 'POST',
-        userAgent: userAgents[i % userAgents.length],
-        clientIp: `192.168.1.${100 + (i % 50)}`,
-        decision: 'accept',
-        finalReason: 'Request completed successfully',
-        authentication: {
-          method: 'api-key',
-          principal: `user-${i % 5}`,
-          isValid: true
-        },
-        policyDecisions: [
-          {
-            policyId: 'gateway-auth-policy',
-            policyName: 'Gateway Authentication',
-            policyType: 'AuthPolicy',
-            decision: 'allow',
-            reason: 'Valid API key',
-            enforcementPoint: 'authorino',
-            processingTime: Math.floor(Math.random() * 10) + 3
-          },
-          {
-            policyId: 'gateway-rate-limits',
-            policyName: 'Rate Limiting Policy',
-            policyType: 'RateLimitPolicy',
-            decision: 'allow',
-            reason: 'Within rate limits',
-            enforcementPoint: 'limitador',
-            processingTime: Math.floor(Math.random() * 5) + 2
-          }
-        ],
-        modelInference: endpoints[i % endpoints.length].includes('health') ? undefined : {
-          requestId: `istio-success-${metricsHash}-${i}`,
-          modelName: this.extractModelFromPath('/v1/chat/completions').replace(' (mock)', ''),
-          modelVersion: '1.0.0',
-          inputTokens: inputTokens,
-          outputTokens: outputTokens,
-          totalTokens: inputTokens + outputTokens,
-          responseTime: responseTime,
-          prompt: endpoints[i % endpoints.length].includes('chat') ? 
-            'User query for chat completion' : 'Text completion request',
-          completion: endpoints[i % endpoints.length].includes('chat') ? 
-            'Assistant response to user query' : 'Generated text completion',
-          temperature: Math.round((Math.random() * 1.5 + 0.1) * 100) / 100, // 0.1-1.6
-          maxTokens: outputTokens + Math.floor(Math.random() * 50),
-          finishReason: Math.random() > 0.9 ? 'length' : 'stop'
-        },
-        queryText: `${endpoints[i % endpoints.length].includes('health') ? 'GET' : 'POST'} ${endpoints[i % endpoints.length]} - ${endpoints[i % endpoints.length].includes('chat') ? 'Chat completion request' : endpoints[i % endpoints.length].includes('models') ? 'Model list request' : 'Health check'}`,
-        totalResponseTime: responseTime + Math.floor(Math.random() * 100) + 50, // Response time + gateway overhead
-        gatewayLatency: Math.floor(Math.random() * 20) + 5,
-        estimatedCost: endpoints[i % endpoints.length].includes('health') ? 0 : 
-          Math.round(((inputTokens + outputTokens) * 0.00002) * 100) / 100, // $0.00002 per token
-        billingTier: ['free', 'premium', 'enterprise'][i % 3],
-        source: 'istio',
-        traceId: `istio-trace-success-${Date.now()}-${i}`,
-        spanId: `span-${Math.random().toString(36).substr(2, 9)}`,
-        policyType: 'None',
-        reason: 'Request approved',
-        tokens: endpoints[i % endpoints.length].includes('health') ? 0 : inputTokens + outputTokens
-      });
-    }
-    
-    // Generate authentication failed requests (401) with enhanced details
-    for (let i = 0; i < authFailedRequests; i++) {
-      const requestTime = metricsChangeTime - (Math.random() * 8000); // Within last 8 seconds
-      
-      const authFailureReasons = [
-        'Missing authorization header',
-        'Invalid API key format',
-        'Expired API key',
-        'API key not found',
-        'Insufficient permissions'
-      ];
-      
-      const suspiciousUserAgents = [
-        'Unknown-Client/1.0',
-        'curl/7.68.0',
-        'python-requests/2.28.0',
-        'HTTPClient/1.0',
-        'Generic-Bot/1.0'
-      ];
-      
-      requests.push({
-        id: `istio-auth-failed-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(suspiciousUserAgents[i % suspiciousUserAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: suspiciousUserAgents[i % suspiciousUserAgents.length],
-        clientIp: `192.168.1.${50 + (i % 20)}`,
-        decision: 'reject',
-        finalReason: 'Authentication failed',
-        authentication: {
-          method: 'api-key',
-          isValid: false,
-          validationErrors: [authFailureReasons[i % authFailureReasons.length]]
-        },
-        policyDecisions: [{
-          policyId: 'gateway-auth-policy',
-          policyName: 'Gateway Authentication',
-          policyType: 'AuthPolicy',
-          decision: 'deny',
-          reason: authFailureReasons[i % authFailureReasons.length],
-          enforcementPoint: 'authorino',
-          processingTime: Math.floor(Math.random() * 15) + 5
-        }],
-        queryText: `POST /v1/chat/completions - Authentication failed (${authFailureReasons[i % authFailureReasons.length]})`,
-        totalResponseTime: Math.floor(Math.random() * 50) + 10,
-        gatewayLatency: Math.floor(Math.random() * 10) + 2,
-        estimatedCost: 0, // No cost for failed auth
-        billingTier: 'none',
-        source: 'istio',
-        traceId: `istio-trace-auth-failed-${Date.now()}-${i}`,
-        spanId: `span-${Math.random().toString(36).substr(2, 9)}`,
-        policyType: 'AuthPolicy',
-        reason: 'Authentication failed',
-        tokens: 0
-      });
-    }
-    
-    // Generate rate limited requests (429)
-    for (let i = 0; i < rateLimitedRequests; i++) {
-      const requestTime = metricsChangeTime - (i * 1000) - (Math.random() * 3000);
-      requests.push({
-        id: `istio-rate-limited-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier('curl/8.7.1'),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: 'curl/8.7.1',
-        clientIp: `192.168.1.${200 + (i % 30)}`,
-        decision: 'reject',
-        finalReason: 'Rate limit exceeded',
-        authentication: {
-          method: 'api-key',
-          principal: `user-${i % 3}`,
-          isValid: true
-        },
-        policyDecisions: [
-          {
-            policyId: 'gateway-auth-policy',
-            policyName: 'Gateway Authentication',
-            policyType: 'AuthPolicy',
-            decision: 'allow',
-            reason: 'Valid API key',
-            enforcementPoint: 'authorino',
-            processingTime: Math.floor(Math.random() * 8) + 3
-          },
-          {
-            policyId: 'gateway-rate-limits',
-            policyName: 'Rate Limiting Policy',
-            policyType: 'RateLimitPolicy',
-            decision: 'deny',
-            reason: 'Rate limit exceeded',
-            enforcementPoint: 'limitador',
-            processingTime: Math.floor(Math.random() * 5) + 2
-          }
-        ],
-        rateLimitStatus: undefined, // Not displayed in UI
-        queryText: `POST /v1/chat/completions (rate limited ${i + 1})`,
-        totalResponseTime: Math.floor(Math.random() * 50) + 10,
-        source: 'istio',
-        traceId: `istio-trace-rate-limited-${i}`,
-        policyType: 'RateLimitPolicy',
-        reason: 'Rate limit exceeded',
-        tokens: 0
-      });
-    }
-    
-    // Sort by timestamp (newest first)
-    requests.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    
-    // Cache the generated requests
-    this.cachedRequests = requests;
-    
-    logger.info(`Generated ${requests.length} individual requests from Istio metrics (${successRequests} success, ${authFailedRequests} auth failed, ${rateLimitedRequests} rate limited)`);
-    return requests;
+
+    return byNamespace;
   }
 
-  // Generate individual requests from Prometheus metrics (no log parsing)
-  private generateIndividualRequestsFromPrometheus(limitadorMetrics: any, authorinoMetrics: any): RealMetricsRequest[] {
-    // Include auth failures in hash to detect changes
-    const authFailures = authorinoMetrics ? authorinoMetrics.authFailures : 0;
-    const metricsHash = `${limitadorMetrics.totalRequests}-${limitadorMetrics.rateLimitedRequests}-${authFailures}`;
-    
-    // If metrics haven't changed, return cached requests
-    if (this.lastMetricsHash === metricsHash && this.cachedRequests.length > 0) {
-      logger.info(`Returning cached individual requests - no metrics change detected (${metricsHash})`);
-      return this.cachedRequests;
+  private parseAccessLogs(logs: string): RequestLogEntry[] {
+    const entries: RequestLogEntry[] = [];
+    const lines = logs.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      try {
+        // Try to parse as JSON first (structured logs)
+        if (line.includes('{') && line.includes('}')) {
+          const jsonMatch = line.match(/\{.*\}/);
+          if (jsonMatch) {
+            const logEntry = JSON.parse(jsonMatch[0]);
+            const entry = this.transformLogEntry(logEntry);
+            if (entry) entries.push(entry);
+          }
+        } else {
+          // Parse common access log format
+          const entry = this.parseCommonLogFormat(line);
+          if (entry) entries.push(entry);
+        }
+      } catch (error) {
+        // Skip unparseable log lines
+      }
     }
-    
-    // Metrics have changed, generate individual requests from counters
-    const currentTime = Date.now();
-    logger.info(`Metrics changed (${this.lastMetricsHash} -> ${metricsHash}), generating individual requests`);
-    this.lastMetricsHash = metricsHash;
-    this.lastMetricsUpdate = currentTime;
-    
-    const requests: RealMetricsRequest[] = [];
-    const metricsChangeTime = this.lastMetricsUpdate;
-    
-    // Define common arrays used in request generation
-    const userAgents = [
-      'curl/8.7.1',
-      'Python/3.9 aiohttp/3.8.1',
-      'MaaS-Client/1.0',
-      'PostmanRuntime/7.32.2',
-      'Mozilla/5.0 (compatible; APIClient/1.0)'
-    ];
-    
-    const suspiciousUserAgents = [
-      'Unknown-Client/1.0',
-      'curl/7.68.0',
-      'python-requests/2.28.0',
-      'HTTPClient/1.0',
-      'Generic-Bot/1.0'
-    ];
-    
-    // Limitador metrics (requests that reached rate limiting)
-    const totalRequests = limitadorMetrics.totalRequests; // 19 (reached Limitador)
-    const limitedRequests = limitadorMetrics.rateLimitedRequests; // 3 (rate limited)
-    const approvedRequests = totalRequests - limitedRequests; // 16 (approved)
-    
-    // Authorino metrics (authentication failures - never reached Limitador)
-    // Since Authorino deep metrics don't show request-level data in v0.21.0,
-    // we'll infer auth failures based on realistic traffic patterns
-    // From logs, we saw ~1 auth failure per ~20 successful requests
-    const authFailedRequests = Math.floor(totalRequests * 0.05); // ~5% auth failure rate
-    
-    const grandTotal = totalRequests + authFailedRequests;
-    logger.info(`Generating ${grandTotal} total individual requests: ${authFailedRequests} auth failures, ${limitedRequests} rate limited, ${approvedRequests} approved`);
-    
-    // Generate individual approved requests with realistic recent timestamps
-    for (let i = 0; i < approvedRequests; i++) {
-      // Use the time when metrics last changed, spread over a few seconds before that
-      const requestTime = metricsChangeTime - (i * 1000) - (Math.random() * 5000); // Recent requests around metrics change time
-      requests.push({
-        id: `prometheus-approved-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(userAgents[i % userAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: 'Python/3.9 aiohttp/3.8.1',
-        clientIp: `192.168.1.${100 + (i % 50)}`,
-        decision: 'accept',
-        finalReason: 'Request approved by rate limiter',
-        authentication: {
-          method: 'api-key',
-          principal: `user-${i % 5}`,
-          isValid: true
-        },
-        policyDecisions: [{
-          policyId: 'limitador-rate-limit',
-          policyName: 'Rate Limiting Policy',
-          policyType: 'RateLimitPolicy',
-          decision: 'allow',
-          reason: 'Within rate limits',
-          enforcementPoint: 'limitador',
-          processingTime: Math.floor(Math.random() * 20) + 5
-        }],
-        queryText: `POST /v1/chat/completions (request ${i + 1})`,
-        totalResponseTime: Math.floor(Math.random() * 1000) + 200,
-        source: 'limitador',
-        traceId: `prometheus-trace-approved-${i}`,
-        policyType: 'None',
-        reason: 'Request approved',
-        tokens: Math.floor(Math.random() * 150) + 50
-      });
-    }
-    
-    // Generate individual rate-limited requests with realistic recent timestamps
-    for (let i = 0; i < limitedRequests; i++) {
-      // Use time around when metrics changed for rate limited requests
-      const requestTime = metricsChangeTime - (i * 1000) - (Math.random() * 3000); // Near metrics change time
-      requests.push({
-        id: `prometheus-limited-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(userAgents[i % userAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: 'Python/3.9 aiohttp/3.8.1',
-        clientIp: `192.168.1.${200 + (i % 30)}`,
-        decision: 'reject',
-        finalReason: 'Rate limit exceeded',
-        authentication: {
-          method: 'api-key',
-          principal: `user-${i % 3}`,
-          isValid: true
-        },
-        policyDecisions: [{
-          policyId: 'limitador-rate-limit',
-          policyName: 'Rate Limiting Policy',
-          policyType: 'RateLimitPolicy',
-          decision: 'deny',
-          reason: 'Rate limit exceeded',
-          enforcementPoint: 'limitador',
-          processingTime: Math.floor(Math.random() * 10) + 2
-        }],
-        rateLimitStatus: undefined, // Not displayed in UI
-        queryText: `POST /v1/chat/completions (rate limited ${i + 1})`,
-        totalResponseTime: Math.floor(Math.random() * 50) + 10,
-        source: 'limitador',
-        traceId: `prometheus-trace-limited-${i}`,
-        policyType: 'RateLimitPolicy',
-        reason: 'Rate limit exceeded',
-        tokens: 0
-      });
-    }
-    
-    // Generate individual authentication failure requests with recent timestamps
-    for (let i = 0; i < authFailedRequests; i++) {
-      // Use time around when metrics changed for auth failures
-      const requestTime = metricsChangeTime - (i * 1000) - (Math.random() * 4000); // Near metrics change time
-      requests.push({
-        id: `prometheus-auth-failed-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(suspiciousUserAgents[i % suspiciousUserAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: 'Unknown-Client/1.0',
-        clientIp: `192.168.1.${50 + (i % 20)}`,
-        decision: 'reject',
-        finalReason: 'Authentication failed',
-        authentication: {
-          method: 'api-key',
-          isValid: false,
-          validationErrors: ['Invalid or missing API key']
-        },
-        policyDecisions: [{
-          policyId: 'gateway-auth-policy',
-          policyName: 'Gateway Authentication',
-          policyType: 'AuthPolicy',
-          decision: 'deny',
-          reason: 'Authentication failed',
-          enforcementPoint: 'authorino',
-          processingTime: Math.floor(Math.random() * 15) + 5
-        }],
-        queryText: `POST /v1/chat/completions (auth failed ${i + 1})`,
-        totalResponseTime: Math.floor(Math.random() * 30) + 10,
-        source: 'authorino',
-        traceId: `prometheus-trace-auth-failed-${i}`,
-        policyType: 'AuthPolicy',
-        reason: 'Authentication failed',
-        tokens: 0
-      });
-    }
-    
-    // Sort by timestamp (newest first)
-    requests.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    
-    // Cache the generated requests
-    this.cachedRequests = requests;
-    
-    logger.info(`Generated ${requests.length} individual requests from Prometheus counters (${authFailedRequests} auth failures, ${limitedRequests} rate limited, ${approvedRequests} approved)`);
-    return requests;
+
+    return entries;
   }
 
-  async getMetricsStatus(): Promise<{
-    limitadorConnected: boolean;
-    authorinoConnected: boolean;
-    hasRealTraffic: boolean;
-    lastUpdate: string;
-  }> {
-    const [limitadorMetrics, authorinoMetrics] = await Promise.all([
-      this.fetchLimitadorMetrics(),
-      this.fetchAuthorinoMetrics()
-    ]);
+  private transformLogEntry(logEntry: any): RequestLogEntry | null {
+    try {
+      return {
+        timestamp: logEntry.timestamp || logEntry.time || new Date().toISOString(),
+        requestId: logEntry.request_id || logEntry.requestId || `req-${Date.now()}`,
+        method: logEntry.method || 'GET',
+        path: logEntry.path || logEntry.url || '/',
+        statusCode: parseInt(logEntry.status_code || logEntry.status || '200'),
+        responseTime: parseFloat(logEntry.response_time || logEntry.duration || '0'),
+        sourceIP: logEntry.source_ip || logEntry.remote_addr,
+        userAgent: logEntry.user_agent,
+        decision: logEntry.status_code && parseInt(logEntry.status_code) < 400 ? 'accept' : 'reject',
+        headers: logEntry.headers
+      };
+    } catch (error) {
+      return null;
+    }
+  }
 
-    const hasRealTraffic = (limitadorMetrics?.totalRequests > 0) || (authorinoMetrics?.authRequests > 0);
+  private parseCommonLogFormat(line: string): RequestLogEntry | null {
+    // Parse common access log format: IP - - [timestamp] "METHOD path HTTP/1.1" status size
+    const commonLogRegex = /^(\S+) \S+ \S+ \[(.*?)\] "(\S+) (\S+) \S+" (\d+) (\d+|-)/;
+    const match = line.match(commonLogRegex);
 
-    return {
-      limitadorConnected: limitadorMetrics !== null,
-      authorinoConnected: authorinoMetrics !== null,
-      hasRealTraffic,
-      lastUpdate: new Date().toISOString()
-    };
+    if (match) {
+      const [, sourceIP, timestamp, method, path, statusCode, size] = match;
+      return {
+        timestamp: new Date().toISOString(), // Convert log timestamp if needed
+        requestId: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        method,
+        path,
+        statusCode: parseInt(statusCode),
+        responseTime: 0, // Not available in basic format
+        sourceIP,
+        decision: parseInt(statusCode) < 400 ? 'accept' : 'reject'
+      };
+    }
+
+    return null;
+  }
+
+  // Mock data methods for fallback/testing
+  generateMockRequests(count: number = 50): RequestLogEntry[] {
+    const requests: RequestLogEntry[] = [];
+    const now = Date.now();
+
+    for (let i = 0; i < count; i++) {
+      const timestamp = new Date(now - (i * 60000)).toISOString(); // Spread over last hour
+      const statusCode = Math.random() > 0.8 ? (Math.random() > 0.5 ? 401 : 429) : 200;
+      
+      requests.push({
+        timestamp,
+        requestId: `req-${now}-${i}`,
+        method: Math.random() > 0.5 ? 'POST' : 'GET',
+        path: `/v1/chat/completions`,
+        statusCode,
+        responseTime: Math.floor(Math.random() * 2000) + 100,
+        sourceIP: `10.0.0.${Math.floor(Math.random() * 255)}`,
+        decision: statusCode === 200 ? 'accept' : 'reject',
+        policyType: statusCode === 401 ? 'AuthPolicy' : statusCode === 429 ? 'RateLimitPolicy' : undefined
+      });
+    }
+
+    return requests;
   }
 }
+
+export default new MetricsService();

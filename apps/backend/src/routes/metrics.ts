@@ -1,9 +1,8 @@
 import express from 'express';
-import { MetricsService } from '../services/metricsService';
+import metricsService from '../services/metricsService';
 import { logger } from '../utils/logger';
 
 const router: express.Router = express.Router();
-const metricsService = new MetricsService();
 
 // Get live requests with policy enforcement data
 router.get('/live-requests', async (req, res) => {
@@ -107,73 +106,115 @@ router.get('/policy-stats', async (req, res) => {
   }
 });
 
-// Get dashboard statistics from real Prometheus metrics
+// Get dashboard statistics from real live requests
 router.get('/dashboard', async (req, res) => {
   try {
-    // Get real data from Prometheus sources
-    const [istioMetrics, authorinoMetrics, status] = await Promise.all([
-      metricsService.fetchIstioMetrics(),
-      metricsService.fetchAuthorinoMetrics(),
+    logger.info('DASHBOARD ROUTE START - entered dashboard endpoint');
+    
+    // Try to fetch metrics directly from Prometheus first
+    const [prometheusResult, liveRequestsResult, statusResult] = await Promise.allSettled([
+      metricsService.fetchPrometheusMetrics(),
+      metricsService.getRealLiveRequests(),
       metricsService.getMetricsStatus()
     ]);
 
-    // Calculate totals from real Prometheus data
-    let totalRequests = 0;
-    let acceptedRequests = 0;
-    let authFailedRequests = 0;
-    let rateLimitedRequests = 0;
-    let rejectedRequests = 0;
+    // Extract results, using defaults for failed promises
+    const prometheusMetrics = prometheusResult.status === 'fulfilled' ? prometheusResult.value : null;
+    const liveRequests = liveRequestsResult.status === 'fulfilled' ? liveRequestsResult.value : [];
+    const status = statusResult.status === 'fulfilled' ? statusResult.value : {};
 
-    if (istioMetrics) {
-      // Use real Istio metrics for accurate counts
-      acceptedRequests = istioMetrics.successRequests || 0;
-      authFailedRequests = istioMetrics.authFailedRequests || 0;
-      rateLimitedRequests = istioMetrics.rateLimitedRequests || 0;
-      rejectedRequests = authFailedRequests + rateLimitedRequests + (istioMetrics.notFoundRequests || 0);
-      totalRequests = acceptedRequests + rejectedRequests;
+    logger.info(`Dashboard route calculation started`, {
+      prometheusMetricsAvailable: !!prometheusMetrics,
+      liveRequestsCount: liveRequests.length,
+      statusAvailable: !!status
+    });
+
+    // Use Prometheus metrics if available, otherwise fall back to live requests
+    let totalRequests, acceptedRequests, rejectedRequests, authFailedRequests, rateLimitedRequests;
+    let dataSource = 'unknown';
+
+    if (prometheusMetrics && prometheusMetrics.totalRequests > 0) {
+      // Use Prometheus data
+      totalRequests = prometheusMetrics.totalRequests;
+      acceptedRequests = prometheusMetrics.successRequests;
+      authFailedRequests = prometheusMetrics.authFailedRequests;
+      rateLimitedRequests = prometheusMetrics.rateLimitedRequests;
+      rejectedRequests = totalRequests - acceptedRequests;
+      dataSource = 'prometheus-metrics';
+      
+      logger.info(`Using Prometheus metrics: ${totalRequests} total, ${acceptedRequests} success, ${authFailedRequests} auth failures, ${rateLimitedRequests} rate limited`);
+    } else {
+      // Fall back to live requests calculation
+      totalRequests = liveRequests.length;
+      acceptedRequests = liveRequests.filter(r => r.decision === 'accept').length;
+      rejectedRequests = liveRequests.filter(r => r.decision === 'reject').length;
+      
+      authFailedRequests = liveRequests.filter(r => 
+        r.policyType === 'AuthPolicy' || 
+        r.policyDecisions?.some(p => p.policyType === 'AuthPolicy' && p.decision === 'deny')
+      ).length;
+      
+      rateLimitedRequests = liveRequests.filter(r => 
+        r.policyType === 'RateLimitPolicy' || 
+        r.policyDecisions?.some(p => p.policyType === 'RateLimitPolicy' && p.decision === 'deny')
+      ).length;
+      
+      dataSource = 'live-requests-fallback';
+      
+      logger.info(`Using live requests fallback: ${totalRequests} total, ${acceptedRequests} accepted, ${rejectedRequests} rejected`);
     }
+
+    // Debug: Log final calculation
+    logger.info(`Dashboard calculation debug`, {
+      totalRequests,
+      acceptedRequests,
+      rejectedRequests,
+      authFailedRequests,
+      rateLimitedRequests,
+      dataSource
+    });
 
     // Enhanced status with real metrics sources
     const enhancedStatus = {
       ...status,
-      istioConnected: istioMetrics !== null,
-      metricsSource: istioMetrics ? 'istio-prometheus' : 'fallback',
-      realData: totalRequests > 0
+      istioConnected: dataSource === 'prometheus-metrics',
+      metricsSource: dataSource,
+      realData: totalRequests > 0,
+      dataSource: dataSource
     };
     
     res.json({
       success: true,
       data: {
-        // Real metrics from Prometheus
+        // Metrics from Prometheus or live requests fallback
         totalRequests,
         acceptedRequests,
         rejectedRequests,
         authFailedRequests,
         rateLimitedRequests,
         policyEnforcedRequests: authFailedRequests + rateLimitedRequests,
+        source: dataSource,
         
         // Enhanced status  
         kuadrantStatus: {
           ...enhancedStatus,
-          notFoundRequests: istioMetrics?.notFoundRequests || 0,
-          debugIstioMetrics: istioMetrics ? {
-            successRequests: istioMetrics.successRequests,
-            authFailedRequests: istioMetrics.authFailedRequests,
-            rateLimitedRequests: istioMetrics.rateLimitedRequests,
-            notFoundRequests: istioMetrics.notFoundRequests,
-            totalRequests: istioMetrics.totalRequests
-          } : null
+          notFoundRequests: 0,
+          debugInfo: {
+            liveRequestsCount: liveRequests.length,
+            recentRequestsTime: liveRequests.length > 0 ? liveRequests[0].timestamp : null,
+            cacheAge: Math.round((Date.now() - (metricsService as any).lastMetricsUpdate) / 1000)
+          }
         },
         
         // Real Authorino controller metrics from Prometheus
-        authorinoStats: authorinoMetrics ? {
-          authConfigs: Array.from(authorinoMetrics.authByNamespace?.keys() || []).length,
-          totalEvaluations: authorinoMetrics.authRequests || 0,
-          successfulReconciles: authorinoMetrics.authSuccesses || 0,
-          failedReconciles: authorinoMetrics.authFailures || 0,
+        authorinoStats: prometheusMetrics ? {
+          authConfigs: Array.from(prometheusMetrics.authByNamespace?.keys() || []).length,
+          totalEvaluations: prometheusMetrics.authRequests || 0,
+          successfulReconciles: prometheusMetrics.authSuccesses || 0,
+          failedReconciles: prometheusMetrics.authFailures || 0,
           // Additional controller metrics
-          reconcileOperations: authorinoMetrics.totalReconciles || 0,
-          avgReconcileTime: authorinoMetrics.avgReconcileTime || 0
+          reconcileOperations: prometheusMetrics.totalReconciles || 0,
+          avgReconcileTime: prometheusMetrics.avgReconcileTime || 0
         } : {
           authConfigs: 0,
           totalEvaluations: 0,

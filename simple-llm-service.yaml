@@ -1,0 +1,134 @@
+# Simple LLM Simulator using standard Kubernetes resources
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-simulator
+  namespace: noyitz-llm
+  labels:
+    app: llm-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-simulator
+  template:
+    metadata:
+      labels:
+        app: llm-simulator
+    spec:
+      containers:
+      - name: simulator
+        image: python:3.11-slim
+        command: ["python", "-c"]
+        args:
+        - |
+          import json
+          import time
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+
+          class OpenAIHandler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/v1/models']:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      if self.path == '/v1/models':
+                          response = {"object": "list", "data": [{"id": "simulator-model", "object": "model"}]}
+                      else:
+                          response = {"status": "healthy"}
+                      self.wfile.write(json.dumps(response).encode())
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+
+              def do_POST(self):
+                  if self.path == '/v1/chat/completions':
+                      content_length = int(self.headers['Content-Length'])
+                      post_data = self.rfile.read(content_length)
+                      try:
+                          request = json.loads(post_data.decode())
+                          response = {
+                              "id": f"chatcmpl-{int(time.time())}",
+                              "object": "chat.completion",
+                              "created": int(time.time()),
+                              "model": request.get("model", "simulator-model"),
+                              "choices": [{
+                                  "index": 0,
+                                  "message": {
+                                      "role": "assistant",
+                                      "content": f"This is a simulated response to: {request['messages'][-1]['content']}"
+                                  },
+                                  "finish_reason": "stop"
+                              }],
+                              "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+                          }
+                          self.send_response(200)
+                          self.send_header('Content-Type', 'application/json')
+                          self.end_headers()
+                          self.wfile.write(json.dumps(response).encode())
+                      except Exception as e:
+                          print(f"Error: {e}")
+                          self.send_response(400)
+                          self.end_headers()
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+
+          print("Starting LLM simulator on port 8080")
+          server = HTTPServer(('0.0.0.0', 8080), OpenAIHandler)
+          server.serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-simulator
+  namespace: noyitz-llm
+  labels:
+    app: llm-simulator
+spec:
+  selector:
+    app: llm-simulator
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: llm-simulator
+  namespace: noyitz-llm
+  labels:
+    app: llm-simulator
+spec:
+  to:
+    kind: Service
+    name: llm-simulator
+  port:
+    targetPort: http

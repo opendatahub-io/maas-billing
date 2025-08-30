@@ -1,0 +1,19 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY apps/backend/package*.json ./
+COPY apps/backend/tsconfig.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY apps/backend/src ./src
+
+# Expose port
+EXPOSE 3002
+
+# Start the application
+CMD ["npm", "run", "dev"]

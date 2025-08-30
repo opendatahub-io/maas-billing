@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maas-backend-src
+  namespace: llm
+data:
+  package.json: |
+    {
+      "name": "@maas/backend",
+      "version": "1.0.0",
+      "description": "MaaS Backend API",
+      "main": "dist/app.js",
+      "scripts": {
+        "build": "tsc",
+        "start": "node dist/app.js",
+        "dev": "tsx src/app.ts",
+        "test": "jest",
+        "lint": "eslint src/**/*.ts",
+        "lint:fix": "eslint src/**/*.ts --fix"
+      },
+      "dependencies": {
+        "@kubernetes/client-node": "^0.20.0",
+        "axios": "^1.6.0",
+        "cors": "^2.8.5",
+        "express": "^4.18.2",
+        "winston": "^3.11.0"
+      },
+      "devDependencies": {
+        "@types/cors": "^2.8.17",
+        "@types/express": "^4.17.21",
+        "@types/node": "^20.8.0",
+        "@typescript-eslint/eslint-plugin": "^6.7.0",
+        "@typescript-eslint/parser": "^6.7.0",
+        "eslint": "^8.50.0",
+        "jest": "^29.7.0",
+        "ts-node-dev": "^2.0.0",
+        "tsx": "^4.0.0",
+        "typescript": "^5.2.0"
+      }
+    }
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2020",
+        "module": "commonjs",
+        "lib": ["ES2020"],
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true
+      },
+      "include": ["src/**/*"],
+      "exclude": ["node_modules", "dist"]
+    }
+  src/app.ts: |
+    import express from 'express';
+    import cors from 'cors';
+    import { logger } from './utils/logger';
+    import metricsRoutes from './routes/metrics';
+    import policiesRoutes from './routes/policies';
+    import simulatorRoutes from './routes/simulator';
+
+    const app: express.Application = express();
+    const PORT = process.env.PORT || 3002;
+
+    // Middleware
+    app.use(cors({
+      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      credentials: true
+    }));
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+
+    // Request logging
+    app.use((req, res, next) => {
+      logger.info(`${req.method} ${req.path}`, {
+        query: req.query,
+        userAgent: req.get('User-Agent')
+      });
+      next();
+    });
+
+    // Health check
+    app.get('/health', (req, res) => {
+      res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        service: 'maas-backend'
+      });
+    });
+
+    // API routes
+    app.use('/api/v1/metrics', metricsRoutes);
+    app.use('/api/v1/policies', policiesRoutes);
+    app.use('/api/v1/simulator', simulatorRoutes);
+
+    // Models endpoint for compatibility
+    app.get('/api/v1/models', (req, res) => {
+      res.json({
+        success: true,
+        data: [
+          {
+            id: 'vllm-simulator',
+            name: 'vLLM Simulator',
+            provider: 'KServe',
+            description: 'Test model for policy enforcement'
+          },
+          {
+            id: 'qwen3-0-6b-instruct',
+            name: 'Qwen3 0.6B Instruct',
+            provider: 'KServe',
+            description: 'Qwen3 model with vLLM runtime'
+          }
+        ]
+      });
+    });
+
+    // Error handling
+    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      logger.error('Unhandled error:', err);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    });
+
+    // 404 handler
+    app.use('*', (req, res) => {
+      res.status(404).json({
+        success: false,
+        error: 'Route not found'
+      });
+    });
+
+    // Start server
+    if (require.main === module) {
+      app.listen(PORT, () => {
+        logger.info(`Server running on port ${PORT}`);
+        logger.info('Available endpoints:');
+        logger.info('  GET /health - Health check');
+        logger.info('  GET /api/v1/models - Available models');
+        logger.info('  GET /api/v1/metrics - General metrics');
+        logger.info('  GET /api/v1/metrics/live-requests - Live request data with policy enforcement');
+        logger.info('  GET /api/v1/metrics/dashboard - Dashboard statistics');
+        logger.info('  GET /api/v1/policies - Get all policies');
+        logger.info('  POST /api/v1/policies - Create new policy');
+        logger.info('  PUT /api/v1/policies/:id - Update policy');
+        logger.info('  DELETE /api/v1/policies/:id - Delete policy');
+        logger.info('  POST /api/v1/simulator/chat/completions - Simulator proxy endpoint');
+      });
+    }
+
+    export default app;

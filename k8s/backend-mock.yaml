@@ -1,0 +1,288 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-backend
+  template:
+    metadata:
+      labels:
+        app: maas-backend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 1001030000
+        runAsGroup: 1001030000
+        fsGroup: 1001030000
+      containers:
+      - name: backend
+        image: python:3.11-alpine
+        securityContext:
+          runAsUser: 1001030000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          cd /tmp
+          
+          # Create a simple Python Flask server
+          cat > app.py << 'EOF'
+          from flask import Flask, jsonify, request
+          from flask_cors import CORS
+          import os
+          import json
+          from datetime import datetime
+          
+          app = Flask(__name__)
+          CORS(app)  # Enable CORS for all routes
+          
+          # Real policy data from Kuadrant (manually copied from the working API)
+          policies_data = [
+            {
+              "id": "llm/gateway-auth-policy",
+              "name": "gateway-auth-policy",
+              "description": "AuthPolicy for inference-gateway",
+              "type": "auth",
+              "namespace": "llm",
+              "targetRef": {
+                "group": "gateway.networking.k8s.io",
+                "kind": "Gateway", 
+                "name": "inference-gateway"
+              },
+              "config": {
+                "rules": {
+                  "authentication": {
+                    "api-key-users-apikey": {
+                      "apiKey": {
+                        "allNamespaces": True,
+                        "selector": {"matchLabels": {"app": "llm-gateway"}}
+                      },
+                      "credentials": {"authorizationHeader": {"prefix": "APIKEY"}},
+                      "metrics": True,
+                      "priority": 0
+                    },
+                    "api-key-users-bearer": {
+                      "apiKey": {
+                        "allNamespaces": True,
+                        "selector": {"matchLabels": {"app": "llm-gateway"}}
+                      },
+                      "credentials": {"authorizationHeader": {"prefix": "Bearer"}},
+                      "metrics": True,
+                      "priority": 0
+                    }
+                  },
+                  "authorization": {
+                    "allow-groups": {
+                      "metrics": True,
+                      "opa": {
+                        "allValues": False,
+                        "rego": "groups := split(object.get(input.auth.identity.metadata.annotations, \"kuadrant.io/groups\", \"\"), \",\")\nallow { groups[_] == \"free\" }\nallow { groups[_] == \"premium\" }\nallow { groups[_] == \"enterprise\" }\nallow { groups[_] == \"test-tokens\" }\nallow { groups[_] == \"test-tokens-blue\" }\nallow { groups[_] == \"test-tokens-green\" }"
+                      },
+                      "priority": 0
+                    }
+                  },
+                  "response": {
+                    "success": {
+                      "filters": {
+                        "identity": {
+                          "json": {
+                            "properties": {
+                              "groups": {"selector": "auth.identity.metadata.annotations.kuadrant\\.io/groups"},
+                              "userid": {"selector": "auth.identity.metadata.annotations.secret\\.kuadrant\\.io/user-id"}
+                            }
+                          },
+                          "metrics": True,
+                          "priority": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "status": {
+                "conditions": [
+                  {
+                    "lastTransitionTime": "2025-08-25T14:44:53Z",
+                    "message": "AuthPolicy has been accepted",
+                    "reason": "Accepted",
+                    "status": "True",
+                    "type": "Accepted"
+                  },
+                  {
+                    "lastTransitionTime": "2025-08-28T08:26:59Z",
+                    "message": "AuthPolicy has been successfully enforced",
+                    "reason": "Enforced",
+                    "status": "True",
+                    "type": "Enforced"
+                  }
+                ]
+              },
+              "created": "2025-08-25T14:44:52Z",
+              "modified": "221270221",
+              "isActive": True,
+              "items": [
+                {
+                  "id": "auth-api-key-users-apikey",
+                  "type": "authentication",
+                  "config": {
+                    "apiKey": {
+                      "allNamespaces": True,
+                      "selector": {"matchLabels": {"app": "llm-gateway"}}
+                    },
+                    "credentials": {"authorizationHeader": {"prefix": "APIKEY"}},
+                    "metrics": True,
+                    "priority": 0
+                  }
+                },
+                {
+                  "id": "auth-api-key-users-bearer",
+                  "type": "authentication",
+                  "config": {
+                    "apiKey": {
+                      "allNamespaces": True,
+                      "selector": {"matchLabels": {"app": "llm-gateway"}}
+                    },
+                    "credentials": {"authorizationHeader": {"prefix": "Bearer"}},
+                    "metrics": True,
+                    "priority": 0
+                  }
+                },
+                {
+                  "id": "authz-allow-groups",
+                  "type": "authorization",
+                  "config": {
+                    "metrics": True,
+                    "opa": {
+                      "allValues": False,
+                      "rego": "groups := split(object.get(input.auth.identity.metadata.annotations, \"kuadrant.io/groups\", \"\"), \",\")\nallow { groups[_] == \"free\" }\nallow { groups[_] == \"premium\" }\nallow { groups[_] == \"enterprise\" }\nallow { groups[_] == \"test-tokens\" }\nallow { groups[_] == \"test-tokens-blue\" }\nallow { groups[_] == \"test-tokens-green\" }"
+                    },
+                    "priority": 0
+                  }
+                },
+                {
+                  "id": "response-success",
+                  "type": "response",
+                  "config": {
+                    "filters": {
+                      "identity": {
+                        "json": {
+                          "properties": {
+                            "groups": {"selector": "auth.identity.metadata.annotations.kuadrant\\.io/groups"},
+                            "userid": {"selector": "auth.identity.metadata.annotations.secret\\.kuadrant\\.io/user-id"}
+                          }
+                        },
+                        "metrics": True,
+                        "priority": 0
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+          
+          @app.route('/health')
+          def health():
+              return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
+          
+          @app.route('/api/v1/policies')
+          def get_policies():
+              print(f"📋 GET /api/v1/policies - returning {len(policies_data)} policies")
+              return jsonify({
+                  "success": True,
+                  "data": policies_data,
+                  "timestamp": datetime.now().isoformat()
+              })
+          
+          @app.route('/api/v1/metrics/dashboard')
+          def get_dashboard_metrics():
+              print("📊 GET /api/v1/metrics/dashboard - returning mock metrics")
+              return jsonify({
+                  "success": True,
+                  "data": {
+                      "totalRequests": 1247,
+                      "acceptedRequests": 1156,
+                      "rejectedRequests": 91,
+                      "authFailedRequests": 45,
+                      "rateLimitedRequests": 46,
+                      "policyEnforcedRequests": 91,
+                      "source": "mock-data",
+                      "kuadrantStatus": {
+                          "istioConnected": True,
+                          "authorinoConnected": True
+                      }
+                  },
+                  "timestamp": datetime.now().isoformat()
+              })
+          
+          @app.route('/api/v1/metrics/live-requests')
+          def get_live_requests():
+              print("📈 GET /api/v1/metrics/live-requests - returning mock requests")
+              return jsonify({
+                  "success": True,
+                  "data": [],
+                  "timestamp": datetime.now().isoformat()
+              })
+          
+          if __name__ == '__main__':
+              print("🚀 Starting MaaS Backend Flask server...")
+              print("📋 Policies endpoint: /api/v1/policies") 
+              print("📊 Metrics endpoint: /api/v1/metrics/dashboard")
+              app.run(host='0.0.0.0', port=3002, debug=False)
+          EOF
+          
+          echo "📦 Installing Flask and dependencies..."
+          pip install flask flask-cors
+          
+          echo "🚀 Starting Flask server..."
+          python app.py
+        ports:
+        - containerPort: 3002
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  selector:
+    app: maas-backend
+  ports:
+  - port: 3002
+    targetPort: 3002
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-backend-route
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  to:
+    kind: Service
+    name: maas-backend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None

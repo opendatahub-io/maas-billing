@@ -53,9 +53,13 @@ import {
   Group as TeamIcon,
   Http as EndpointIcon,
   Search as SearchIcon,
+  Refresh as RefreshIcon,
+  Pause as PauseIcon,
+  PlayArrow as PlayIcon,
+  Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 
-import { useLiveRequests, useDashboardStats } from '../hooks/useApi';
+import { useDashboardStats } from '../hooks/useApi';
 import { Request } from '../types';
 
 // Helper function to format duration in ms with k notation for large values
@@ -109,7 +113,7 @@ const RequestRow: React.FC<{ request: Request }> = ({ request }) => {
         </TableCell>
         <TableCell>
           <Typography variant="body2">
-            {new Date(request.timestamp).toLocaleTimeString()}
+            {new Date(request.timestamp).toLocaleString()}
           </Typography>
         </TableCell>
         <TableCell>
@@ -577,28 +581,22 @@ const RequestRow: React.FC<{ request: Request }> = ({ request }) => {
 };
 
 const MetricsDashboard: React.FC = () => {
-  const { requests, loading: requestsLoading, error: requestsError } = useLiveRequests(true);
-  const { stats, loading: statsLoading, error: statsError } = useDashboardStats();
-  const [filterByDecision, setFilterByDecision] = useState<'all' | 'accept' | 'reject'>('all');
-  const [filterByPolicy, setFilterByPolicy] = useState<'all' | 'AuthPolicy' | 'RateLimitPolicy' | 'None'>('all');
-  const [filterBySource, setFilterBySource] = useState<'all' | 'limitador' | 'authorino' | 'envoy' | 'kuadrant' | 'kserve'>('all');
-  const [searchText, setSearchText] = useState('');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(10000);
+  
+  const { 
+    stats, 
+    loading: statsLoading, 
+    refreshing: statsRefreshing,
+    error: statsError, 
+    lastUpdated: statsLastUpdated,
+    refetch: refetchStats 
+  } = useDashboardStats(autoRefresh, 15000);
+  
+  // Filters removed since request table is removed
 
-  const filteredRequests = requests.filter((request: Request) => {
-    const decisionMatch = filterByDecision === 'all' || request.decision === filterByDecision;
-    const policyMatch = filterByPolicy === 'all' || request.policyType === filterByPolicy;
-    const sourceMatch = filterBySource === 'all' || request.source === filterBySource;
-    const searchMatch = !searchText || 
-      request.team.toLowerCase().includes(searchText.toLowerCase()) ||
-      request.model.toLowerCase().includes(searchText.toLowerCase()) ||
-      (request.queryText && request.queryText.toLowerCase().includes(searchText.toLowerCase())) ||
-      (request.endpoint && request.endpoint.toLowerCase().includes(searchText.toLowerCase())) ||
-      request.id.toLowerCase().includes(searchText.toLowerCase());
-    
-    return decisionMatch && policyMatch && sourceMatch && searchMatch;
-  });
-
-  if (requestsLoading || statsLoading) {
+  
+  if (statsLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <CircularProgress />
@@ -607,27 +605,28 @@ const MetricsDashboard: React.FC = () => {
     );
   }
 
-  if (requestsError || statsError) {
+  if (statsError) {
     return (
       <Alert severity="error" sx={{ mb: 2 }}>
         <Typography variant="h6">Error Loading Metrics</Typography>
-        <Typography variant="body2">{requestsError || statsError}</Typography>
+        <Typography variant="body2">{statsError}</Typography>
       </Alert>
     );
   }
 
   // Use real Prometheus metrics from dashboard API for top-level stats
-  const {
-    totalRequests = 0,
-    acceptedRequests = 0, 
-    rejectedRequests = 0,
-    authFailedRequests = 0,
-    rateLimitedRequests = 0,
-    policyEnforcedRequests = 0,
-    kuadrantStatus = {},
-    authorinoStats = null,
-    source = 'unknown'
-  } = stats || {};
+  
+  // Direct access instead of destructuring to avoid potential issues
+  const totalRequests = stats?.totalRequests || 0;
+  const acceptedRequests = stats?.acceptedRequests || 0;
+  const rejectedRequests = stats?.rejectedRequests || 0;
+  const authFailedRequests = stats?.authFailedRequests || 0;
+  const rateLimitedRequests = stats?.rateLimitedRequests || 0;
+  const policyEnforcedRequests = stats?.policyEnforcedRequests || 0;
+  const kuadrantStatus = stats?.kuadrantStatus || {};
+  const authorinoStats = stats?.authorinoStats || null;
+  const source = stats?.source || 'unknown';
+  
 
   // Extract real Authorino controller metrics (only what's available from Prometheus)
   const authConfigsManaged = authorinoStats?.authConfigs || 0;
@@ -638,85 +637,69 @@ const MetricsDashboard: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h4" component="h1">
           Live Request Metrics
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Data Source:
-          </Typography>
-          <Chip 
-            label={source === 'prometheus-metrics' ? 'Real Prometheus' : 'Fallback'}
-            color={source === 'prometheus-metrics' ? 'success' : 'warning'} 
-            size="small"
-          />
-          {kuadrantStatus?.istioConnected && (
-            <Chip label="Istio ✓" color="success" size="small" />
-          )}
-          {kuadrantStatus?.authorinoConnected && (
-            <Chip label="Authorino ✓" color="success" size="small" />
-          )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          {/* Refresh Controls */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+            <Tooltip title={autoRefresh ? 'Pause auto-refresh' : 'Resume auto-refresh'}>
+              <IconButton 
+                size="small" 
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                color={autoRefresh ? 'primary' : 'default'}
+              >
+                {autoRefresh ? <PauseIcon /> : <PlayIcon />}
+              </IconButton>
+            </Tooltip>
+            <FormControl size="small" sx={{ minWidth: 80 }}>
+              <Select
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                disabled={!autoRefresh}
+                variant="outlined"
+              >
+                <MenuItem value={5000}>5s</MenuItem>
+                <MenuItem value={10000}>10s</MenuItem>
+                <MenuItem value={30000}>30s</MenuItem>
+                <MenuItem value={60000}>1m</MenuItem>
+              </Select>
+            </FormControl>
+            <Tooltip title="Manual refresh">
+              <IconButton 
+                size="small" 
+                onClick={() => {
+                  refetchStats();
+                }}
+                disabled={statsRefreshing}
+              >
+                <RefreshIcon sx={{ 
+                  animation: statsRefreshing ? 'spin 1s linear infinite' : 'none',
+                  '@keyframes spin': {
+                    '0%': { transform: 'rotate(0deg)' },
+                    '100%': { transform: 'rotate(360deg)' }
+                  }
+                }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          {/* Status Indicators */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Data Source:
+            </Typography>
+            <Chip 
+              label={source === 'prometheus-metrics' ? 'Prometheus' : 'Fallback'}
+              color={source === 'prometheus-metrics' ? 'success' : 'warning'} 
+              size="small"
+            />
+          </Box>
         </Box>
       </Box>
       
-      {/* Filters */}
-      <Toolbar sx={{ px: 0, mb: 2, flexWrap: 'wrap', gap: 2 }}>
-        <TextField
-          size="small"
-          label="Search"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          sx={{ minWidth: 200 }}
-          InputProps={{
-            startAdornment: <SearchIcon sx={{ mr: 1 }} />
-          }}
-          placeholder="Search team, model, endpoint, or request ID..."
-        />
-        
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Decision</InputLabel>
-          <Select
-            value={filterByDecision}
-            onChange={(e) => setFilterByDecision(e.target.value as any)}
-            label="Decision"
-          >
-            <MenuItem value="all">All</MenuItem>
-            <MenuItem value="accept">Accept</MenuItem>
-            <MenuItem value="reject">Reject</MenuItem>
-          </Select>
-        </FormControl>
-
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Policy Type</InputLabel>
-          <Select
-            value={filterByPolicy}
-            onChange={(e) => setFilterByPolicy(e.target.value as any)}
-            label="Policy Type"
-          >
-            <MenuItem value="all">All</MenuItem>
-            <MenuItem value="AuthPolicy">Auth Policy</MenuItem>
-            <MenuItem value="RateLimitPolicy">Rate Limit Policy</MenuItem>
-            <MenuItem value="None">No Policy</MenuItem>
-          </Select>
-        </FormControl>
-
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Source</InputLabel>
-          <Select
-            value={filterBySource}
-            onChange={(e) => setFilterBySource(e.target.value as any)}
-            label="Source"
-          >
-            <MenuItem value="all">All</MenuItem>
-            <MenuItem value="limitador">Limitador</MenuItem>
-            <MenuItem value="authorino">Authorino</MenuItem>
-            <MenuItem value="envoy">Envoy</MenuItem>
-            <MenuItem value="kuadrant">Kuadrant</MenuItem>
-            <MenuItem value="kserve">KServe</MenuItem>
-          </Select>
-        </FormControl>
-      </Toolbar>
+      {/* Filters removed - no longer needed without request table */}
 
       {/* First Row - Basic Stats */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -864,98 +847,6 @@ const MetricsDashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}></Grid>
       </Grid>
 
-      {/* Requests Table */}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell />
-              <TableCell>Timestamp</TableCell>
-              <TableCell>
-                <Box>
-                  <Typography variant="body2" fontWeight="medium">Tier</Typography>
-                  <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem' }}>
-                    (mock data)
-                  </Typography>
-                </Box>
-              </TableCell>
-              <TableCell>
-                <Box>
-                  <Typography variant="body2" fontWeight="medium">Model</Typography>
-                  <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem' }}>
-                    (mock data)
-                  </Typography>
-                </Box>
-              </TableCell>
-              <TableCell>Endpoint</TableCell>
-              <TableCell>Decision</TableCell>
-              <TableCell>Policies</TableCell>
-              <TableCell align="right">Duration (ms)</TableCell>
-              <TableCell align="right">
-                <Tooltip title="Token usage format: prompt + completion = total (mock data for now)">
-                  <Box>
-                    <Typography variant="body2" fontWeight="medium">Tokens</Typography>
-                    <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem' }}>
-                      (mock data)
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              </TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredRequests.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
-                    No requests found with current filters
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredRequests.map((request: Request) => (
-                <RequestRow key={request.id} request={request} />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* Real-time indicator */}
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Box
-              sx={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                bgcolor: 'success.main',
-                mr: 1,
-                animation: 'pulse 2s infinite',
-                '@keyframes pulse': {
-                  '0%': { opacity: 1 },
-                  '50%': { opacity: 0.5 },
-                  '100%': { opacity: 1 },
-                },
-              }}
-            />
-            <Typography variant="body2" color="text.secondary">
-              Live updates every 2s
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary">
-            • Dashboard: Real Prometheus metrics
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            • Table: Real Envoy access logs
-          </Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary">
-          Showing {filteredRequests.length} of {requests.length} total requests
-        </Typography>
-      </Box>
     </Box>
   );
 };

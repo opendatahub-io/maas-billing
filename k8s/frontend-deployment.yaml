@@ -1,0 +1,452 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-frontend
+  namespace: llm
+  labels:
+    app: maas-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-frontend
+  template:
+    metadata:
+      labels:
+        app: maas-frontend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 1001060000
+        runAsGroup: 1001060000
+        fsGroup: 1001060000
+      initContainers:
+      - name: setup
+        image: node:20-alpine
+        securityContext:
+          runAsUser: 1001060000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Set up directories
+          mkdir -p /app-files/src/components /app-files/src/contexts /app-files/src/hooks /app-files/src/services /app-files/src/data /app-files/src/config /app-files/public
+          
+          # Copy and organize files from configmap
+          cp /source/package.json /app-files/ 2>/dev/null || echo "package.json not found"
+          cp /source/tsconfig.json /app-files/ 2>/dev/null || echo "tsconfig.json not found"
+          cp /source/index.html /app-files/public/ 2>/dev/null || echo "index.html not found"
+          
+          # Copy main React files
+          cp /source/index.tsx /app-files/src/ 2>/dev/null || echo "index.tsx not found"
+          cp /source/App.tsx /app-files/src/ 2>/dev/null || echo "App.tsx not found"
+          cp /source/App.css /app-files/src/ 2>/dev/null || echo "App.css not found"
+          cp /source/index.css /app-files/src/ 2>/dev/null || echo "index.css not found"
+          
+          # Copy components to components directory
+          cp /source/MetricsDashboard.tsx /app-files/src/components/ 2>/dev/null || echo "MetricsDashboard.tsx not found"
+          cp /source/PolicyBuilder.tsx /app-files/src/components/ 2>/dev/null || echo "PolicyBuilder.tsx not found"
+          # Create updated RequestSimulator with real models and billing tiers
+          echo 'Creating RequestSimulator with real models and billing tiers...'
+          
+          # Copy RequestSimulator from existing source for now
+          cp /source/RequestSimulator.tsx /app-files/src/components/ 2>/dev/null || echo "RequestSimulator.tsx not found, will use existing one"
+          
+          # Create a working PolicyManager component
+          cp /source/PolicyManager.tsx /app-files/src/components/ 2>/dev/null || echo "PolicyManager.tsx not found"
+          
+          # Create PolicyManager component with echo commands
+          echo 'import React, { useState, useEffect } from '\''react'\'';' > /app-files/src/components/PolicyManager.tsx
+          echo 'import {' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Box,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Typography,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Card,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  CardContent,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Chip,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  CircularProgress,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Alert,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Grid,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Paper,' >> /app-files/src/components/PolicyManager.tsx
+          echo '} from '\''@mui/material'\'';' >> /app-files/src/components/PolicyManager.tsx
+          echo 'import {' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Security as SecurityIcon,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  CheckCircle as ActiveIcon,' >> /app-files/src/components/PolicyManager.tsx
+          echo '  Cancel as InactiveIcon,' >> /app-files/src/components/PolicyManager.tsx
+          echo '} from '\''@mui/icons-material'\'';' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo 'import apiService from '\''../services/api'\'';' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo 'interface Policy {' >> /app-files/src/components/PolicyManager.tsx
+          echo '  id: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  name: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  description?: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  type: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  namespace: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  isActive: boolean;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  created: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  items?: Array<{' >> /app-files/src/components/PolicyManager.tsx
+          echo '    id: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '    type: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '    config?: any;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  }>;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  targetRef?: {' >> /app-files/src/components/PolicyManager.tsx
+          echo '    kind: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '    name: string;' >> /app-files/src/components/PolicyManager.tsx
+          echo '  };' >> /app-files/src/components/PolicyManager.tsx
+          echo '}' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo 'const PolicyManager: React.FC = () => {' >> /app-files/src/components/PolicyManager.tsx
+          echo '  const [policies, setPolicies] = useState<Policy[]>([]);' >> /app-files/src/components/PolicyManager.tsx
+          echo '  const [loading, setLoading] = useState(true);' >> /app-files/src/components/PolicyManager.tsx
+          echo '  const [error, setError] = useState<string | null>(null);' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo '  useEffect(() => {' >> /app-files/src/components/PolicyManager.tsx
+          echo '    const fetchPolicies = async () => {' >> /app-files/src/components/PolicyManager.tsx
+          echo '      try {' >> /app-files/src/components/PolicyManager.tsx
+          echo '        console.log('\''🔄 PolicyManager: Fetching policies...'\'');' >> /app-files/src/components/PolicyManager.tsx
+          echo '        setLoading(true);' >> /app-files/src/components/PolicyManager.tsx
+          echo '        setError(null);' >> /app-files/src/components/PolicyManager.tsx
+          echo '        ' >> /app-files/src/components/PolicyManager.tsx
+          echo '        const data = await apiService.getPolicies();' >> /app-files/src/components/PolicyManager.tsx
+          echo '        console.log('\''✅ PolicyManager: Received data:'\'', data);' >> /app-files/src/components/PolicyManager.tsx
+          echo '        ' >> /app-files/src/components/PolicyManager.tsx
+          echo '        if (Array.isArray(data)) {' >> /app-files/src/components/PolicyManager.tsx
+          echo '          setPolicies(data);' >> /app-files/src/components/PolicyManager.tsx
+          echo '          console.log(`📋 PolicyManager: Set ${data.length} policies`);' >> /app-files/src/components/PolicyManager.tsx
+          echo '        } else {' >> /app-files/src/components/PolicyManager.tsx
+          echo '          console.error('\''❌ PolicyManager: Data is not an array:'\'', data);' >> /app-files/src/components/PolicyManager.tsx
+          echo '          setPolicies([]);' >> /app-files/src/components/PolicyManager.tsx
+          echo '        }' >> /app-files/src/components/PolicyManager.tsx
+          echo '      } catch (err) {' >> /app-files/src/components/PolicyManager.tsx
+          echo '        console.error('\''❌ PolicyManager: Error fetching policies:'\'', err);' >> /app-files/src/components/PolicyManager.tsx
+          echo '        setError(err instanceof Error ? err.message : '\''Failed to fetch policies'\'');' >> /app-files/src/components/PolicyManager.tsx
+          echo '        setPolicies([]);' >> /app-files/src/components/PolicyManager.tsx
+          echo '      } finally {' >> /app-files/src/components/PolicyManager.tsx
+          echo '        setLoading(false);' >> /app-files/src/components/PolicyManager.tsx
+          echo '        console.log('\''✅ PolicyManager: Loading complete'\'');' >> /app-files/src/components/PolicyManager.tsx
+          echo '      }' >> /app-files/src/components/PolicyManager.tsx
+          echo '    };' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo '    fetchPolicies();' >> /app-files/src/components/PolicyManager.tsx
+          echo '  }, []);' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo '  if (loading) {' >> /app-files/src/components/PolicyManager.tsx
+          echo '    return (' >> /app-files/src/components/PolicyManager.tsx
+          echo '      <Box sx={{ display: '\''flex'\'', flexDirection: '\''column'\'', alignItems: '\''center'\'', justifyContent: '\''center'\'', minHeight: 200, p: 4 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <CircularProgress size={40} />' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Typography sx={{ mt: 2 }} variant="body1">Loading policies...</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '      </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '    );' >> /app-files/src/components/PolicyManager.tsx
+          echo '  }' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo '  if (error) {' >> /app-files/src/components/PolicyManager.tsx
+          echo '    return (' >> /app-files/src/components/PolicyManager.tsx
+          echo '      <Box sx={{ p: 3 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Alert severity="error" sx={{ mb: 2 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          <Typography variant="h6">Error Loading Policies</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          <Typography variant="body2">{error}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        </Alert>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Typography variant="body2" color="text.secondary">Check the browser console for more details.</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '      </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '    );' >> /app-files/src/components/PolicyManager.tsx
+          echo '  }' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo '  return (' >> /app-files/src/components/PolicyManager.tsx
+          echo '    <Box sx={{ p: 3 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '      <Box sx={{ mb: 3 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Typography variant="h4" gutterBottom sx={{ display: '\''flex'\'', alignItems: '\''center'\'', gap: 1 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          <SecurityIcon color="primary" />' >> /app-files/src/components/PolicyManager.tsx
+          echo '          Policy Manager' >> /app-files/src/components/PolicyManager.tsx
+          echo '        </Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Typography variant="body1" color="text.secondary">Manage and monitor Kuadrant policies</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '      </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo '      <Paper sx={{ p: 2, mb: 3, bgcolor: '\''background.default'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Grid container spacing={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          <Grid item xs={12} sm={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            <Box sx={{ textAlign: '\''center'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="h3" color="primary.main" fontWeight="bold">{policies.length + policies.filter(p => p.type === '\''rate-limit'\'').flatMap(p => p.items || []).length - policies.filter(p => p.type === '\''rate-limit'\'').length}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="body2" color="text.secondary">Total Policies</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          <Grid item xs={12} sm={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            <Box sx={{ textAlign: '\''center'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="h3" color="success.main" fontWeight="bold">{policies.filter(p => p.isActive).length + policies.filter(p => p.type === '\''rate-limit'\'' && p.isActive).flatMap(p => p.items || []).length - policies.filter(p => p.type === '\''rate-limit'\'' && p.isActive).length}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="body2" color="text.secondary">Active Policies</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          <Grid item xs={12} sm={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            <Box sx={{ textAlign: '\''center'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="h3" color="info.main" fontWeight="bold">{policies.filter(p => p.type === '\''auth'\'').length}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="body2" color="text.secondary">Auth Policies</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          <Grid item xs={12} sm={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            <Box sx={{ textAlign: '\''center'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="h3" color="warning.main" fontWeight="bold">{policies.filter(p => p.type === '\''rate-limit'\'').flatMap(p => p.items || []).length}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Typography variant="body2" color="text.secondary">Rate Limit Policies</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '        </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '      </Paper>' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo '      {policies.length === 0 ? (' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Alert severity="info"><Typography variant="h6">No Policies Found</Typography></Alert>' >> /app-files/src/components/PolicyManager.tsx
+          echo '      ) : (' >> /app-files/src/components/PolicyManager.tsx
+          echo '        <Grid container spacing={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          {policies.map((policy) => (' >> /app-files/src/components/PolicyManager.tsx
+          echo '            <Grid item xs={12} key={policy.id}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              <Card sx={{ border: 1, borderColor: policy.isActive ? '\''success.main'\'' : '\''grey.300'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                <CardContent>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  <Box sx={{ display: '\''flex'\'', justifyContent: '\''space-between'\'', alignItems: '\''flex-start'\'', mb: 2 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="h5" gutterBottom sx={{ display: '\''flex'\'', alignItems: '\''center'\'', gap: 1 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        <SecurityIcon color="primary" />' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        {policy.name}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      </Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="body2" color="text.secondary" gutterBottom>{policy.description}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Box sx={{ display: '\''flex'\'', flexDirection: '\''column'\'', gap: 1, alignItems: '\''flex-end'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Chip label={policy.isActive ? '\''Active'\'' : '\''Inactive'\''} color={policy.isActive ? '\''success'\'' : '\''default'\''} />' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Chip label={policy.type === '\''auth'\'' ? '\''AUTH POLICY'\'' : '\''RATE LIMIT'\''} color={policy.type === '\''auth'\'' ? '\''primary'\'' : '\''warning'\''} size="small" />' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  <Grid container spacing={2} sx={{ mb: 2 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Grid item xs={12} sm={6} md={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="caption" color="text.secondary" display="block">NAMESPACE</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="body2" fontFamily="monospace">{policy.namespace}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Grid item xs={12} sm={6} md={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="caption" color="text.secondary" display="block">TARGET</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="body2" fontFamily="monospace">{policy.targetRef?.kind || '\''N/A'\''}/{policy.targetRef?.name || '\''N/A'\''}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Grid item xs={12} sm={6} md={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="caption" color="text.secondary" display="block">CREATED</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="body2">{new Date(policy.created).toLocaleDateString()}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Grid item xs={12} sm={6} md={3}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="caption" color="text.secondary" display="block">RULES</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="body2">{policy.items ? policy.items.length : 0} configured</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  {/* Policy-specific details */}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  {policy.type === '\''auth'\'' && (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Box sx={{ mt: 2 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="h6" gutterBottom sx={{ color: '\''primary.main'\'' }}>🔐 Authentication & Authorization</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      {/* Authentication Methods */}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      {policy.items?.filter(item => item.type === '\''authentication'\'').map((authItem, index) => (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        <Paper key={index} sx={{ p: 2, mb: 2, bgcolor: '\''primary.50'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>🔑 {(authItem as any).description || `Authentication: ${authItem.id}`}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Typography variant="body2">Method: API Key with {authItem.config?.credentials?.authorizationHeader?.prefix || '\''unknown'\''} prefix</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Typography variant="body2">Scope: {authItem.config?.apiKey?.allNamespaces ? '\''All Namespaces'\'' : '\''Current Namespace Only'\''}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Typography variant="body2">Metrics: {authItem.config?.metrics ? '\''Enabled'\'' : '\''Disabled'\''}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        </Paper>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      ))}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      {/* Authorization Rules */}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      {policy.items?.filter(item => item.type === '\''authorization'\'').map((authzItem, index) => (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        <Paper key={index} sx={{ p: 2, mb: 2, bgcolor: '\''info.50'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>🛡️ Group-Based Authorization</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Typography variant="body2" sx={{ mb: 1 }}>Allowed Groups:</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Box sx={{ display: '\''flex'\'', flexWrap: '\''wrap'\'', gap: 1, mb: 1 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            {((authzItem as any).allowedGroups || []).map((group: string, idx: number) => (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              <Chip key={idx} label={group} size="small" color="success" variant="outlined" />' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            ))}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Typography variant="caption" color="text.secondary">Users must belong to one of these groups to access the service</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        </Paper>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      ))}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  {policy.type === '\''rate-limit'\'' && (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    <Box sx={{ mt: 2 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      <Typography variant="h6" gutterBottom sx={{ color: '\''warning.main'\'' }}>⚡ Rate Limiting Rules</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      {policy.items?.filter(item => item.type === '\''rate-limit'\'').map((rateItem, index) => (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        <Paper key={index} sx={{ p: 2, mb: 2, bgcolor: '\''warning.50'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          <Box sx={{ display: '\''flex'\'', justifyContent: '\''space-between'\'', alignItems: '\''flex-start'\'', mb: 1 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            <Typography variant="subtitle1" fontWeight="bold">🎯 {rateItem.id === '\''default'\'' ? '\''Default Rate Limit'\'' : `Group: ${rateItem.id}`}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            {(rateItem as any).rates?.[0] && (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              <Chip ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                label={`${(rateItem as any).rates?.[0]?.limit?.toLocaleString() || 0} req/${(rateItem as any).rates?.[0]?.window || '\''unknown'\''}`}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                color={((rateItem as any).rates?.[0]?.limit || 0) > 1000000 ? '\''success'\'' : ((rateItem as any).rates?.[0]?.limit || 0) > 100 ? '\''warning'\'' : '\''error'\''} ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                sx={{ fontWeight: '\''bold'\'' }}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              />' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          {(rateItem as any).rates?.[0] && (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            <Box sx={{ mb: 2 }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              <Typography variant="body2" sx={{ fontWeight: '\''bold'\'' }}>Rate Limit Details:</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              <Typography variant="body2">• Limit: <strong>{((rateItem as any).rates?.[0]?.limit || 0).toLocaleString()}</strong> requests per <strong>{(rateItem as any).rates?.[0]?.window || '\''unknown'\''}</strong></Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              <Typography variant="body2">• Counter: <code>{(rateItem as any).counters?.[0]?.expression || '\''Per user'\''}</code></Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              {((rateItem as any).rates?.[0]?.limit || 0) <= 1000 && (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                <Typography variant="body2" color="error.main">• <strong>Restrictive limit</strong> - May impact user experience</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              {((rateItem as any).rates?.[0]?.limit || 0) > 1000000 && (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                <Typography variant="body2" color="success.main">• <strong>High limit</strong> - Essentially unlimited for most users</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          {(rateItem as any).conditions && (rateItem as any).conditions.length > 0 && (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            <Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              <Typography variant="body2" sx={{ fontWeight: '\''bold'\'', mb: 1 }}>Conditions:</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              {(rateItem as any).conditions.map((condition: any, idx: number) => (' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                <Paper key={idx} sx={{ p: 1, mb: 1, bgcolor: '\''grey.100'\'' }}>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                  <Typography variant="caption" fontFamily="monospace">{condition.predicate}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                                </Paper>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              ))}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                              <Typography variant="caption" color="text.secondary">This rate limit only applies when the above conditions are met</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                            </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                          )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                        </Paper>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                      ))}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                    </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  ' >> /app-files/src/components/PolicyManager.tsx
+          echo '                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>Policy ID: {policy.id}</Typography>' >> /app-files/src/components/PolicyManager.tsx
+          echo '                </CardContent>' >> /app-files/src/components/PolicyManager.tsx
+          echo '              </Card>' >> /app-files/src/components/PolicyManager.tsx
+          echo '            </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '          ))}' >> /app-files/src/components/PolicyManager.tsx
+          echo '        </Grid>' >> /app-files/src/components/PolicyManager.tsx
+          echo '      )}' >> /app-files/src/components/PolicyManager.tsx
+          echo '    </Box>' >> /app-files/src/components/PolicyManager.tsx
+          echo '  );' >> /app-files/src/components/PolicyManager.tsx
+          echo '};' >> /app-files/src/components/PolicyManager.tsx
+          echo '' >> /app-files/src/components/PolicyManager.tsx
+          echo 'export default PolicyManager;' >> /app-files/src/components/PolicyManager.tsx
+          
+          # Copy contexts
+          cp /source/ThemeContext.tsx /app-files/src/contexts/ 2>/dev/null || echo "ThemeContext.tsx not found"
+          
+          # Copy hooks
+          cp /source/useApi.ts /app-files/src/hooks/ 2>/dev/null || echo "useApi.ts not found"
+          
+          # Copy services - use the version from configmap
+          cp /source/api.ts /app-files/src/services/ 2>/dev/null || echo "api.ts not found"
+          
+          # Copy data
+          cp /source/mockData.ts /app-files/src/data/ 2>/dev/null || echo "mockData.ts not found"
+          
+          # Copy config
+          cp /source/environment.ts /app-files/src/config/ 2>/dev/null || echo "environment.ts not found"
+          
+          # Copy types
+          cp /source/types.ts /app-files/src/ 2>/dev/null || echo "types.ts not found"
+          
+          # List what we copied
+          echo "Setup complete. Files in /app-files:"
+          find /app-files -type f | head -10
+        volumeMounts:
+        - name: app-source
+          mountPath: /source
+        - name: app-files
+          mountPath: /app-files
+      containers:
+      - name: frontend
+        image: node:20-alpine
+        workingDir: /app-files
+        securityContext:
+          runAsUser: 1001060000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Set environment
+          export npm_config_cache=/tmp/.npm
+          export HOME=/tmp
+          
+          # Install dependencies
+          echo "Installing dependencies..."
+          npm install --unsafe-perm
+          
+          # First check TypeScript compilation without building
+          echo "Checking TypeScript compilation..."
+          npx tsc --noEmit --skipLibCheck || echo "TypeScript errors found, but continuing..."
+          
+          # Build the production version with increased memory
+          echo "Building production version..."
+          export NODE_OPTIONS="--max-old-space-size=1536"
+          export REACT_APP_API_BASE_URL="http://maas-backend-route-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/api/v1"
+          npm run build
+          
+          # Check build results
+          echo "Checking build results..."
+          ls -la build/
+          echo "Files in build directory:"
+          find build -type f | head -10
+          
+          # Serve the built files with a simple server
+          if [ -f "build/index.html" ]; then
+            echo "Starting production server..."
+            npx serve -s build -p 3000 --single
+          else
+            echo "Build failed - no index.html found. Starting dev server..."
+            echo "Skipping TypeScript checking for dev server..."
+            export SKIP_PREFLIGHT_CHECK=true
+            export TSC_COMPILE_ON_ERROR=true
+            BROWSER=none PORT=3000 npm start
+          fi
+        ports:
+        - containerPort: 3000
+        env:
+        - name: REACT_APP_API_BASE_URL
+          value: "http://maas-backend-route-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/api/v1"
+        volumeMounts:
+        - name: app-files
+          mountPath: /app-files
+        resources:
+          requests:
+            cpu: 200m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+      volumes:
+      - name: app-source
+        configMap:
+          name: maas-frontend-src
+      - name: app-files
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-frontend
+  namespace: llm
+  labels:
+    app: maas-frontend
+spec:
+  selector:
+    app: maas-frontend
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-dashboard-route
+  namespace: llm
+  labels:
+    app: maas-frontend
+spec:
+  to:
+    kind: Service
+    name: maas-frontend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None

@@ -12,26 +12,16 @@ export const models: Model[] = [
     id: 'vllm-simulator',
     name: 'vLLM Simulator',
     provider: 'KServe',
-    description: 'Test model for policy enforcement'
+    description: 'Test model for policy enforcement - RUNNING'
   },
-  {
-    id: 'qwen3-0-6b-instruct',
-    name: 'Qwen3 0.6B Instruct',
-    provider: 'KServe',
-    description: 'Qwen3 model with vLLM runtime'
-  },
-  {
-    id: 'llama-2-7b',
-    name: 'Llama 2 7B',
-    provider: 'Meta',
-    description: 'Meta\'s Llama 2 model with 7 billion parameters'
-  },
-  {
-    id: 'mistral-7b',
-    name: 'Mistral 7B',
-    provider: 'Mistral AI',
-    description: 'Mistral\'s 7B parameter model'
-  },
+  // Note: These models are not currently deployed in your local environment
+  // Uncomment when they are deployed:
+  // {
+  //   id: 'qwen3-0-6b-instruct',
+  //   name: 'Qwen3 0.6B Instruct (NOT DEPLOYED)',
+  //   provider: 'KServe',
+  //   description: 'Qwen3 model with vLLM runtime'
+  // },
 ];
 
 // This will be replaced with real Kuadrant policies

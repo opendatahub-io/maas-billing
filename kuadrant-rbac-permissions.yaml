@@ -1,0 +1,39 @@
+# RBAC permissions needed for backend to read Kuadrant policies
+# These need to be applied by a cluster admin
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kuadrant-policy-reader
+rules:
+# Read AuthPolicies across all namespaces
+- apiGroups: ["kuadrant.io"]
+  resources: ["authpolicies"]
+  verbs: ["get", "list", "watch"]
+# Read RateLimitPolicies across all namespaces  
+- apiGroups: ["kuadrant.io"]
+  resources: ["ratelimitpolicies"]
+  verbs: ["get", "list", "watch"]
+# Read DNSPolicies (optional, for complete Kuadrant visibility)
+- apiGroups: ["kuadrant.io"]
+  resources: ["dnspolicies"]
+  verbs: ["get", "list", "watch"]
+# Read TLSPolicies (optional, for complete Kuadrant visibility)
+- apiGroups: ["kuadrant.io"]
+  resources: ["tlspolicies"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: noyitz-kuadrant-policy-reader
+subjects:
+- kind: User
+  name: noyitz  # Your OpenShift username
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: kuadrant-policy-reader
+  apiGroup: rbac.authorization.k8s.io

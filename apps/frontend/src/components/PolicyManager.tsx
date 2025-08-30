@@ -14,6 +14,9 @@ import {
   TableRow,
   Paper,
   Tooltip,
+  Card,
+  CardContent,
+  Grid,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -139,6 +142,28 @@ const PolicyManager: React.FC = () => {
     return type === 'auth' ? 'primary' : 'secondary';
   };
 
+  // Count rate limit policies considering each rule as a separate policy
+  const countRateLimitPolicies = () => {
+    let count = 0;
+    policies.forEach(policy => {
+      if (policy.type === 'rateLimit') {
+        // Count each item (rule) within a rate limit policy as a separate policy
+        count += policy.items?.length || 1;
+      }
+    });
+    return count;
+  };
+
+  const countAuthPolicies = () => {
+    return policies.filter(policy => policy.type === 'auth').length;
+  };
+
+  const getTotalPoliciesCount = () => {
+    const authCount = countAuthPolicies();
+    const rateLimitCount = countRateLimitPolicies();
+    return authCount + rateLimitCount;
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -163,6 +188,72 @@ const PolicyManager: React.FC = () => {
           Create Policy
         </Button>
       </Box>
+
+      {/* Policy Statistics */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={4}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Box
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    bgcolor: '#2196f3', // Blue
+                    mr: 1,
+                  }}
+                />
+                <Typography color="text.secondary" gutterBottom>
+                  Total Policies
+                </Typography>
+              </Box>
+              <Typography variant="h4" component="div" sx={{ color: '#2196f3' }}>
+                {getTotalPoliciesCount()}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                All policy rules
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <AuthIcon sx={{ mr: 1, color: '#9c27b0' }} />
+                <Typography color="text.secondary" gutterBottom>
+                  Auth Policies
+                </Typography>
+              </Box>
+              <Typography variant="h4" component="div" sx={{ color: '#9c27b0' }}>
+                {countAuthPolicies()}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Authentication policies
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <RateLimitIcon sx={{ mr: 1, color: '#ff9800' }} />
+                <Typography color="text.secondary" gutterBottom>
+                  Rate Limit Policies
+                </Typography>
+              </Box>
+              <Typography variant="h4" component="div" sx={{ color: '#ff9800' }}>
+                {countRateLimitPolicies()}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Individual rate limit rules
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
       {/* Search */}
       <Box sx={{ mb: 3 }}>

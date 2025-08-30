@@ -1,0 +1,281 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-frontend
+  namespace: noyitz-llm
+  labels:
+    app: maas-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-frontend
+  template:
+    metadata:
+      labels:
+        app: maas-frontend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 1001060000
+        runAsGroup: 1001060000
+        fsGroup: 1001060000
+      containers:
+      - name: frontend
+        image: node:20-alpine
+        workingDir: /tmp/app
+        securityContext:
+          runAsUser: 1001060000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Set environment
+          export npm_config_cache=/tmp/.npm
+          export HOME=/tmp
+          export REACT_APP_API_BASE_URL="${REACT_APP_API_BASE_URL}"
+          
+          # Create a minimal React app structure
+          mkdir -p /tmp/app/src /tmp/app/public
+          
+          # Create package.json
+          cat > /tmp/app/package.json << 'EOF'
+          {
+            "name": "maas-frontend",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "@emotion/react": "^11.11.0",
+              "@emotion/styled": "^11.11.0",
+              "@mui/icons-material": "^5.14.0",
+              "@mui/material": "^5.14.0",
+              "react": "^18.2.0",
+              "react-dom": "^18.2.0",
+              "react-scripts": "5.0.1"
+            },
+            "scripts": {
+              "start": "react-scripts start",
+              "build": "react-scripts build"
+            },
+            "browserslist": {
+              "production": [">0.2%", "not dead", "not op_mini all"],
+              "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+            }
+          }
+          EOF
+          
+          # Create public/index.html
+          cat > /tmp/app/public/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>MaaS Policy Dashboard</title>
+            </head>
+            <body>
+              <div id="root"></div>
+            </body>
+          </html>
+          EOF
+          
+          # Create src/index.js
+          cat > /tmp/app/src/index.js << 'EOF'
+          import React from 'react';
+          import ReactDOM from 'react-dom/client';
+          import App from './App';
+          
+          const root = ReactDOM.createRoot(document.getElementById('root'));
+          root.render(<App />);
+          EOF
+          
+          # Create src/App.js
+          cat > /tmp/app/src/App.js << 'EOF'
+          import React, { useState, useEffect } from 'react';
+          import { 
+            Container, 
+            Typography, 
+            Card, 
+            CardContent, 
+            CircularProgress,
+            Alert,
+            Table,
+            TableBody,
+            TableCell,
+            TableContainer,
+            TableHead,
+            TableRow,
+            Paper,
+            Chip
+          } from '@mui/material';
+          
+          function App() {
+            const [policies, setPolicies] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+          
+            useEffect(() => {
+              const fetchPolicies = async () => {
+                try {
+                  const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3002/api/v1';
+                  console.log('Fetching from:', `${baseUrl}/policies`);
+                  
+                  const response = await fetch(`${baseUrl}/policies`);
+                  if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                  }
+                  
+                  const data = await response.json();
+                  console.log('Received data:', data);
+                  
+                  if (data.success && data.data) {
+                    setPolicies(data.data);
+                  } else {
+                    setError('Invalid response format');
+                  }
+                } catch (err) {
+                  console.error('Fetch error:', err);
+                  setError(err.message);
+                } finally {
+                  setLoading(false);
+                }
+              };
+          
+              fetchPolicies();
+            }, []);
+          
+            if (loading) {
+              return (
+                <Container sx={{ mt: 4, textAlign: 'center' }}>
+                  <CircularProgress />
+                  <Typography sx={{ mt: 2 }}>Loading policies...</Typography>
+                </Container>
+              );
+            }
+          
+            if (error) {
+              return (
+                <Container sx={{ mt: 4 }}>
+                  <Alert severity="error">
+                    <Typography variant="h6">Error Loading Policies</Typography>
+                    <Typography>{error}</Typography>
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                      API URL: {process.env.REACT_APP_API_BASE_URL || 'http://localhost:3002/api/v1'}
+                    </Typography>
+                  </Alert>
+                </Container>
+              );
+            }
+          
+            return (
+              <Container sx={{ mt: 4 }}>
+                <Typography variant="h4" component="h1" gutterBottom>
+                  MaaS Policy Dashboard
+                </Typography>
+                
+                <Card sx={{ mb: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6">
+                      Found {policies.length} policies
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      API URL: {process.env.REACT_APP_API_BASE_URL || 'http://localhost:3002/api/v1'}
+                    </Typography>
+                  </CardContent>
+                </Card>
+          
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Name</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Namespace</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Created</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {policies.map((policy) => (
+                        <TableRow key={policy.id}>
+                          <TableCell>{policy.name}</TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={policy.type} 
+                              color={policy.type === 'auth' ? 'primary' : 'secondary'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>{policy.namespace}</TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={policy.isActive ? 'Active' : 'Inactive'} 
+                              color={policy.isActive ? 'success' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>{new Date(policy.created).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Container>
+            );
+          }
+          
+          export default App;
+          EOF
+          
+          echo "Installing dependencies..."
+          npm install
+          
+          echo "Starting React development server..."
+          HOST=0.0.0.0 PORT=3000 npm start
+        ports:
+        - containerPort: 3000
+        env:
+        - name: REACT_APP_API_BASE_URL
+          value: "http://maas-backend-route-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/api/v1"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-frontend
+  namespace: noyitz-llm
+  labels:
+    app: maas-frontend
+spec:
+  selector:
+    app: maas-frontend
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-dashboard-route
+  namespace: noyitz-llm
+  labels:
+    app: maas-frontend
+spec:
+  to:
+    kind: Service
+    name: maas-frontend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None

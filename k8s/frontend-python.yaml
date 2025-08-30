@@ -1,0 +1,509 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-frontend
+  namespace: llm
+  labels:
+    app: maas-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-frontend
+  template:
+    metadata:
+      labels:
+        app: maas-frontend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 1001060000
+        runAsGroup: 1001060000
+        fsGroup: 1001060000
+      containers:
+      - name: frontend
+        image: python:3.11-alpine
+        securityContext:
+          runAsUser: 1001060000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Create web content
+          mkdir -p /tmp/www
+          cd /tmp/www
+          
+          cat > index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>MaaS - Inference Model as a Service</title>
+              <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+              <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body { 
+                      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+                      background: #121212; 
+                      color: #ffffff; 
+                      overflow-x: hidden;
+                  }
+                  
+                  /* App Bar */
+                  .app-bar {
+                      position: fixed;
+                      top: 0;
+                      left: 0;
+                      right: 0;
+                      height: 64px;
+                      background: #151515;
+                      border-bottom: 1px solid #333;
+                      display: flex;
+                      align-items: center;
+                      padding: 0 24px;
+                      z-index: 1200;
+                  }
+                  .app-bar .logo { height: 32px; margin-right: 16px; }
+                  .app-bar .title { font-size: 1.25rem; font-weight: 600; margin-right: 8px; }
+                  .app-bar .subtitle { color: #999; font-size: 0.875rem; margin-left: 8px; }
+                  .app-bar .spacer { flex: 1; }
+                  .app-bar .user-menu { display: flex; align-items: center; gap: 16px; }
+                  .theme-toggle, .user-avatar { 
+                      width: 40px; height: 40px; border-radius: 50%; border: none; 
+                      background: #333; color: #fff; cursor: pointer; display: flex; 
+                      align-items: center; justify-content: center; 
+                  }
+                  .user-avatar { background: #ee0000; font-weight: 600; }
+                  
+                  /* Sidebar */
+                  .sidebar {
+                      position: fixed;
+                      top: 64px;
+                      left: 0;
+                      width: 240px;
+                      height: calc(100vh - 64px);
+                      background: #1a1a1a;
+                      border-right: 1px solid #333;
+                      padding-top: 24px;
+                      z-index: 1100;
+                  }
+                  .nav-item {
+                      display: flex;
+                      align-items: center;
+                      padding: 12px 24px;
+                      margin: 4px 8px;
+                      border-radius: 8px;
+                      color: #999;
+                      cursor: pointer;
+                      transition: all 0.2s;
+                  }
+                  .nav-item:hover { background: #333; color: #fff; }
+                  .nav-item.active { background: #ee0000; color: #fff; }
+                  .nav-item .material-icons { margin-right: 16px; font-size: 20px; }
+                  .nav-item span { font-weight: 500; }
+                  
+                  /* Main Content */
+                  .main-content {
+                      margin-left: 240px;
+                      margin-top: 64px;
+                      padding: 24px;
+                      min-height: calc(100vh - 64px);
+                      background: #121212;
+                  }
+                  
+                  /* Cards */
+                  .card {
+                      background: #1e1e1e;
+                      border: 1px solid #333;
+                      border-radius: 12px;
+                      padding: 24px;
+                      margin-bottom: 24px;
+                      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                  }
+                  .card h2 { margin-bottom: 16px; color: #fff; font-weight: 600; }
+                  
+                  /* Stats Grid */
+                  .stats-grid {
+                      display: grid;
+                      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                      gap: 20px;
+                      margin-bottom: 24px;
+                  }
+                  .stat-card {
+                      background: linear-gradient(135deg, #ee0000, #cc0000);
+                      border-radius: 12px;
+                      padding: 24px;
+                      text-align: center;
+                      color: white;
+                  }
+                  .stat-number { font-size: 2.5rem; font-weight: 700; margin-bottom: 8px; }
+                  .stat-label { font-size: 1rem; opacity: 0.9; }
+                  
+                  /* Policy Cards */
+                  .policy-grid {
+                      display: grid;
+                      gap: 20px;
+                  }
+                  .policy-card {
+                      background: #1e1e1e;
+                      border: 1px solid #333;
+                      border-radius: 12px;
+                      padding: 24px;
+                      transition: all 0.3s ease;
+                  }
+                  .policy-card:hover {
+                      border-color: #ee0000;
+                      box-shadow: 0 8px 24px rgba(238, 0, 0, 0.2);
+                  }
+                  .policy-header {
+                      display: flex;
+                      align-items: center;
+                      margin-bottom: 16px;
+                  }
+                  .policy-icon {
+                      width: 48px;
+                      height: 48px;
+                      border-radius: 8px;
+                      background: #ee0000;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      margin-right: 16px;
+                  }
+                  .policy-title { font-size: 1.25rem; font-weight: 600; color: #fff; }
+                  .policy-meta {
+                      display: grid;
+                      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                      gap: 12px;
+                      margin-top: 16px;
+                  }
+                  .meta-item {
+                      display: flex;
+                      flex-direction: column;
+                      gap: 4px;
+                  }
+                  .meta-label { font-size: 0.75rem; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+                  .meta-value { font-size: 0.875rem; color: #fff; }
+                  
+                  /* Status Badges */
+                  .status-badge {
+                      display: inline-flex;
+                      align-items: center;
+                      padding: 4px 12px;
+                      border-radius: 16px;
+                      font-size: 0.75rem;
+                      font-weight: 600;
+                      text-transform: uppercase;
+                  }
+                  .status-active { background: #22c55e; color: white; }
+                  .status-inactive { background: #6b7280; color: white; }
+                  .type-badge {
+                      padding: 4px 12px;
+                      border-radius: 8px;
+                      font-size: 0.75rem;
+                      font-weight: 600;
+                      text-transform: uppercase;
+                  }
+                  .type-auth { background: #3b82f6; color: white; }
+                  .type-ratelimit { background: #f59e0b; color: white; }
+                  
+                  /* Loading States */
+                  .loading {
+                      text-align: center;
+                      padding: 48px;
+                      color: #999;
+                  }
+                  .loading .material-icons {
+                      font-size: 48px;
+                      margin-bottom: 16px;
+                      animation: spin 2s linear infinite;
+                  }
+                  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                  
+                  .error {
+                      background: #dc2626;
+                      color: white;
+                      padding: 24px;
+                      border-radius: 12px;
+                      margin: 24px 0;
+                  }
+                  
+                  /* Responsive */
+                  @media (max-width: 768px) {
+                      .sidebar { transform: translateX(-240px); }
+                      .main-content { margin-left: 0; }
+                      .stats-grid { grid-template-columns: 1fr; }
+                      .policy-meta { grid-template-columns: 1fr; }
+                  }
+              </style>
+          </head>
+          <body>
+              <!-- App Bar -->
+              <div class="app-bar">
+                  <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiNlZTAwMDAiLz4KPHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSI2IiB5PSI2Ij4KPHBhdGggZD0iTTEwIDJMMTIuMDkgOC4yNkwyMCAxMEwxMi4wOSAxMS43NEwxMCAxOEw3LjkxIDExLjc0TDAgMTBMNy45MSA4LjI2TDEwIDJaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4KPC9zdmc+" class="logo" alt="Red Hat" />
+                  <span class="title">MaaS</span>
+                  <span style="color: #999;">|</span>
+                  <span class="subtitle">Inference Model as a Service</span>
+                  <div class="spacer"></div>
+                  <div class="user-menu">
+                      <button class="theme-toggle" onclick="toggleTheme()">
+                          <span class="material-icons">light_mode</span>
+                      </button>
+                      <div class="user-avatar">U</div>
+                  </div>
+              </div>
+              
+              <!-- Sidebar -->
+              <div class="sidebar">
+                  <div class="nav-item active" onclick="showTab('policies')">
+                      <span class="material-icons">policy</span>
+                      <span>Policy Manager</span>
+                  </div>
+                  <div class="nav-item" onclick="showTab('metrics')">
+                      <span class="material-icons">bar_chart</span>
+                      <span>Live Metrics</span>
+                  </div>
+                  <div class="nav-item" onclick="showTab('simulator')">
+                      <span class="material-icons">play_arrow</span>
+                      <span>Request Simulator</span>
+                  </div>
+              </div>
+              
+              <!-- Main Content -->
+              <div class="main-content">
+                  <!-- Policies Tab -->
+                  <div id="policies-tab" class="tab-content">
+                      <div class="stats-grid">
+                          <div class="stat-card">
+                              <div class="stat-number" id="totalPolicies">0</div>
+                              <div class="stat-label">Total Policies</div>
+                          </div>
+                          <div class="stat-card">
+                              <div class="stat-number" id="activePolicies">0</div>
+                              <div class="stat-label">Active Policies</div>
+                          </div>
+                          <div class="stat-card">
+                              <div class="stat-number" id="authPolicies">0</div>
+                              <div class="stat-label">Auth Policies</div>
+                          </div>
+                      </div>
+                      
+                      <div id="loading" class="loading">
+                          <div class="material-icons">refresh</div>
+                          <h3>Loading policies...</h3>
+                          <p>Fetching data from Kuadrant API</p>
+                      </div>
+                      
+                      <div id="error" class="error" style="display: none;">
+                          <h3>❌ Error Loading Policies</h3>
+                          <p id="errorMessage"></p>
+                      </div>
+                      
+                      <div id="policies" class="policy-grid"></div>
+                  </div>
+                  
+                  <!-- Metrics Tab -->
+                  <div id="metrics-tab" class="tab-content" style="display: none;">
+                      <div class="card">
+                          <h2>📊 Live Metrics Dashboard</h2>
+                          <p>Real-time metrics and analytics coming soon...</p>
+                      </div>
+                  </div>
+                  
+                  <!-- Simulator Tab -->
+                  <div id="simulator-tab" class="tab-content" style="display: none;">
+                      <div class="card">
+                          <h2>🚀 Request Simulator</h2>
+                          <p>Policy testing and simulation tools coming soon...</p>
+                      </div>
+                  </div>
+              </div>
+              
+              <script>
+                  const API_BASE_URL = 'http://maas-backend-route-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/api/v1';
+                  let currentTheme = 'dark';
+                  
+                  function showTab(tabName) {
+                      // Hide all tabs
+                      document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
+                      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+                      
+                      // Show selected tab
+                      document.getElementById(tabName + '-tab').style.display = 'block';
+                      event.target.classList.add('active');
+                  }
+                  
+                  function toggleTheme() {
+                      // Theme toggle placeholder
+                      console.log('Theme toggle clicked');
+                  }
+                  
+                  async function loadPolicies() {
+                      try {
+                          console.log('🔄 Fetching policies from:', API_BASE_URL + '/policies');
+                          
+                          const response = await fetch(API_BASE_URL + '/policies', {
+                              method: 'GET',
+                              headers: { 'Accept': 'application/json' },
+                              mode: 'cors'
+                          });
+                          
+                          if (!response.ok) {
+                              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                          }
+                          
+                          const data = await response.json();
+                          console.log('📥 Received data:', data);
+                          
+                          if (data.success && data.data) {
+                              displayPolicies(data.data);
+                              updateStats(data.data);
+                          } else {
+                              throw new Error('Invalid response format');
+                          }
+                      } catch (error) {
+                          console.error('❌ Error:', error);
+                          showError(error.message);
+                      }
+                  }
+                  
+                  function updateStats(policies) {
+                      const total = policies.length;
+                      const active = policies.filter(p => p.isActive).length;
+                      const auth = policies.filter(p => p.type === 'auth').length;
+                      
+                      document.getElementById('totalPolicies').textContent = total;
+                      document.getElementById('activePolicies').textContent = active;
+                      document.getElementById('authPolicies').textContent = auth;
+                  }
+                  
+                  function displayPolicies(policies) {
+                      document.getElementById('loading').style.display = 'none';
+                      document.getElementById('error').style.display = 'none';
+                      
+                      const container = document.getElementById('policies');
+                      
+                      if (policies.length === 0) {
+                          container.innerHTML = '<div class="card"><h2>📋 No policies found</h2><p>No policies are currently configured in the cluster.</p></div>';
+                          return;
+                      }
+                      
+                      container.innerHTML = policies.map(policy => `
+                          <div class="policy-card">
+                              <div class="policy-header">
+                                  <div class="policy-icon">
+                                      <span class="material-icons">security</span>
+                                  </div>
+                                  <div>
+                                      <div class="policy-title">${policy.name}</div>
+                                      <div style="margin-top: 4px;">
+                                          <span class="type-badge type-${policy.type}">${policy.type}</span>
+                                          <span class="status-badge status-${policy.isActive ? 'active' : 'inactive'}" style="margin-left: 8px;">
+                                              ${policy.isActive ? '✅ Active' : '⏸️ Inactive'}
+                                          </span>
+                                      </div>
+                                  </div>
+                              </div>
+                              
+                              <div class="policy-meta">
+                                  <div class="meta-item">
+                                      <div class="meta-label">Namespace</div>
+                                      <div class="meta-value">${policy.namespace}</div>
+                                  </div>
+                                  <div class="meta-item">
+                                      <div class="meta-label">Created</div>
+                                      <div class="meta-value">${new Date(policy.created).toLocaleDateString()}</div>
+                                  </div>
+                                  <div class="meta-item">
+                                      <div class="meta-label">Policy ID</div>
+                                      <div class="meta-value" style="font-family: monospace; font-size: 0.75rem;">${policy.id}</div>
+                                  </div>
+                                  ${policy.targetRef ? `
+                                  <div class="meta-item">
+                                      <div class="meta-label">Target</div>
+                                      <div class="meta-value">${policy.targetRef.kind}/${policy.targetRef.name}</div>
+                                  </div>
+                                  ` : ''}
+                              </div>
+                              
+                              ${policy.description ? `<p style="margin-top: 16px; color: #999;">${policy.description}</p>` : ''}
+                              
+                              ${policy.items && policy.items.length > 0 ? `
+                              <div style="margin-top: 16px;">
+                                  <div class="meta-label" style="margin-bottom: 8px;">Rules (${policy.items.length})</div>
+                                  ${policy.items.map(item => `
+                                      <div style="background: #2a2a2a; padding: 8px 12px; border-radius: 6px; margin-bottom: 4px; font-size: 0.875rem;">
+                                          <strong>${item.type}:</strong> ${item.id}
+                                      </div>
+                                  `).join('')}
+                              </div>
+                              ` : ''}
+                          </div>
+                      `).join('');
+                  }
+                  
+                  function showError(message) {
+                      document.getElementById('loading').style.display = 'none';
+                      document.getElementById('error').style.display = 'block';
+                      document.getElementById('errorMessage').textContent = message;
+                  }
+                  
+                  // Initialize
+                  console.log('🚀 Starting MaaS Dashboard');
+                  loadPolicies();
+                  
+                  // Auto-refresh every 30 seconds
+                  setInterval(loadPolicies, 30000);
+              </script>
+          </body>
+          </html>
+          EOF
+          
+          echo "🚀 Starting Python HTTP server on port 8080..."
+          python3 -m http.server 8080
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-frontend
+  namespace: llm
+  labels:
+    app: maas-frontend
+spec:
+  selector:
+    app: maas-frontend
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-dashboard-route
+  namespace: llm
+  labels:
+    app: maas-frontend
+spec:
+  to:
+    kind: Service
+    name: maas-frontend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None

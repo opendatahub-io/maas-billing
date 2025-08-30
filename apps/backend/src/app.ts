@@ -3,6 +3,7 @@ import cors from 'cors';
 import { logger } from './utils/logger';
 import metricsRoutes from './routes/metrics';
 import policiesRoutes from './routes/policies';
+import simulatorRoutes from './routes/simulator';
 
 const app: express.Application = express();
 const PORT = process.env.PORT || 3002;
@@ -36,6 +37,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/v1/metrics', metricsRoutes);
 app.use('/api/v1/policies', policiesRoutes);
+app.use('/api/v1/simulator', simulatorRoutes);
 
 // Models endpoint for compatibility
 app.get('/api/v1/models', (req, res) => {
@@ -89,6 +91,7 @@ if (require.main === module) {
     logger.info('  POST /api/v1/policies - Create new policy');
     logger.info('  PUT /api/v1/policies/:id - Update policy');
     logger.info('  DELETE /api/v1/policies/:id - Delete policy');
+    logger.info('  POST /api/v1/simulator/chat/completions - Simulator proxy endpoint');
   });
 }
 

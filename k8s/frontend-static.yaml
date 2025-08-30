@@ -1,0 +1,221 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-frontend
+  namespace: noyitz-llm
+  labels:
+    app: maas-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-frontend
+  template:
+    metadata:
+      labels:
+        app: maas-frontend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      securityContext:
+        runAsUser: 1001060000
+        runAsGroup: 1001060000
+        fsGroup: 1001060000
+      containers:
+      - name: frontend
+        image: nginx:alpine
+        securityContext:
+          runAsUser: 1001060000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Create nginx config
+          mkdir -p /tmp/nginx
+          cat > /tmp/nginx/nginx.conf << 'EOF'
+          events {
+              worker_connections 1024;
+          }
+          http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+              
+              server {
+                  listen 8080;
+                  server_name localhost;
+                  root /tmp/www;
+                  index index.html;
+                  
+                  location / {
+                      try_files $uri $uri/ /index.html;
+                  }
+              }
+          }
+          EOF
+          
+          # Create web content
+          mkdir -p /tmp/www
+          cat > /tmp/www/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>MaaS Policy Dashboard</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 20px; }
+                  .container { max-width: 1200px; margin: 0 auto; }
+                  .header { background: #1976d2; color: white; padding: 20px; border-radius: 4px; margin-bottom: 20px; }
+                  .policy-card { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 4px; }
+                  .policy-card h3 { margin-top: 0; color: #1976d2; }
+                  .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+                  .status.active { background: #4caf50; color: white; }
+                  .status.inactive { background: #666; color: white; }
+                  .type { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+                  .type.auth { background: #2196f3; color: white; }
+                  .type.rate { background: #ff9800; color: white; }
+                  .loading { text-align: center; padding: 40px; }
+                  .error { background: #f44336; color: white; padding: 15px; border-radius: 4px; margin: 20px 0; }
+                  .api-info { background: #f5f5f5; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 12px; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="header">
+                      <h1>MaaS Policy Dashboard</h1>
+                      <p>Real-time policy monitoring from Kuadrant</p>
+                  </div>
+                  
+                  <div class="api-info">
+                      <strong>API Endpoint:</strong> <span id="apiUrl"></span>
+                  </div>
+                  
+                  <div id="loading" class="loading">
+                      <p>Loading policies...</p>
+                  </div>
+                  
+                  <div id="error" class="error" style="display: none;">
+                      <h3>Error Loading Policies</h3>
+                      <p id="errorMessage"></p>
+                  </div>
+                  
+                  <div id="policies"></div>
+              </div>
+              
+              <script>
+                  const API_BASE_URL = 'http://maas-backend-route-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/api/v1';
+                  
+                  document.getElementById('apiUrl').textContent = API_BASE_URL;
+                  
+                  async function loadPolicies() {
+                      try {
+                          console.log('Fetching policies from:', API_BASE_URL + '/policies');
+                          
+                          const response = await fetch(API_BASE_URL + '/policies');
+                          
+                          if (!response.ok) {
+                              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                          }
+                          
+                          const data = await response.json();
+                          console.log('Received data:', data);
+                          
+                          if (data.success && data.data) {
+                              displayPolicies(data.data);
+                          } else {
+                              throw new Error('Invalid response format');
+                          }
+                      } catch (error) {
+                          console.error('Error:', error);
+                          showError(error.message);
+                      }
+                  }
+                  
+                  function displayPolicies(policies) {
+                      document.getElementById('loading').style.display = 'none';
+                      
+                      const container = document.getElementById('policies');
+                      
+                      if (policies.length === 0) {
+                          container.innerHTML = '<p>No policies found</p>';
+                          return;
+                      }
+                      
+                      container.innerHTML = `
+                          <h2>Found ${policies.length} policies</h2>
+                          ${policies.map(policy => `
+                              <div class="policy-card">
+                                  <h3>${policy.name}</h3>
+                                  <p><strong>Type:</strong> <span class="type ${policy.type}">${policy.type}</span></p>
+                                  <p><strong>Namespace:</strong> ${policy.namespace}</p>
+                                  <p><strong>Description:</strong> ${policy.description}</p>
+                                  <p><strong>Status:</strong> <span class="status ${policy.isActive ? 'active' : 'inactive'}">${policy.isActive ? 'Active' : 'Inactive'}</span></p>
+                                  <p><strong>Created:</strong> ${new Date(policy.created).toLocaleString()}</p>
+                                  <p><strong>ID:</strong> <code>${policy.id}</code></p>
+                                  ${policy.targetRef ? `<p><strong>Target:</strong> ${policy.targetRef.kind}/${policy.targetRef.name}</p>` : ''}
+                              </div>
+                          `).join('')}
+                      `;
+                  }
+                  
+                  function showError(message) {
+                      document.getElementById('loading').style.display = 'none';
+                      document.getElementById('error').style.display = 'block';
+                      document.getElementById('errorMessage').textContent = message;
+                  }
+                  
+                  // Load policies on page load
+                  loadPolicies();
+                  
+                  // Refresh every 30 seconds
+                  setInterval(loadPolicies, 30000);
+              </script>
+          </body>
+          </html>
+          EOF
+          
+          echo "Starting nginx..."
+          nginx -c /tmp/nginx/nginx.conf -g 'daemon off;'
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-frontend
+  namespace: noyitz-llm
+  labels:
+    app: maas-frontend
+spec:
+  selector:
+    app: maas-frontend
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-dashboard-route
+  namespace: noyitz-llm
+  labels:
+    app: maas-frontend
+spec:
+  to:
+    kind: Service
+    name: maas-frontend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None

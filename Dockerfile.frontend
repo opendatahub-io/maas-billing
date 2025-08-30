@@ -1,0 +1,26 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY apps/frontend/package*.json ./
+COPY apps/frontend/tsconfig.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code and public assets
+COPY apps/frontend/src ./src
+COPY apps/frontend/public ./public
+
+# Build the application
+RUN npm run build
+
+# Install serve to serve the built app
+RUN npm install -g serve
+
+# Expose port
+EXPOSE 3000
+
+# Serve the built application
+CMD ["serve", "-s", "build", "-l", "3000"]

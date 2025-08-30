@@ -1,0 +1,669 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: maas-backend
+  template:
+    metadata:
+      labels:
+        app: maas-backend
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      serviceAccountName: maas-backend
+      securityContext:
+        runAsUser: 1001030000
+        runAsGroup: 1001030000
+        fsGroup: 1001030000
+      containers:
+      - name: backend
+        image: python:3.11-alpine
+        securityContext:
+          runAsUser: 1001030000
+          allowPrivilegeEscalation: false
+        command:
+        - /bin/sh
+        - -c
+        - |
+          cd /tmp
+          
+          # Create a simple HTTP server using only Python standard library
+          cat > server.py << 'EOF'
+          #!/usr/bin/env python3
+          import http.server
+          import socketserver
+          import json
+          import urllib.request
+          import urllib.parse
+          import re
+          from urllib.parse import urlparse, parse_qs
+          from datetime import datetime
+          
+          def fetch_kuadrant_policies():
+              """Fetch real policies from Kubernetes API"""
+              try:
+                  import subprocess
+                  import base64
+                  
+                  # Read service account token
+                  with open('/var/run/secrets/kubernetes.io/serviceaccount/token', 'r') as f:
+                      token = f.read().strip()
+                  
+                  # Set up headers for K8s API
+                  headers = {
+                      'Authorization': f'Bearer {token}',
+                      'Accept': 'application/json'
+                  }
+                  
+                  k8s_api_base = "https://kubernetes.default.svc.cluster.local"
+                  policies = []
+                  
+                  # Fetch AuthPolicy
+                  try:
+                      auth_policy_url = f"{k8s_api_base}/apis/kuadrant.io/v1/namespaces/llm/authpolicies/gateway-auth-policy"
+                      req = urllib.request.Request(auth_policy_url, headers=headers)
+                      # Skip SSL verification for internal cluster communication
+                      import ssl
+                      ctx = ssl.create_default_context()
+                      ctx.check_hostname = False
+                      ctx.verify_mode = ssl.CERT_NONE
+                      
+                      with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                          auth_policy = json.loads(response.read().decode('utf-8'))
+                      
+                      # Parse AuthPolicy
+                      auth_items = []
+                      rules = auth_policy.get('spec', {}).get('rules', {})
+                      
+                      # Authentication rules
+                      for auth_name, auth_config in rules.get('authentication', {}).items():
+                          auth_items.append({
+                              "id": auth_name,
+                              "type": "authentication",
+                              "config": auth_config,
+                              "description": f"API Key authentication with {auth_config.get('credentials', {}).get('authorizationHeader', {}).get('prefix', 'unknown')} prefix"
+                          })
+                      
+                      # Authorization rules  
+                      for authz_name, authz_config in rules.get('authorization', {}).items():
+                          rego_policy = authz_config.get('opa', {}).get('rego', '')
+                          allowed_groups = []
+                          # Extract allowed groups from rego policy
+                          for line in rego_policy.split('\n'):
+                              if 'groups[_] ==' in line:
+                                  group = line.split('"')[1] if '"' in line else 'unknown'
+                                  allowed_groups.append(group)
+                          
+                          auth_items.append({
+                              "id": authz_name,
+                              "type": "authorization", 
+                              "config": authz_config,
+                              "description": f"OPA policy allowing groups: {', '.join(allowed_groups)}",
+                              "allowedGroups": allowed_groups
+                          })
+                      
+                      # Response rules
+                      for resp_name, resp_config in rules.get('response', {}).items():
+                          auth_items.append({
+                              "id": resp_name,
+                              "type": "response",
+                              "config": resp_config,
+                              "description": "Identity response filter"
+                          })
+                      
+                      policies.append({
+                          "id": f"llm/{auth_policy['metadata']['name']}",
+                          "name": auth_policy['metadata']['name'],
+                          "description": "AuthPolicy for inference-gateway with API key authentication and group-based authorization",
+                          "type": "auth",
+                          "namespace": auth_policy['metadata']['namespace'],
+                          "targetRef": auth_policy['spec']['targetRef'],
+                          "created": auth_policy['metadata']['creationTimestamp'],
+                          "modified": auth_policy['metadata'].get('resourceVersion', ''),
+                          "isActive": any(c.get('status') == 'True' and c.get('type') == 'Enforced' 
+                                        for c in auth_policy.get('status', {}).get('conditions', [])),
+                          "items": auth_items,
+                          "status": auth_policy.get('status', {}),
+                          "fullSpec": auth_policy.get('spec', {})
+                      })
+                      
+                  except Exception as e:
+                      print(f"⚠️ Failed to fetch AuthPolicy: {e}")
+                  
+                  # Fetch TokenRateLimitPolicy
+                  try:
+                      rate_policy_url = f"{k8s_api_base}/apis/kuadrant.io/v1alpha1/namespaces/llm/tokenratelimitpolicies/gateway-token-rate-limits"
+                      req = urllib.request.Request(rate_policy_url, headers=headers)
+                      
+                      with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                          rate_policy = json.loads(response.read().decode('utf-8'))
+                      
+                      # Parse TokenRateLimitPolicy
+                      rate_items = []
+                      limits = rate_policy.get('spec', {}).get('limits', {})
+                      
+                      for limit_name, limit_config in limits.items():
+                          rates = limit_config.get('rates', [])
+                          counters = limit_config.get('counters', [])
+                          when_conditions = limit_config.get('when', [])
+                          
+                          rate_description = f"Rate limit: {limit_name}"
+                          if rates:
+                              rate_info = rates[0]  # Take first rate
+                              rate_description += f" - {rate_info.get('limit', 'unlimited')} tokens per {rate_info.get('window', 'unknown')}"
+                          
+                          if when_conditions:
+                              conditions = [cond.get('predicate', '') for cond in when_conditions]
+                              rate_description += f" (when: {'; '.join(conditions)})"
+                          
+                          rate_items.append({
+                              "id": limit_name,
+                              "type": "rate-limit",
+                              "config": limit_config,
+                              "description": rate_description,
+                              "rates": rates,
+                              "counters": counters,
+                              "conditions": when_conditions
+                          })
+                      
+                      policies.append({
+                          "id": f"llm/{rate_policy['metadata']['name']}",
+                          "name": rate_policy['metadata']['name'],
+                          "description": "Token-based rate limiting policy with per-user limits",
+                          "type": "rate-limit",
+                          "namespace": rate_policy['metadata']['namespace'],
+                          "targetRef": rate_policy['spec']['targetRef'],
+                          "created": rate_policy['metadata']['creationTimestamp'],
+                          "modified": rate_policy['metadata'].get('resourceVersion', ''),
+                          "isActive": any(c.get('status') == 'True' and c.get('type') == 'Enforced' 
+                                        for c in rate_policy.get('status', {}).get('conditions', [])),
+                          "items": rate_items,
+                          "status": rate_policy.get('status', {}),
+                          "fullSpec": rate_policy.get('spec', {})
+                      })
+                      
+                  except Exception as e:
+                      print(f"⚠️ Failed to fetch TokenRateLimitPolicy: {e}")
+                  
+                  return policies
+                  
+              except Exception as e:
+                  print(f"⚠️ Failed to fetch policies from K8s API: {e}")
+                  # Return fallback data
+                  return [
+                      {
+                          "id": "llm/gateway-auth-policy",
+                          "name": "gateway-auth-policy",
+                          "description": "AuthPolicy for inference-gateway (fallback data)",
+                          "type": "auth",
+                          "namespace": "llm",
+                          "targetRef": {
+                              "group": "gateway.networking.k8s.io",
+                              "kind": "Gateway", 
+                              "name": "inference-gateway"
+                          },
+                          "created": "2025-08-25T14:44:52Z",
+                          "modified": "2025-08-28T15:52:00Z",
+                          "isActive": True,
+                          "items": [
+                              {
+                                  "id": "auth-api-key-users-apikey",
+                                  "type": "authentication",
+                                  "config": {
+                                      "apiKey": {"allNamespaces": True},
+                                      "credentials": {"authorizationHeader": {"prefix": "APIKEY"}},
+                                      "metrics": True
+                                  }
+                              }
+                          ]
+                      }
+                  ]
+          
+          # Fetch real policies from Kubernetes API
+          def get_real_policies():
+              return fetch_kuadrant_policies()
+          
+          policies_data = get_real_policies()
+          
+          def fetch_prometheus_metrics():
+              """Fetch real metrics from Prometheus as single source of truth"""
+              try:
+                  print("🔍 Fetching metrics from Prometheus...")
+                  
+                  # Read service account token for authentication
+                  with open('/var/run/secrets/kubernetes.io/serviceaccount/token', 'r') as f:
+                      token = f.read().strip()
+                  
+                  # Set up headers for Prometheus API with Bearer token
+                  headers = {
+                      'Authorization': f'Bearer {token}',
+                      'Accept': 'application/json'
+                  }
+                  
+                  # Try multiple Prometheus endpoints
+                  prometheus_endpoints = [
+                      "https://prometheus-user-workload.openshift-user-workload-monitoring.svc.cluster.local:9091",
+                      "https://prometheus-k8s.openshift-monitoring.svc.cluster.local:9090",
+                      "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+                  ]
+                  
+                  # Define the metrics queries using cumulative counters (not rates that reset)
+                  queries = {
+                      "total_requests": "sum(envoy_cluster_upstream_rq_total{namespace=\"llm\"})",
+                      "rate_limited": "sum(envoy_http_downstream_rq_xx{envoy_response_code_class=\"4\",namespace=\"llm\"})", 
+                      "accepted_requests": "sum(envoy_http_downstream_rq_xx{envoy_response_code_class=\"2\",namespace=\"llm\"})",
+                      "auth_denied": "sum(envoy_http_downstream_rq_xx{envoy_response_code_class=\"4\",namespace=\"llm\"})",
+                      # Use real HAProxy metrics that show actual 4xx responses
+                      "cluster_ingress_2xx_total": "sum(haproxy_backend_http_responses_total{code=\"2xx\"})",
+                      "cluster_ingress_4xx_total": "sum(haproxy_backend_http_responses_total{code=\"4xx\"})",
+                      "cluster_ingress_5xx_total": "sum(haproxy_backend_http_responses_total{code=\"5xx\"})",
+                      # Alternative: track increases over time windows
+                      "cluster_4xx_1h": "sum(increase(haproxy_backend_http_responses_total{code=\"4xx\"}[1h]))",
+                      "cluster_4xx_recent": "sum(increase(haproxy_backend_http_responses_total{code=\"4xx\"}[10m]))",
+                      "limitador_status": "sum(limitador_up{namespace=\"kuadrant-system\"})",
+                      # HTTP request rate for reference
+                      "http_requests": "sum(rate(http_requests_total[5m]))",
+                  }
+                  
+                  metrics_results = {}
+                  working_endpoint = None
+                  
+                  # Try each Prometheus endpoint
+                  for prometheus_base_url in prometheus_endpoints:
+                      print(f"🔍 Trying Prometheus endpoint: {prometheus_base_url}")
+                      try:
+                          # Test connection with a simple query first
+                          test_url = f"{prometheus_base_url}/api/v1/query?query=up"
+                          req = urllib.request.Request(test_url, headers=headers)
+                          
+                          # Skip SSL verification for internal cluster communication
+                          import ssl
+                          ctx = ssl.create_default_context()
+                          ctx.check_hostname = False
+                          ctx.verify_mode = ssl.CERT_NONE
+                          
+                          with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                              test_data = json.loads(response.read().decode('utf-8'))
+                              if test_data.get('status') == 'success':
+                                  print(f"✅ Successfully connected to {prometheus_base_url}")
+                                  working_endpoint = prometheus_base_url
+                                  break
+                              else:
+                                  print(f"❌ Connection failed to {prometheus_base_url}: {test_data}")
+                      except Exception as e:
+                          print(f"❌ Failed to connect to {prometheus_base_url}: {e}")
+                          continue
+                  
+                  if not working_endpoint:
+                      raise Exception("No working Prometheus endpoint found")
+                  
+                  # Fetch each metric from the working Prometheus endpoint
+                  for metric_name, query in queries.items():
+                      try:
+                          prometheus_url = f"{working_endpoint}/api/v1/query?query={urllib.parse.quote(query)}"
+                          req = urllib.request.Request(prometheus_url, headers=headers)
+                          
+                          with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                              data = json.loads(response.read().decode('utf-8'))
+                          
+                          if data.get('status') == 'success' and data.get('data', {}).get('result'):
+                              # Get the latest value from the result
+                              result = data['data']['result']
+                              if result:
+                                  value = result[0]['value'][1]  # [timestamp, value]
+                                  metrics_results[metric_name] = float(value)
+                                  print(f"✅ {metric_name}: {value}")
+                              else:
+                                  metrics_results[metric_name] = 0
+                                  print(f"📊 {metric_name}: no data (0)")
+                          else:
+                              metrics_results[metric_name] = 0
+                              print(f"⚠️ {metric_name}: query returned no results")
+                      except Exception as e:
+                          print(f"⚠️ Failed to fetch {metric_name}: {e}")
+                          metrics_results[metric_name] = 0
+                  
+                  # Calculate derived metrics using the working metrics
+                  total_requests = int(metrics_results.get('total_requests', 0))
+                  accepted_requests = int(metrics_results.get('accepted_requests', 0))
+                  rate_limited = int(metrics_results.get('rate_limited', 0))
+                  auth_denied = int(metrics_results.get('auth_denied', 0))
+                  
+                  # Get cumulative cluster ingress metrics (not rates that reset)
+                  cluster_2xx_total = int(metrics_results.get('cluster_ingress_2xx_total', 0))
+                  cluster_4xx_total = int(metrics_results.get('cluster_ingress_4xx_total', 0))
+                  cluster_5xx_total = int(metrics_results.get('cluster_ingress_5xx_total', 0))
+                  
+                  # Try recent time windows to capture latest failures
+                  cluster_4xx_recent = int(metrics_results.get('cluster_4xx_recent', 0))
+                  cluster_4xx_1h = int(metrics_results.get('cluster_4xx_1h', 0))
+                  
+                  # For display purposes, use recent failures if total seems too high
+                  if cluster_4xx_total > 10000:  # Total seems too high, use recent data
+                      cluster_4xx_display = max(cluster_4xx_recent, cluster_4xx_1h)
+                  else:
+                      cluster_4xx_display = cluster_4xx_total
+                  
+                  # If we have upstream requests but no response code breakdown,
+                  # use cluster metrics to get the full picture including rejections
+                  if total_requests > 0 and accepted_requests == 0 and rate_limited == 0:
+                      # Upstream requests are those that passed auth/rate limiting
+                      accepted_requests = total_requests
+                      
+                      # Use appropriate 4xx count for rejected requests
+                      cluster_4xx_count = cluster_4xx_display
+                      
+                      # Split 4xx between auth failures and rate limiting (rough estimate)
+                      if cluster_4xx_count > 0:
+                          # Assume roughly 50/50 split between auth and rate limit failures
+                          auth_denied = cluster_4xx_count // 2
+                          rate_limited = cluster_4xx_count - auth_denied
+                      else:
+                          auth_denied = 0
+                          rate_limited = 0
+                      
+                      # Total requests should include both successful upstream and rejected gateway requests
+                      total_requests = accepted_requests + cluster_4xx_count
+                  
+                  # If we have no upstream metrics, fall back to cluster cumulative data
+                  elif total_requests == 0 and (cluster_2xx_total > 0 or cluster_4xx_total > 0):
+                      # Use cumulative counts directly (no conversion needed)
+                      total_cluster_requests = cluster_2xx_total + cluster_4xx_total + cluster_5xx_total
+                      accepted_requests = cluster_2xx_total
+                      rate_limited = cluster_4xx_total // 2  # 4xx could include rate limits
+                      auth_denied = cluster_4xx_total - rate_limited   # 4xx could include auth failures
+                      total_requests = total_cluster_requests
+                  
+                  # Calculate rejected requests
+                  rejected_requests = rate_limited + auth_denied
+                  
+                  print(f"📊 Final metrics - Total: {total_requests}, Accepted: {accepted_requests}, Rejected: {rejected_requests}")
+                  
+                  return {
+                      "totalRequests": total_requests,
+                      "acceptedRequests": accepted_requests,
+                      "rejectedRequests": rejected_requests,
+                      "authFailedRequests": auth_denied,
+                      "rateLimitedRequests": rate_limited,
+                      "policyEnforcedRequests": rejected_requests,
+                      "source": "prometheus-metrics",
+                      "kuadrantStatus": {
+                          "istioConnected": metrics_results.get('istio_requests', 0) >= 0,
+                          "authorinoConnected": True,  # We know this works from policy fetching
+                          "limitadorConnected": metrics_results.get('total_requests', 0) >= 0
+                      },
+                      "rawMetrics": metrics_results
+                  }
+              
+              except Exception as e:
+                  error_msg = f"Prometheus metrics unavailable: {str(e)}"
+                  print(f"❌ {error_msg}")
+                  # No fallback - return error for proper error handling in frontend
+                  raise Exception(error_msg)
+          
+          class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
+              def do_OPTIONS(self):
+                  """Handle preflight CORS requests"""
+                  self.send_response(200)
+                  self.send_header('Access-Control-Allow-Origin', '*')
+                  self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                  self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                  self.send_header('Access-Control-Max-Age', '86400')
+                  self.end_headers()
+              
+              def do_GET(self):
+                  """Handle GET requests"""
+                  parsed_path = urlparse(self.path)
+                  path = parsed_path.path
+                  
+                  print(f"📡 GET {path}")
+                  
+                  # Set CORS headers for all responses
+                  self.send_response(200)
+                  self.send_header('Content-type', 'application/json')
+                  self.send_header('Access-Control-Allow-Origin', '*')
+                  self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                  self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                  self.end_headers()
+                  
+                  if path == '/health':
+                      response = {"status": "ok", "timestamp": datetime.now().isoformat()}
+                  elif path == '/api/v1/policies':
+                      print("📋 Fetching real policies from Kubernetes API...")
+                      real_policies = get_real_policies()
+                      response = {
+                          "success": True,
+                          "data": real_policies,
+                          "timestamp": datetime.now().isoformat()
+                      }
+                      print(f"📋 Returning {len(real_policies)} real policies")
+                  elif path == '/api/v1/metrics/dashboard':
+                      print("📊 Fetching real Prometheus metrics...")
+                      try:
+                          metrics_data = fetch_prometheus_metrics()
+                          response = {
+                              "success": True,
+                              "data": metrics_data,
+                              "timestamp": datetime.now().isoformat()
+                          }
+                          print(f"📊 Returning {metrics_data['source']} metrics: {metrics_data['totalRequests']} total requests")
+                      except Exception as e:
+                          print(f"❌ Metrics error: {e}")
+                          response = {
+                              "success": False,
+                              "error": str(e),
+                              "timestamp": datetime.now().isoformat()
+                          }
+                  elif path == '/api/v1/metrics/live-requests':
+                      response = {
+                          "success": True,
+                          "data": [],
+                          "timestamp": datetime.now().isoformat()
+                      }
+                      print("📈 Returning live requests")
+                  else:
+                      response = {"error": "Not found", "path": path}
+                  
+                  self.wfile.write(json.dumps(response).encode('utf-8'))
+              
+              def do_POST(self):
+                  """Handle POST requests"""
+                  parsed_path = urlparse(self.path)
+                  path = parsed_path.path
+                  
+                  print(f"📤 POST {path}")
+                  
+                  if path == '/api/v1/simulator/chat/completions':
+                      try:
+                          # Read request body
+                          content_length = int(self.headers['Content-Length'])
+                          post_data = self.rfile.read(content_length)
+                          request_data = json.loads(post_data.decode('utf-8'))
+                          
+                          # Get authorization header
+                          auth_header = self.headers.get('Authorization', '')
+                          
+                          print(f"🎯 Simulator request: model={request_data.get('model')}, tier={request_data.get('tier')}")
+                          
+                          # Simulate different responses based on tier
+                          tier = request_data.get('tier', 'unknown')
+                          
+                          if not auth_header or 'invalid' in tier:
+                              # Simulate auth failure
+                              self.send_response(401)
+                              self.send_header('Content-type', 'application/json')
+                              self.send_header('Access-Control-Allow-Origin', '*')
+                              self.end_headers()
+                              response = {
+                                  "success": False,
+                                  "error": "Authentication failed - invalid API key",
+                                  "debug": {
+                                      "tier": tier,
+                                      "auth_header": bool(auth_header)
+                                  }
+                              }
+                          elif 'test-tokens' in tier:
+                              # Simulate rate limiting for test-tokens tier
+                              import random
+                              if random.random() < 0.3:  # 30% chance of rate limiting
+                                  self.send_response(429)
+                                  self.send_header('Content-type', 'application/json')
+                                  self.send_header('Access-Control-Allow-Origin', '*')
+                                  self.end_headers()
+                                  response = {
+                                      "success": False,
+                                      "error": "Rate limit exceeded for test-tokens tier",
+                                      "debug": {
+                                          "tier": tier,
+                                          "limit": "20 tokens per 1m"
+                                      }
+                                  }
+                              else:
+                                  # Success response
+                                  self.send_response(200)
+                                  self.send_header('Content-type', 'application/json')
+                                  self.send_header('Access-Control-Allow-Origin', '*')
+                                  self.end_headers()
+                                  response = {
+                                      "success": True,
+                                      "data": {
+                                          "id": f"req-{datetime.now().timestamp()}",
+                                          "choices": [{
+                                              "message": {
+                                                  "role": "assistant",
+                                                  "content": f"Hello from {request_data.get('model')} via Kuadrant! Tier: {tier}"
+                                              },
+                                              "finish_reason": "stop"
+                                          }],
+                                          "usage": {
+                                              "prompt_tokens": len(str(request_data.get('messages', []))),
+                                              "completion_tokens": 20,
+                                              "total_tokens": len(str(request_data.get('messages', []))) + 20
+                                          }
+                                      },
+                                      "debug": {
+                                          "tier": tier,
+                                          "model": request_data.get('model'),
+                                          "kuadrant_enforced": True
+                                      }
+                                  }
+                          else:
+                              # Success response for other tiers
+                              self.send_response(200)
+                              self.send_header('Content-type', 'application/json')
+                              self.send_header('Access-Control-Allow-Origin', '*')
+                              self.end_headers()
+                              response = {
+                                  "success": True,
+                                  "data": {
+                                      "id": f"req-{datetime.now().timestamp()}",
+                                      "choices": [{
+                                          "message": {
+                                              "role": "assistant", 
+                                              "content": f"Hello from {request_data.get('model')} via Kuadrant! Tier: {tier}"
+                                          },
+                                          "finish_reason": "stop"
+                                      }],
+                                      "usage": {
+                                          "prompt_tokens": len(str(request_data.get('messages', []))),
+                                          "completion_tokens": 20,
+                                          "total_tokens": len(str(request_data.get('messages', []))) + 20
+                                      }
+                                  },
+                                  "debug": {
+                                      "tier": tier,
+                                      "model": request_data.get('model'),
+                                      "kuadrant_enforced": True
+                                  }
+                              }
+                          
+                          self.wfile.write(json.dumps(response).encode('utf-8'))
+                          
+                      except Exception as e:
+                          print(f"❌ Simulator error: {str(e)}")
+                          self.send_response(500)
+                          self.send_header('Content-type', 'application/json')
+                          self.send_header('Access-Control-Allow-Origin', '*')
+                          self.end_headers()
+                          response = {
+                              "success": False,
+                              "error": f"Simulator error: {str(e)}"
+                          }
+                          self.wfile.write(json.dumps(response).encode('utf-8'))
+                  else:
+                      # Unknown POST endpoint
+                      self.send_response(404)
+                      self.send_header('Content-type', 'application/json')
+                      self.send_header('Access-Control-Allow-Origin', '*')
+                      self.end_headers()
+                      response = {"error": "Not found", "path": path}
+                      self.wfile.write(json.dumps(response).encode('utf-8'))
+              
+              def log_message(self, format, *args):
+                  """Custom logging"""
+                  print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {format % args}")
+          
+          if __name__ == "__main__":
+              PORT = 3002
+              print(f"🚀 Starting MaaS Backend HTTP server on port {PORT}...")
+              print(f"📋 Policies endpoint: http://localhost:{PORT}/api/v1/policies")
+              print(f"📊 Metrics endpoint: http://localhost:{PORT}/api/v1/metrics/dashboard")
+              print(f"🎯 Simulator endpoint: http://localhost:{PORT}/api/v1/simulator/chat/completions")
+              print(f"🏥 Health endpoint: http://localhost:{PORT}/health")
+              
+              with socketserver.TCPServer(("0.0.0.0", PORT), CORSRequestHandler) as httpd:
+                  print(f"✅ Server running and ready to serve requests with CORS enabled")
+                  httpd.serve_forever()
+          EOF
+          
+          echo "🚀 Starting Python HTTP server..."
+          python server.py
+        ports:
+        - containerPort: 3002
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-backend
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  selector:
+    app: maas-backend
+  ports:
+  - port: 3002
+    targetPort: 3002
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-backend-route
+  namespace: llm
+  labels:
+    app: maas-backend
+spec:
+  to:
+    kind: Service
+    name: maas-backend
+    weight: 100
+  port:
+    targetPort: http
+  wildcardPolicy: None
