@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: maas-core-infrastructure
+
+# Deploy components in order
+resources:
+- kustomize-templates/namespaces
+- kustomize-templates/istio  
+- kustomize-templates/kserve
+- kustomize-templates/kuadrant
+- kustomize-templates/gateway
