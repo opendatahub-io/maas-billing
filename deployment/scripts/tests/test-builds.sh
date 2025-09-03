@@ -72,10 +72,10 @@ main() {
     fi
     
     # Test core infrastructure
-    test_build "core-infrastructure" "core-infrastructure"
+    test_build "core-infrastructure" "../core-infrastructure"
     
     # Test all example deployments
-    for example_dir in examples/*/; do
+    for example_dir in ../examples/*/; do
         if [ -d "$example_dir" ] && [ -f "$example_dir/kustomization.yaml" ]; then
             example_name="examples/$(basename "$example_dir")"
             test_build "$example_name" "$example_dir"
@@ -83,7 +83,7 @@ main() {
     done
     
     # Test component templates (models, auth, observability)
-    for component_dir in examples/kustomize-templates/*/; do
+    for component_dir in ../examples/kustomize-templates/*/; do
         if [ -d "$component_dir" ] && [ -f "$component_dir/kustomization.yaml" ]; then
             component_name="components/$(basename "$component_dir")"
             test_build "$component_name" "$component_dir"

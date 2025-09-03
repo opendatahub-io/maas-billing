@@ -1,0 +1,28 @@
+name: Build Test
+
+on:
+  pull_request:
+    paths:
+      - 'deployment/**'
+      - 'core-infrastructure/**'
+      - 'examples/**'
+  push:
+    branches:
+      - main
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install kustomize
+      run: |
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        sudo mv kustomize /usr/local/bin/
+
+    - name: Run build tests
+      run: |
+        cd deployment/scripts
+        ./tests/test-builds.sh
