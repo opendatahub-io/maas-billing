@@ -618,3 +618,102 @@ kubectl apply -f keycloak/06-rate-limit-policy-oidc.yaml
 kubectl delete -f 06-auth-policies-apikey.yaml
 kubectl delete -f 07-rate-limit-policies.yaml
 ```
+
+## Service Account tokens Authentication (Alternative to API Keys)
+
+This solution replaces a secret-based key system with an approach that integrates directly with the k8s's native security and identity features. 
+
+### Identity and Authentication
+
+* **Tier-Based Namespaces:** Service Accounts are created within dedicated namespaces, where each namespace directly corresponds to a specific service tier.
+* **Leverages Built-in Token Generation:** Instead of a custom logic, the system relies entirely on the standard machinery for generating short-lived, expiring tokens for authentication.
+
+### Authorization and Permissions
+
+* **Principle of Least Privilege:** By default, newly created Service Accounts have zero permissions; access must be granted explicitly.
+* **Standard Role-Based Access Control (RBAC):** Authorization is managed using standard Kubernetes **Roles and RoleBindings**. This removes the need for a parallel, custom-built permission system.
+
+### Integration and Compatibility
+
+* **Rate Limiting:** The solution uses the same rate-limiting policies as the original approach.
+* **Minimal Custom Logic:** By building on existing components, the approach minimizes the amount of code needed for key generation and RBAC.
+
+### User Accounts and Tiers
+
+For the demo, the tiers/groups are mapped as following:
+
+| Tier           | Users                          | Rate Limit  | Service Account Namespace           |
+|----------------|--------------------------------|-------------|-------------------------------------|
+| **Free**       | `freeuser1`, `freeuser2`       | 5 req/2min  | `inference-gateway-tier-free`       |
+| **Premium**    | `premiumuser1`, `premiumuser2` | 20 req/2min | `inference-gateway-tier-premium`    |
+| **Enterprise** | `enterpriseuser1`              | 50 req/2min | `inference-gateway-tier-enterprise` |
+
+### Get SA Tokens
+
+Use the provided script to get SA tokens for testing:
+
+```bash
+# Get token for a free user
+cd service-account-tokens/
+./get-token.sh freeuser1
+
+# Get token for a premium user  
+./get-token.sh premiumuser1
+
+# Get token for an enterprise user
+./get-token.sh enterpriseuser1
+```
+
+### Test SA Token-based Authentication
+
+```bash
+# Run the rate-limiting tests with OIDC auth and rate limiting tests
+cd service-account-tokens/
+./test-request-limits.sh
+```
+
+Example output:
+```bash
+=== Testing Free User: freeuser1 (5 requests per 2min) ===
+✅ Token acquired for freeuser1
+freeuser1 req #1 -> 200
+freeuser1 req #2 -> 200
+freeuser1 req #3 -> 200
+freeuser1 req #4 -> 200
+freeuser1 req #5 -> 200
+freeuser1 req #6 -> 429
+freeuser1 req #7 -> 429
+```
+
+### Manual API Testing with JWT
+
+```bash
+# Get a token
+TOKEN=$(./service-account-tokens/get-token.sh freeuser1 | grep -A1 "Access Token:" | tail -1)
+
+# Test API call with JWT
+curl -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"model":"simulator-model","messages":[{"role":"user","content":"Infer call with OIDC Auth!"}]}' \
+     http://simulator.maas.local:8000/v1/chat/completions
+```
+### Architecture Changes with Service Account tokens
+
+1. **AuthPolicy** validates JWT tokens issued for Service Accounts
+2. **User identification** based on k8s Token Review API
+3. **Rate limiting** per user ID (not API key)
+4. **User attributes** extracted from the group that Service Account belongs to (as we can't define custom claims). 
+
+### Switch Between Authentication Methods in the Demo ENV
+
+```bash
+# Use API keys (default)
+kubectl apply -f 06-auth-policies-apikey.yaml
+
+# Switch to SA Tokens
+kubectl delete -f 06-auth-policies-apikey.yaml
+kubectl apply -f service-account-tokens/05-tier-access.yaml
+kubectl apply -f service-account-tokens/06-auth-policies-sa-tokens.yaml
+```
+
+

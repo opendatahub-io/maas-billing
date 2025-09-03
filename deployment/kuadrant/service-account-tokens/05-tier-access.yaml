@@ -1,0 +1,52 @@
+## Namespaces are modeling the tiered access.
+## Each Service Account (delegated identity) will be created only
+## in one of them - that means given user is subscribed to a single tier.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inference-gateway-tier-free
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inference-gateway-tier-premium
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inference-gateway-tier-enterprise
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: models-user
+  namespace: llm
+rules:
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["inferenceservices"]
+    # Can be limited to selected models if needed
+    # resourceNames: ["vllm-simulator"] 
+    verbs: ["post"]
+---
+# Model owner grants permission to a model following Principle of Least Privilege 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: model-users-tier-binding
+  namespace: llm
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:inference-gateway-tier-free
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: system:serviceaccounts:inference-gateway-tier-premium
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: system:serviceaccounts:inference-gateway-tier-enterprise
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: models-user
+  apiGroup: rbac.authorization.k8s.io
+
