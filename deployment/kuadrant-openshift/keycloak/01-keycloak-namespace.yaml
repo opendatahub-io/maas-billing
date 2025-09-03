@@ -1,8 +1,0 @@
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: keycloak-system
-  labels:
-    app.kubernetes.io/name: keycloak
-    app.kubernetes.io/part-of: maas-auth

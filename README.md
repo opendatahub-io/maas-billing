@@ -33,37 +33,14 @@ A comprehensive platform for **Models as a Service** with real-time policy manag
 
 ## 🚀 Quick Start
 
-- **For deploying Kuadrant on OpenShift, see → [deployment/kuadrant-openshift](deployment/kuadrant-openshift)**
-- **For chargeback and token rate limiting see the [demo and deploy instructions](deployment/kuadrant-openshift/README-token-rate-limiting-openshift.md)**
+For deployment instructions, see the READMEs in the deployment directory:
 
-### 1. Deploy Kuadrant Infrastructure (Dev on vanilla kubernetes)
+- **[Core Infrastructure](deployment/core-infrastructure/README.md)** - Base platform components (Istio, KServe, Kuadrant operators)
+- **[Examples](deployment/examples/README.md)** - Complete deployment examples with models, authentication, and observability
 
-First, deploy the Kuadrant infrastructure that provides the policy enforcement engine:
+## Development Setup
 
-```bash
-git clone https://github.com/redhat-et/maas-billing.git
-cd maas-billing/deployment/kuadrant
-
-# Set up local domains (adds entries to /etc/hosts)
-./setup-local-domains.sh
-
-# Deploy with simulator (no GPU required)
-./install.sh --simulator
-
-# OR deploy with real model (GPU required)  
-./install.sh --qwen3
-
-# OR deploy everything including kind cluster
-./install.sh --deploy-kind
-```
-
-**Available Models:**
-- **Simulator**: `http://simulator.maas.local:8000/v1/...` (for testing)
-- **Qwen3**: `http://qwen3.maas.local:8000/v1/...` (real model)
-
-### 2. Start the MaaS Platform
-
-After Kuadrant is deployed, start the frontend and backend:
+After deploying the infrastructure, start the frontend and backend:
 
 #### Option A: One-Command Start (Recommended)
 ```bash
@@ -72,10 +49,10 @@ After Kuadrant is deployed, start the frontend and backend:
 ```
 
 This will:
-- ✅ Check prerequisites (Kuadrant deployment)
-- 🔧 Start backend API server on http://localhost:3001
-- 🎨 Start frontend UI on http://localhost:3000
-- 📊 Provide monitoring and logging
+- Check prerequisites (infrastructure deployment)
+- Start backend API server on http://localhost:3001
+- Start frontend UI on http://localhost:3000
+- Provide monitoring and logging
 
 #### Option B: Manual Start
 ```bash
@@ -86,12 +63,12 @@ This will:
 ./start-frontend.sh
 ```
 
-### 3. Access the Platform
+## Access the Platform
 
-- **🌐 Frontend UI**: http://localhost:3000
-- **🔧 Backend API**: http://localhost:3001
-- **📊 API Health**: http://localhost:3001/health
-- **📈 Live Metrics**: http://localhost:3001/api/v1/metrics/live-requests
+- **Frontend UI**: http://localhost:3000
+- **Backend API**: http://localhost:3001
+- **API Health**: http://localhost:3001/health
+- **Live Metrics**: http://localhost:3001/api/v1/metrics/live-requests
 
 ## 🖥️ Using the Platform
 
