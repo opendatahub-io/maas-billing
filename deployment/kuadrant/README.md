@@ -640,8 +640,7 @@ This solution replaces a secret-based key system with an approach that integrate
 
 ### User Accounts and Tiers
 
-For the demo, the tiers/groups are mapped as following:
-
+For the demo, the tiers/groups are mapped as follows:
 | Tier           | Users                          | Rate Limit  | Service Account Namespace           |
 |----------------|--------------------------------|-------------|-------------------------------------|
 | **Free**       | `freeuser1`, `freeuser2`       | 5 req/2min  | `inference-gateway-tier-free`       |
@@ -667,10 +666,9 @@ cd service-account-tokens/
 ### Test SA Token-based Authentication
 
 ```bash
-# Run the rate-limiting tests with OIDC auth and rate limiting tests
+# Run the rate-limiting tests with Service Account token auth
 cd service-account-tokens/
 ./test-request-limits.sh
-```
 
 Example output:
 ```bash
