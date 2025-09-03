@@ -1,0 +1,63 @@
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: gateway-auth-policy
+  namespace: llm
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: inference-gateway
+  rules:
+    authentication:
+      service-accounts:
+        kubernetesTokenReview:
+          audiences:
+            - maas
+        defaults:
+          # token normalization - https://docs.kuadrant.io/1.2.x/authorino/docs/user-guides/token-normalization/
+          # full username: system:serviceaccount:<ns>:<name>
+          # where:
+          #    :inference-gateway-tier-[free] - free is subscription
+          #    :freeuser can be actual user-id
+          "username":
+            expression: |
+              auth.identity.user.username.split(":")[3]
+          "groups":
+            expression: |
+              auth.identity.user.username.split(":")[2].split("-")[auth.identity.user.username.split(":")[2].split("-").size()-1]
+    authorization:
+      tier-access:
+        kubernetesSubjectAccessReview:
+          user:
+            expression: auth.identity.user.username
+          authorizationGroups:
+            expression: auth.identity.user.groups
+          resourceAttributes:
+            group:
+              value: serving.kserve.io
+            resource:
+              value: inferenceservices
+              # For RHOAI this needs different target 
+              # value: llminferenceservices
+            namespace:
+              value: llm
+              # can be inferred from path /{ns}/{model-name}
+              # expression: request.path.split('/')[1]
+            name:
+              value: vllm-simulator
+              # can be inferred from path /{ns}/{model-name}
+              # expression: request.path.split('/')[2]
+            verb:
+              value: post
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              # Propagates further to rate limiting policies (is it needed with token normalization?)
+              properties:
+                userid:
+                  expression: auth.identity.username
+                groups:
+                  expression: auth.identity.groups
