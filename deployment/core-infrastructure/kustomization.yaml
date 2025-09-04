@@ -10,4 +10,5 @@ resources:
 - kustomize-templates/istio  
 - kustomize-templates/kserve
 - kustomize-templates/kuadrant
+- kustomize-templates/key-manager
 - kustomize-templates/gateway
