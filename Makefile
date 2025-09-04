@@ -12,7 +12,7 @@ TAG ?= latest
 FULL_IMAGE ?= $(REPO):$(TAG)
 
 # Key Manager settings
-KEY_MANAGER_DIR := deployment/kuadrant-openshift/key-manager
+KEY_MANAGER_DIR := deployment/services/key-manager
 BINARY_NAME := key-manager
 BUILD_DIR := ./bin
 CMD_DIR := $(KEY_MANAGER_DIR)/cmd/key-manager
