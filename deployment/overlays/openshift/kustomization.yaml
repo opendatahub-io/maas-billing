@@ -6,7 +6,7 @@ metadata:
 
 # Base configuration
 resources:
-- ../../examples/simulator-deployment
+- ../../examples/gpu-deployment
 
 # OpenShift-specific additions
 - openshift-routes.yaml

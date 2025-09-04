@@ -11,3 +11,4 @@ resources:
 - ../kustomize-templates/auth/api-keys
 - ../kustomize-templates/auth/token-rate-limiting
 - ../kustomize-templates/observability
+- routes.yaml

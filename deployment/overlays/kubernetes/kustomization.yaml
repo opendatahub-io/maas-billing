@@ -6,7 +6,7 @@ metadata:
 
 # Base configuration
 resources:
-- ../../examples/simulator-deployment
+- ../../examples/gpu-deployment
 
 # Kubernetes Ingress (for non-OpenShift clusters)
 - ingress.yaml
