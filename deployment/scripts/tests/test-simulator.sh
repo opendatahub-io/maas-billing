@@ -2,7 +2,7 @@
 
 set -eux
 
-SIMULATOR_ROUTE=$(oc get routes simulator-route | tail -1 | awk '{print $2}')
+SIMULATOR_ROUTE=$(oc get routes simulator-route -n llm | tail -1 | awk '{print $2}')
 
 curl -s -w "HTTP Status: %{http_code}\n" \
     -H 'Authorization: APIKEY freeuser1_key' \
