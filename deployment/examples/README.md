@@ -21,9 +21,9 @@ Deploy [core-infrastructure](../core-infrastructure/) first:
 
 # Deploy core infrastructure
 export CLUSTER_DOMAIN="apps.your-cluster.com"
-cd core-infrastructure
+export CLUSTER_DOMAIN="apps.your-cluster.com"
+cd ../core-infrastructure   # from deployment/examples/
 kustomize build . | envsubst | kubectl apply -f -
-```
 
 ## Available Examples
 
