@@ -17,8 +17,13 @@ if ! command -v helm &> /dev/null; then
 fi
 
 # Install Gateway API CRDs first (using v1.3.0 like original)
-echo "📋 Installing Gateway API CRDs v1.3.0..."
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+echo "Checking for Gateway API CRDs..."
+if kubectl get crd gatewayclasses.gateway.networking.k8s.io &> /dev/null; then
+    echo "Gateway API CRDs already exist (managed by OpenShift Ingress Operator)"
+else
+    echo "Installing Gateway API CRDs v1.3.0..."
+    kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+fi
 
 # Install Istio base using OCI registry (like original)
 echo "🔧 Installing Istio base from OCI registry..."
