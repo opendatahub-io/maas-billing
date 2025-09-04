@@ -5,8 +5,6 @@ resources:
 - 00-platform-services-namespace.yaml
 - 01-rbac.yaml
 - 02-key-manager-deployment.yaml
-- 03-auth-policy.yaml
-- 04-token-rate-limit-policy.yaml
 - 05-external-access.yaml
 - 06-admin-secret.yaml
 - 07-key-manager-routing.yaml
