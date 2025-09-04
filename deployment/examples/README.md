@@ -2,38 +2,65 @@
 
 Complete deployment examples for different Models-as-a-Service scenarios.
 
-## Prerequisites
+## Automated Installation (Recommended)
 
-Deploy [core-infrastructure](../core-infrastructure/) first:
+Use the install script to ensure proper installation sequence:
 
 ```bash
-# 1. Install Istio
-./scripts/installers/install-istio.sh
+# Show available deployment types and options
+./scripts/install.sh --help
 
-# 2. Install Cert Manager
-./scripts/installers/install-cert-manager.sh
+# Deploy with default settings (simulator deployment)
+./scripts/install.sh
 
-# 3. Install KServe
-./scripts/installers/install-kserve.sh
+# Deploy specific deployment type
+./scripts/install.sh gpu
+./scripts/install.sh basic
 
-# 4. Install Prometheus
-./scripts/installers/install-prometheus.sh
+## Installation Sequence
 
-# Deploy core infrastructure
-export CLUSTER_DOMAIN="apps.your-cluster.com"
-export CLUSTER_DOMAIN="apps.your-cluster.com"
-cd ../core-infrastructure   # from deployment/examples/
-kustomize build . | envsubst | kubectl apply -f -
+The install script enforces this critical sequence for reliable deployment:
 
-## Platform-Specific Deployments
+1. **Install Dependencies** - Install all required operators and tools
+   ```bash
+   scripts/install-dependencies.sh --all
+   ```
 
-For platform-specific deployments with external access, use the overlays:
+2. **Set Cluster Domain** - Configure domain for external access
+   ```bash
+   # For OpenShift clusters (auto-detected by install script)
+   export CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+   
+   # For non-OpenShift clusters, set manually
+   export CLUSTER_DOMAIN="your-kubernetes-domain.com"
+   ```
 
-- **OpenShift**: `kustomize build ../overlays/openshift`
-- **Kubernetes**: `kustomize build ../overlays/kubernetes`  
-- **Internal only**: Use the examples directly without overlays
+3. **Clean Conflicting Operators** - Remove any conflicting Istio installations
+   ```bash
+   kubectl -n gateway-system delete subscription sailoperator --ignore-not-found
+   kubectl -n gateway-system delete csv sailoperator.v0.1.0 --ignore-not-found
+   kubectl -n gateway-system delete deployment sail-operator --ignore-not-found
+   kubectl -n gateway-system delete deployment istiod --ignore-not-found
+   ```
 
-See [overlays/README.md](../overlays/README.md) for more details.
+4. **Deploy Kuadrant Operators** - Install core infrastructure operators
+   ```bash
+   kustomize build core-infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+   ```
+
+5. **Wait for Operators** - Ensure all operators are ready before proceeding
+   ```bash
+   kubectl wait --for=condition=available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s
+   kubectl wait --for=condition=available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
+   kubectl wait --for=condition=available deployment/authorino-operator -n kuadrant-system --timeout=300s
+   ```
+
+6. **Deploy with External Access** - Deploy the selected example with OpenShift overlay
+   ```bash
+   kustomize build overlays/openshift | envsubst | kubectl apply -f -
+   ```
+
+**Important**: This sequence prevents common issues like operator conflicts and ensures dependencies are ready before deployment.
 
 ## Available Examples
 

@@ -17,6 +17,11 @@ All of these can be copied and pasted into the demo.
 export ADMIN_KEY="your-admin-key"
 export TEAM_ID="test-team"
 export USER_ID="test-user"
+
+# Dynamically detect routes instead of hardcoding them
+export KEY_MANAGER_ROUTE=$(oc get routes key-manager-route -n llm | tail -1 | awk '{print $2}')
+export QWEN3_ROUTE=$(oc get routes qwen3-route -n llm | tail -1 | awk '{print $2}')
+export SIMULATOR_ROUTE=$(oc get routes simulator-route -n llm | tail -1 | awk '{print $2}')
 ```
 
 ## Test Workflow
@@ -24,7 +29,7 @@ export USER_ID="test-user"
 ### 1. Create Team
 
 ```bash
-curl -sk -X POST https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams \
+curl -sk -X POST https://$KEY_MANAGER_ROUTE/teams \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -41,7 +46,7 @@ curl -sk -X POST https://key-manager-route-platform-services.apps.summit-gpu.oct
 - Multiple keys or users can be added to a team. Users can have multiple keys in multiple teams.
 
 ```bash
-API_RESPONSE=$(curl -sk -s -X POST https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams/$TEAM_ID/keys \
+API_RESPONSE=$(curl -sk -s -X POST https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID/keys \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -56,7 +61,7 @@ echo "API Key: $API_KEY"
 ### 3. Test Model Call
 
 ```bash
-curl -s http://qwen3-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/v1/chat/completions \
+curl -s http://$QWEN3_ROUTE/v1/chat/completions \
   -H "Authorization: APIKEY $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -76,7 +81,7 @@ curl -s http://qwen3-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/v1/chat/c
 Patch team limits, policy, or metadata (partial updates supported):
 
 ```bash
-curl -sk -X PATCH https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams/$TEAM_ID \
+curl -sk -X PATCH https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -88,7 +93,7 @@ curl -sk -X PATCH https://key-manager-route-platform-services.apps.summit-gpu.oc
 ### 5. Test Model Call with New Limits
 
 ```bash
-curl -s http://qwen3-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/v1/chat/completions \
+curl -s http://$QWEN3_ROUTE/v1/chat/completions \
   -H "Authorization: APIKEY $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -108,7 +113,7 @@ curl -s http://qwen3-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/v1/chat/c
 TODO: Enable user-scoped model access listing
 
 ```bash
-curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/models \
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/models \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -120,13 +125,13 @@ curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo
     {
       "name": "qwen3-0-6b-instruct",
       "namespace": "llm",
-      "url": "http://qwen3-0-6b-instruct-llm.apps.summit-gpu.octo-emerging.redhataicoe.com",
+      "url": "http://qwen3-0-6b-instruct-llm.$CLUSTER_DOMAIN",
       "ready": true
     },
     {
       "name": "vllm-simulator",
       "namespace": "llm",
-      "url": "http://vllm-simulator-llm.apps.summit-gpu.octo-emerging.redhataicoe.com",
+      "url": "http://vllm-simulator-llm.$CLUSTER_DOMAIN",
       "ready": true
     }
   ]
@@ -136,7 +141,7 @@ curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo
 ### 7. List All Teams (Admin)
 
 ```bash
-curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams \
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -180,7 +185,7 @@ curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo
 ### 8. Get a Team Details (Admin)
 
 ```bash
-curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams/$TEAM_ID \
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -231,7 +236,7 @@ curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo
 ### 9. List Team Keys with Details (Admin)
 
 ```bash
-curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams/$TEAM_ID/keys \
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID/keys \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -352,7 +357,7 @@ curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo
 ### 10. List All User Keys Across Teams (Admin)
 
 ```bash
-curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/users/$USER_ID/keys \
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/users/$USER_ID/keys \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -405,7 +410,7 @@ curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo
 - Example of a user with keys across various teams and usage for each of their keys.
 
 ```bash
-curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/users/$USER_ID/usage \
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/users/$USER_ID/usage \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -458,7 +463,7 @@ curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo
 ### 12. Get Team Usage Metrics (Admin)
 
 ```bash
-curl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams/$TEAM_ID/usage \
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID/usage \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -505,14 +510,14 @@ TODO: fix. Should deletes be cascading? e.g. If a team gets deleted, do the asso
 orphaned keys? A database should be considered eventually to make this cleaner or add some sort of reconciler.
 
 ```bash
-curl -s -X DELETE https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/delete_key \
+curl -s -X DELETE https://$KEY_MANAGER_ROUTE/delete_key \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "key": "'$API_KEY'"
   }'
 
-curl -sk -X DELETE https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams/$TEAM_ID \
+curl -sk -X DELETE https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID \
   -H "Authorization: ADMIN $ADMIN_KEY"
 ```
 
