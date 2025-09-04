@@ -178,8 +178,10 @@ kubectl get wasmplugin -n llm -o yaml | grep url
 ### No Metrics Data
 ```bash
 # Check ServiceMonitors
-kubectl get servicemonitor -n llm -n kuadrant-system
+kubectl get servicemonitor -n llm
+kubectl get servicemonitor -n kuadrant-system
+# or
+kubectl get servicemonitor -A | egrep '^(llm|kuadrant-system)\s'
 
 # Check if custom wasm-shim is loaded
 kubectl logs -n llm deployment/inference-gateway-istio | grep nerdalert
-```
