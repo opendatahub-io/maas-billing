@@ -45,10 +45,9 @@ kustomize build . | envsubst | kubectl apply -f -
 Full-featured setup with authentication, rate limiting, and observability:
 
 ```bash
-cd production-deployment
+cd simulator-deployment
 export CLUSTER_DOMAIN="apps.your-cluster.com"
 kustomize build . | envsubst | kubectl apply -f -
-```
 
 **Includes:**
 - vLLM Simulator model
