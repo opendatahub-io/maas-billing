@@ -6,4 +6,3 @@ metadata:
 
 resources:
 - model-routing.yaml
-- openshift-routes.yaml

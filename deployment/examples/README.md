@@ -25,6 +25,16 @@ export CLUSTER_DOMAIN="apps.your-cluster.com"
 cd ../core-infrastructure   # from deployment/examples/
 kustomize build . | envsubst | kubectl apply -f -
 
+## Platform-Specific Deployments
+
+For platform-specific deployments with external access, use the overlays:
+
+- **OpenShift**: `kustomize build ../overlays/openshift`
+- **Kubernetes**: `kustomize build ../overlays/kubernetes`  
+- **Internal only**: Use the examples directly without overlays
+
+See [overlays/README.md](../overlays/README.md) for more details.
+
 ## Available Examples
 
 ### Basic Deployment
@@ -44,9 +54,22 @@ kustomize build . | envsubst | kubectl apply -f -
 ### Simulator Deployment  
 Full-featured setup with authentication, rate limiting, and observability:
 
+**For OpenShift:**
+```bash
+export CLUSTER_DOMAIN="apps.your-cluster.com"
+kustomize build ../overlays/openshift | envsubst | kubectl apply -f -
+```
+
+**For Kubernetes:**
+```bash
+export CLUSTER_DOMAIN="your-kubernetes-domain.com"
+kustomize build ../overlays/kubernetes | envsubst | kubectl apply -f -
+```
+
+**Internal access only (no external routes):**
 ```bash
 cd simulator-deployment
-export CLUSTER_DOMAIN="apps.your-cluster.com"
+export CLUSTER_DOMAIN="internal.cluster.local"
 kustomize build . | envsubst | kubectl apply -f -
 
 **Includes:**
@@ -59,9 +82,18 @@ kustomize build . | envsubst | kubectl apply -f -
 ### GPU Deployment
 Production setup with GPU-accelerated models:
 
+**For OpenShift:**
 ```bash
-cd gpu-deployment
 export CLUSTER_DOMAIN="apps.your-cluster.com"
+# Note: Currently uses simulator-deployment base. For GPU models, use:
+cd gpu-deployment
+kustomize build . | envsubst | kubectl apply -f -
+```
+
+**For Kubernetes:**
+```bash
+export CLUSTER_DOMAIN="your-kubernetes-domain.com"
+cd gpu-deployment
 kustomize build . | envsubst | kubectl apply -f -
 ```
 
