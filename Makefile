@@ -123,6 +123,11 @@ push-image: ## Push container image (use REPO= and TAG= to specify image)
 .PHONY: build-push-image
 build-push-image: build-image push-image ## Build and push container image
 
+.PHONY: deploy-dev
+deploy-dev: ## Deploy to development
+	kubectl create namespace key-manager || true
+	kustomize build $(KEY_MANAGER_DIR)/deploy/overlays/dev | kubectl apply -f -
+
 .PHONY: run
 run: build ## Run the key-manager locally
 	@echo "Running $(BINARY_NAME)..."
