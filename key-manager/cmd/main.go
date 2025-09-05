@@ -1,7 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/dynamic"
@@ -17,9 +24,38 @@ import (
 )
 
 func main() {
-	// Load configuration
 	cfg := config.Load()
 
+	router := registerHandlers(cfg)
+
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: router,
+	}
+
+	go func() {
+		log.Printf("Server starting on port %s", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutdown signal received, shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	log.Println("Server exited gracefully")
+}
+
+func registerHandlers(cfg *config.Config) *gin.Engine {
 	// Create in-cluster config
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
@@ -33,14 +69,14 @@ func main() {
 	}
 
 	// Create dynamic client for Kuadrant CRDs
-	kuadrantClient, err := dynamic.NewForConfig(restConfig)
+	k8sClient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		log.Fatalf("Failed to create dynamic client: %v", err)
 	}
 
 	// Initialize managers
 	policyMgr := teams.NewPolicyManager(
-		kuadrantClient,
+		k8sClient,
 		clientset,
 		cfg.KeyNamespace,
 		cfg.TokenRateLimitPolicyName,
@@ -49,7 +85,7 @@ func main() {
 
 	teamMgr := teams.NewManager(clientset, cfg.KeyNamespace, policyMgr)
 	keyMgr := keys.NewManager(clientset, cfg.KeyNamespace, teamMgr)
-	modelMgr := models.NewManager(kuadrantClient)
+	modelMgr := models.NewManager(k8sClient)
 
 	// Initialize handlers
 	usageHandler := handlers.NewUsageHandler(clientset, restConfig, cfg.KeyNamespace)
@@ -69,13 +105,13 @@ func main() {
 	}
 
 	// Initialize Gin router
-	r := gin.Default()
+	router := gin.Default()
 
 	// Health check endpoint (no auth required)
-	r.GET("/health", healthHandler.HealthCheck)
+	router.GET("/health", healthHandler.HealthCheck)
 
 	// Setup API routes with admin authentication
-	adminRoutes := r.Group("/", auth.AdminAuthMiddleware())
+	adminRoutes := router.Group("/", auth.AdminAuthMiddleware())
 
 	// Legacy endpoints (backward compatibility)
 	adminRoutes.POST("/generate_key", legacyHandler.GenerateKey)
@@ -103,7 +139,5 @@ func main() {
 	// Model listing endpoint
 	adminRoutes.GET("/models", modelsHandler.ListModels)
 
-	// Start server
-	log.Printf("Starting %s on port %s", cfg.ServiceName, cfg.Port)
-	log.Fatal(r.Run(":" + cfg.Port))
+	return router
 }
