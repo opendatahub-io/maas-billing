@@ -11,9 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	"github.com/opendatahub-io/maas-billing/key-manager/internal/auth"
 	"github.com/opendatahub-io/maas-billing/key-manager/internal/config"
@@ -61,44 +58,35 @@ func main() {
 }
 
 func registerHandlers(cfg *config.Config) *gin.Engine {
-	// Create in-cluster config
-	restConfig, err := rest.InClusterConfig()
-	if err != nil {
-		log.Fatalf("Failed to create in-cluster config: %v", err)
-	}
+	router := gin.Default()
 
-	// Create Kubernetes clientset
-	clientset, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		log.Fatalf("Failed to create Kubernetes clientset: %v", err)
-	}
+	// Health check endpoint (no auth required)
+	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
-	// Create dynamic client for Kuadrant CRDs
-	k8sClient, err := dynamic.NewForConfig(restConfig)
+	clusterConfig, err := config.NewClusterConfig()
 	if err != nil {
-		log.Fatalf("Failed to create dynamic client: %v", err)
+		log.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
 
 	// Initialize managers
 	policyMgr := teams.NewPolicyManager(
-		k8sClient,
-		clientset,
+		clusterConfig.DynClient,
+		clusterConfig.ClientSet,
 		cfg.KeyNamespace,
 		cfg.TokenRateLimitPolicyName,
 		cfg.AuthPolicyName,
 	)
 
-	teamMgr := teams.NewManager(clientset, cfg.KeyNamespace, policyMgr)
-	keyMgr := keys.NewManager(clientset, cfg.KeyNamespace, teamMgr)
-	modelMgr := models.NewManager(k8sClient)
+	teamMgr := teams.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, policyMgr)
+	keyMgr := keys.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, teamMgr)
+	modelMgr := models.NewManager(clusterConfig.DynClient)
 
 	// Initialize handlers
-	usageHandler := handlers.NewUsageHandler(clientset, restConfig, cfg.KeyNamespace)
+	usageHandler := handlers.NewUsageHandler(clusterConfig.ClientSet, clusterConfig.RestConfig, cfg.KeyNamespace)
 	teamsHandler := handlers.NewTeamsHandler(teamMgr)
 	keysHandler := handlers.NewKeysHandler(keyMgr, teamMgr)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	legacyHandler := handlers.NewLegacyHandler(keyMgr)
-	healthHandler := handlers.NewHealthHandler()
 
 	// Create default team if enabled
 	if cfg.CreateDefaultTeam {
@@ -108,12 +96,6 @@ func registerHandlers(cfg *config.Config) *gin.Engine {
 			log.Printf("Default team created successfully")
 		}
 	}
-
-	// Initialize Gin router
-	router := gin.Default()
-
-	// Health check endpoint (no auth required)
-	router.GET("/health", healthHandler.HealthCheck)
 
 	// Setup API routes with admin authentication
 	adminRoutes := router.Group("/", auth.AdminAuthMiddleware())
