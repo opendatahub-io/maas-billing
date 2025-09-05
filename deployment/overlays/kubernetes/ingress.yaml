@@ -8,8 +8,7 @@ metadata:
   namespace: llm
   labels:
     app: maas-gateway
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+  annotations: {}
 spec:
   rules:
   - host: qwen3-llm.${CLUSTER_DOMAIN}
@@ -30,8 +29,7 @@ metadata:
   namespace: llm
   labels:
     app: maas-gateway
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+  annotations: {}
 spec:
   rules:
   - host: simulator-llm.${CLUSTER_DOMAIN}
