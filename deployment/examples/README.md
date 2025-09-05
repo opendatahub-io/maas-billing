@@ -8,14 +8,20 @@ Use the install script to ensure proper installation sequence:
 
 ```bash
 # Show available deployment types and options
-./scripts/install.sh --help
+deployment/scripts/install.sh --help
 
 # Deploy with default settings (simulator deployment)
-./scripts/install.sh
+deployment/scripts/install.sh
 
 # Deploy specific deployment type
-./scripts/install.sh gpu
-./scripts/install.sh basic
+deployment/scripts/install.sh gpu
+deployment/scripts/install.sh basic
+
+# Add a new deployment type
+
+Any subdirectory under deployment/examples/ named as {name}-deployment will be picked up as a deployment type by deployment/scripts/insall.sh
+
+e.g. deployment/examples/gpu-deployment will display as the deployment option --gpu in the installer.
 
 ## Installation Sequence
 
