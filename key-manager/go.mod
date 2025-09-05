@@ -1,4 +1,4 @@
-module github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2
+module github.com/opendatahub-io/maas-billing/key-manager
 
 go 1.24.2
 

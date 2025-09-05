@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/models"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/models"
 )
 
 // ModelsHandler handles model-related endpoints

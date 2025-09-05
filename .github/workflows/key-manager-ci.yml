@@ -3,7 +3,7 @@ name: Key Manager Build
 on:
   pull_request:
     paths:
-      - 'deployment/services/key-manager/**'
+      - 'key-manager/**'
       - 'Makefile'
 
 jobs:

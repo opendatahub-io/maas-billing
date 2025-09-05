@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/keys"
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/teams"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/keys"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/teams"
 )
 
 // KeysHandler handles key-related endpoints

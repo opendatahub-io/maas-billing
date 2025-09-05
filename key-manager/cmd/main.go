@@ -8,12 +8,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/auth"
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/config"
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/handlers"
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/keys"
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/models"
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/teams"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/auth"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/config"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/handlers"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/keys"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/models"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/teams"
 )
 
 func main() {

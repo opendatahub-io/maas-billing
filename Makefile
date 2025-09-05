@@ -11,11 +11,12 @@ REPO ?= ghcr.io/your-org/maas-key-manager
 TAG ?= latest
 FULL_IMAGE ?= $(REPO):$(TAG)
 
+PROJECT_DIR:=$(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
+
 # Key Manager settings
-KEY_MANAGER_DIR := deployment/services/key-manager
+KEY_MANAGER_DIR := $(PROJECT_DIR)/key-manager
 BINARY_NAME := key-manager
-BUILD_DIR := ./bin
-CMD_DIR := $(KEY_MANAGER_DIR)/cmd/key-manager
+BUILD_DIR := $(PROJECT_DIR)/bin
 
 # Go settings
 GO_VERSION := 1.24.2
@@ -84,7 +85,7 @@ deps: ## Download Go dependencies
 build: fmt deps ## Build the key-manager binary
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	@cd $(KEY_MANAGER_DIR) && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o ../../$(BUILD_DIR)/$(BINARY_NAME) ./cmd/key-manager
+	@cd $(KEY_MANAGER_DIR) && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
 	@echo "Built $(BUILD_DIR)/$(BINARY_NAME)"
 
 .PHONY: test

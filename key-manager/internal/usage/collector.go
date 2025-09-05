@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/redhat-et/maas-billing/deployment/kuadrant-openshift/key-manager-v2/internal/types"
+	"github.com/opendatahub-io/maas-billing/key-manager/internal/types"
 )
 
 // Collector handles usage data collection from Istio Prometheus metrics
