@@ -7,11 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOYMENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Default values
-DEPLOYMENTcurl -sk -X GET https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com/teams \
-  -H "Authorization: ADMIN $ADMIN_KEY" | jq ._TYPE="simulator"
+DEPLOYMENT_TYPE=${DEPLOYMENT_TYPE:-simulator}
 TEARDOWN=false
 AVAILABLE_DEPLOYMENTS=()
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
