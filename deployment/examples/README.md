@@ -51,7 +51,7 @@ The install script enforces this critical sequence for reliable deployment:
 
 4. **Deploy Kuadrant Operators** - Install core infrastructure operators
    ```bash
-   kustomize build core-infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+   kustomize build infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
    ```
 
 5. **Wait for Operators** - Ensure all operators are ready before proceeding
@@ -196,7 +196,7 @@ curl -H 'Authorization: APIKEY premiumuser1_key' \
 ### Adding New Models
 1. Create new directory under `kustomize-templates/models/`
 2. Add InferenceService manifest
-3. Update HTTPRoute in `core-infrastructure/kustomize-templates/gateway/`
+3. Update HTTPRoute in `infrastructure/kustomize-templates/gateway/`
 
 ### Custom Rate Limits
 Edit `kustomize-templates/auth/token-rate-limiting/token-policy.yaml`:

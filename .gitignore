@@ -4,12 +4,3 @@ node_modules/
 .cache/
 dist/
 build/
-.idea/
-.claude
-
-*.pid
-
-# Go test coverage files
-coverage.out
-coverage.html
-bin/

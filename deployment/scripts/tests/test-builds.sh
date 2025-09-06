@@ -72,7 +72,7 @@ main() {
     fi
     
     # Test core infrastructure
-    test_build "core-infrastructure" "../core-infrastructure"
+    test_build "infrastructure" "../infrastructure"
     
     # Test all example deployments
     for example_dir in ../examples/*/; do

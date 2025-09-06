@@ -20,4 +20,4 @@ commonLabels:
 
 commonAnnotations:
   config.kubernetes.io/origin: |
-    path: core-infrastructure/kustomize-templates/observability/kustomization.yaml
+    path: infrastructure/kustomize-templates/observability/kustomization.yaml

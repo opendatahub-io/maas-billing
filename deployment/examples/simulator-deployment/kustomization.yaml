@@ -6,7 +6,7 @@ metadata:
 
 # Full production deployment
 resources:
-- ../../core-infrastructure
+- ../../infrastructure
 - ../kustomize-templates/models/simulator
 - ../kustomize-templates/auth/api-keys
 - ../kustomize-templates/auth/token-rate-limiting

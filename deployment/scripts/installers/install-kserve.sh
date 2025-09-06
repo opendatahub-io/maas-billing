@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # KServe Installation Script for MaaS Deployment
-# Handles both OpenShift Serverless and vanilla KServe
+# Handles both OpenShift Serverless validation and vanilla KServe installation
 
 KSERVE_VERSION=v0.15.2
 OCP=false
@@ -12,11 +12,11 @@ usage() {
 Usage: $0 [--ocp]
 
 Options:
-  --ocp    Install OpenShift Serverless instead of vanilla KServe
+  --ocp    Validate OpenShift Serverless instead of installing vanilla KServe
 
 Examples:
   $0           # Install vanilla KServe
-  $0 --ocp     # Install OpenShift Serverless
+  $0 --ocp     # Validate OpenShift Serverless
 EOF
   exit 1
 }
@@ -35,11 +35,19 @@ echo "🤖 Installing model serving platform for MaaS deployment"
 if [[ "$OCP" == true ]]; then
   echo "Using OpenShift Serverless for OpenShift clusters"
   
-  echo "🔧 Installing OpenShift Serverless operator..."
-  kubectl apply --server-side -f https://raw.githubusercontent.com/kserve/kserve/refs/heads/master/docs/openshift/serverless/operator.yaml
+  echo "🔍 Validating OpenShift Serverless operator is installed..."
+  if ! kubectl get subscription serverless-operator -n openshift-serverless >/dev/null 2>&1; then
+    echo "❌ OpenShift Serverless operator not found. Please install it first."
+    exit 1
+  fi
   
-  echo "⏳ Waiting for OpenShift Serverless controller..."
-  kubectl wait --for=condition=ready pod --all -n openshift-serverless --timeout=300s
+  echo "⏳ Validating OpenShift Serverless controller is running..."
+  if ! kubectl wait --for=condition=ready pod --all -n openshift-serverless --timeout=60s >/dev/null 2>&1; then
+    echo "❌ OpenShift Serverless controller is not ready"
+    exit 1
+  fi
+  
+  echo "✅ OpenShift Serverless operator is installed and running"
 else
   echo "Using vanilla KServe version: $KSERVE_VERSION"
   

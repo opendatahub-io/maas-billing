@@ -189,7 +189,7 @@ main() {
     
     # Deploy Kuadrant operators first
     log_info "Deploying Kuadrant operators..."
-    kustomize build core-infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+    kustomize build infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
     log_success "Kuadrant operators deployed"
     
     # Wait for operators to be ready

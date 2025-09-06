@@ -18,7 +18,7 @@ Base platform components required for Models-as-a-Service (MaaS) deployment.
 export CLUSTER_DOMAIN="apps.your-cluster.com"
 
 # 3. Deploy core infrastructure
-cd core-infrastructure
+cd infrastructure
 kustomize build . | envsubst | kubectl apply -f -
 ```
 
