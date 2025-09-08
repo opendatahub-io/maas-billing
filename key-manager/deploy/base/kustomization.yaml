@@ -9,12 +9,12 @@ resources:
 - service.yaml
 - deployment.yaml
 
+namespace: key-manager
+
 labels:
 - pairs:
     app.kubernetes.io/name: key-manager
     app.kubernetes.io/component: api
-    app.kubernetes.io/part-of: maas-billing
-    app.kubernetes.io/version: "1.0.0"
   includeSelectors: true
 
 # See https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kustomize/

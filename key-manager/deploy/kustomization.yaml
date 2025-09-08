@@ -5,7 +5,7 @@ metadata:
   name: key-manager-deploy
 
 resources:
-- base/
+- base
 
 labels:
 - pairs:
