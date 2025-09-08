@@ -125,6 +125,7 @@ func registerHandlers(cfg *config.Config) *gin.Engine {
 
 	// Model listing endpoint
 	adminRoutes.GET("/models", modelsHandler.ListModels)
+	adminRoutes.GET("/v1/models", modelsHandler.ListLLMs)
 
 	return router
 }
