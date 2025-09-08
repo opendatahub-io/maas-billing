@@ -15,13 +15,12 @@ deployment/scripts/install.sh
 
 # Deploy specific deployment type
 deployment/scripts/install.sh gpu
-deployment/scripts/install.sh basic
-
+```
 # Add a new deployment type
 
-Any subdirectory under deployment/examples/ named as {name}-deployment will be picked up as a deployment type by deployment/scripts/insall.sh
+Any subdirectory under `deployment/examples/` named as {name}-deployment will be picked up as a deployment type by `deployment/scripts/insall.sh`
 
-e.g. deployment/examples/gpu-deployment will display as the deployment option --gpu in the installer.
+e.g. `deployment/examples/gpu-deployment` will display as the `deployment option --gpu` in the installer.
 
 ## Installation Sequence
 
@@ -30,7 +29,7 @@ The install script enforces this critical sequence for reliable deployment:
 1. **Install Dependencies** - Install all required operators and tools
    ```bash
    scripts/install-dependencies.sh --all
-   ```
+
 
 2. **Set Cluster Domain** - Configure domain for external access
    ```bash
