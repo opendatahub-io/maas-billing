@@ -12,13 +12,13 @@ import (
 
 // Manager handles model discovery and listing
 type Manager struct {
-	kuadrantClient dynamic.Interface
+	k8sClient dynamic.Interface
 }
 
 // NewManager creates a new model manager
-func NewManager(kuadrantClient dynamic.Interface) *Manager {
+func NewManager(k8sClient dynamic.Interface) *Manager {
 	return &Manager{
-		kuadrantClient: kuadrantClient,
+		k8sClient: k8sClient,
 	}
 }
 
@@ -34,7 +34,7 @@ func (m *Manager) ListAvailableModels() ([]ModelInfo, error) {
 	log.Printf("DEBUG: Attempting to list InferenceServices with GVR: %+v", inferenceServiceGVR)
 
 	// List all InferenceServices across all namespaces
-	list, err := m.kuadrantClient.Resource(inferenceServiceGVR).List(
+	list, err := m.k8sClient.Resource(inferenceServiceGVR).List(
 		context.Background(), metav1.ListOptions{})
 	if err != nil {
 		log.Printf("DEBUG: Failed to list InferenceServices: %v", err)
