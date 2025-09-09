@@ -19,6 +19,7 @@ import {
   Policy as PolicyIcon,
   BarChart as MetricsIcon,
   PlayArrow as SimulatorIcon,
+  Key as TokenIcon,
   AccountCircle,
   Settings,
   Logout,
@@ -29,6 +30,8 @@ import {
 import PolicyManager from './components/PolicyManager';
 import MetricsDashboard from './components/MetricsDashboard';
 import RequestSimulator from './components/RequestSimulator';
+import TokenManagement from './components/TokenManagement';
+import AuthCallback from './components/AuthCallback';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 const drawerWidth = 240;
@@ -54,6 +57,8 @@ function AppContent() {
         return <MetricsDashboard />;
       case 'simulator':
         return <RequestSimulator />;
+      case 'tokens':
+        return <TokenManagement />;
       default:
         return <PolicyManager />;
     }
@@ -63,6 +68,7 @@ function AppContent() {
     { id: 'policies', label: 'Policy Manager', icon: <PolicyIcon /> },
     { id: 'metrics', label: 'Live Metrics', icon: <MetricsIcon /> },
     { id: 'simulator', label: 'Request Simulator', icon: <SimulatorIcon /> },
+    { id: 'tokens', label: 'API Tokens', icon: <TokenIcon /> },
   ];
 
   return (

@@ -1,0 +1,8 @@
+apiVersion: oauth.openshift.io/v1
+kind: OAuthClient
+metadata:
+  name: maas-billing-app
+redirectURIs:
+  - "http://localhost:3000/auth/callback"
+grantMethod: auto
+
