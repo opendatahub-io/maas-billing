@@ -15,6 +15,7 @@ import {
   Toolbar,
   Typography,
   Avatar,
+  Chip,
 } from '@mui/material';
 import {
   Policy as PolicyIcon,
@@ -89,24 +90,22 @@ function MainApp() {
     window.location.href = loginUrl;
   };
 
-  // Check authentication status on mount
+  // Check authentication status on mount (but don't auto-redirect)
   useEffect(() => {
     const checkAuth = async () => {
       try {
         const status = await apiService.getClusterStatus();
         setClusterStatus(status);
         
-        // Check if user is authenticated
+        // Just log the status, don't auto-redirect
         if (!status.connected || status.user === 'system:anonymous' || !status.user) {
-          console.log('🔐 User not authenticated (system:anonymous), redirecting to OpenShift login...');
-          redirectToLogin();
-          return;
+          console.warn('🔐 User not authenticated. Policies may not load. Use logout button to login.');
         } else {
           console.log(`✅ Authenticated as: ${status.user}`);
         }
       } catch (error) {
         console.warn('Could not check authentication status:', error);
-        // Set default status, don't redirect automatically
+        // Set default status
         setClusterStatus({
           connected: false,
           user: null,
@@ -173,6 +172,25 @@ function MainApp() {
             </Typography>
             
             <Box sx={{ flexGrow: 1 }} />
+            
+            {/* Authentication Status */}
+            {!clusterStatus.connected && (
+              <Chip
+                label="Not Logged In"
+                color="warning"
+                size="small"
+                onClick={redirectToLogin}
+                sx={{ mr: 2, cursor: 'pointer' }}
+              />
+            )}
+            {clusterStatus.connected && clusterStatus.user && (
+              <Chip
+                label={`Logged in as: ${clusterStatus.user}`}
+                color="success"
+                size="small"
+                sx={{ mr: 2 }}
+              />
+            )}
             
             {/* Theme Toggle */}
             <IconButton

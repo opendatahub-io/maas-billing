@@ -66,7 +66,7 @@ const AuthCallback: React.FC = () => {
     };
 
     handleCallback();
-  }, [navigate]);
+  }, []);
 
   return (
     <Box
