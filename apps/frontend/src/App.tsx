@@ -76,18 +76,25 @@ function MainApp() {
   };
 
   const redirectToLogin = () => {
-    // Redirect to OpenShift OAuth login (same as oc login --web)
+    // For now, provide instructions for CLI login since OAuth integration is complex
+    const instructions = `To use this application, you need to login to the OpenShift cluster via CLI:
+
+1. Open a terminal
+2. Run: oc login --web --server=https://api.summit-gpu.octo-emerging.redhataicoe.com:6443
+3. Complete the web authentication
+4. Return here and refresh the page
+
+The backend needs an authenticated oc CLI session to fetch policies and tokens from the cluster.`;
+
+    alert(instructions);
+    
+    // Optionally still redirect to web console for convenience
     const returnUrl = encodeURIComponent(window.location.href);
-    const loginUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/token/request?then=${returnUrl}`;
+    const loginUrl = `https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com?then=${returnUrl}`;
     
-    console.log('🔐 Redirecting to OpenShift OAuth login (oc web login)...');
-    console.log('Login URL:', loginUrl);
-    console.log('Return URL after login:', window.location.href);
-    
-    // Show user-friendly message before redirect
-    alert('You need to login to the OpenShift cluster. You will be redirected to the CLI login page and then brought back here.');
-    
-    window.location.href = loginUrl;
+    if (confirm('Would you like to open the OpenShift console in a new tab?')) {
+      window.open(loginUrl, '_blank');
+    }
   };
 
   // Check authentication status on mount (but don't auto-redirect)
@@ -175,13 +182,22 @@ function MainApp() {
             
             {/* Authentication Status */}
             {!clusterStatus.connected && (
-              <Chip
-                label="Not Logged In"
-                color="warning"
-                size="small"
-                onClick={redirectToLogin}
-                sx={{ mr: 2, cursor: 'pointer' }}
-              />
+              <Box sx={{ display: 'flex', gap: 1, mr: 2 }}>
+                <Chip
+                  label="Not Logged In"
+                  color="warning"
+                  size="small"
+                  onClick={redirectToLogin}
+                  sx={{ cursor: 'pointer' }}
+                />
+                <Chip
+                  label="Refresh"
+                  color="info"
+                  size="small"
+                  onClick={() => window.location.reload()}
+                  sx={{ cursor: 'pointer' }}
+                />
+              </Box>
             )}
             {clusterStatus.connected && clusterStatus.user && (
               <Chip
