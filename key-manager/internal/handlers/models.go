@@ -40,7 +40,7 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 }
 
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
-	modelList, err := h.modelMgr.ListAvailableLLMs()
+	modelList, err := h.modelMgr.ListAvailableLLMs(c.Request.Context())
 	if err != nil {
 		log.Printf("Failed to get available LLM models: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{

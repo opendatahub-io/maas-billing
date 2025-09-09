@@ -81,7 +81,7 @@ func (m *Manager) ListAvailableModels() ([]ModelInfo, error) {
 }
 
 // ListAvailableLLMs lists all LLMInferenceServices across all namespaces.
-func (m *Manager) ListAvailableLLMs() ([]openai.Model, error) {
+func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]openai.Model, error) {
 	// Define InferenceService GVR
 	llmGVR := schema.GroupVersionResource{
 		Group:    "serving.kserve.io",
@@ -92,8 +92,7 @@ func (m *Manager) ListAvailableLLMs() ([]openai.Model, error) {
 	log.Printf("DEBUG: Attempting to list LLMInferenceServices with GVR: %+v", llmGVR)
 
 	// List all InferenceServices across all namespaces
-	list, err := m.kuadrantClient.Resource(llmGVR).List(
-		context.Background(), metav1.ListOptions{})
+	list, err := m.k8sClient.Resource(llmGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		log.Printf("DEBUG: Failed to list LLMInferenceServices: %v", err)
 		return nil, fmt.Errorf("failed to list LLMInferenceServices: %w", err)
