@@ -67,25 +67,25 @@ function MainApp() {
     // Clear any stored auth state
     localStorage.removeItem('oauth_authenticated');
     
-    // Redirect to OpenShift web console for fresh login
+    // Redirect to OpenShift OAuth login for fresh CLI session
     const returnUrl = encodeURIComponent(window.location.origin);
-    const loginUrl = `https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com?then=${returnUrl}`;
+    const loginUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/token/request?then=${returnUrl}`;
     
-    console.log('🔐 Logging out and redirecting to OpenShift login...');
+    console.log('🔐 Logging out and redirecting to OpenShift OAuth login...');
     window.location.href = loginUrl;
   };
 
   const redirectToLogin = () => {
-    // Redirect to OpenShift web console with return URL
+    // Redirect to OpenShift OAuth login (same as oc login --web)
     const returnUrl = encodeURIComponent(window.location.href);
-    const loginUrl = `https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com?then=${returnUrl}`;
+    const loginUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/token/request?then=${returnUrl}`;
     
-    console.log('🔐 Redirecting to OpenShift web console...');
+    console.log('🔐 Redirecting to OpenShift OAuth login (oc web login)...');
     console.log('Login URL:', loginUrl);
     console.log('Return URL after login:', window.location.href);
     
     // Show user-friendly message before redirect
-    alert('You need to login to the OpenShift cluster. You will be redirected to the login page and then brought back here.');
+    alert('You need to login to the OpenShift cluster. You will be redirected to the CLI login page and then brought back here.');
     
     window.location.href = loginUrl;
   };
