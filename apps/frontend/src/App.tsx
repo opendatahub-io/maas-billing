@@ -92,6 +92,7 @@ The backend needs an authenticated oc CLI session to fetch policies and tokens f
     const returnUrl = encodeURIComponent(window.location.href);
     const loginUrl = `https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com?then=${returnUrl}`;
     
+    // eslint-disable-next-line no-restricted-globals
     if (confirm('Would you like to open the OpenShift console in a new tab?')) {
       window.open(loginUrl, '_blank');
     }
