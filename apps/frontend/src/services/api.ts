@@ -18,16 +18,49 @@ class ApiService {
       });
 
       console.log(`📡 Response status: ${response.status} ${response.statusText}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ API Error: ${response.status} ${response.statusText}`, errorText);
-        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+      
+      // Handle 204/205 responses with no content
+      const hasBody = response.status !== 204 && response.status !== 205;
+      const contentType = response.headers.get('content-type') || '';
+      
+      let body: any = null;
+      if (hasBody) {
+        const rawBody = await response.text();
+        
+        // Try to parse as JSON if content-type suggests it
+        if (contentType.includes('application/json') && rawBody.trim()) {
+          try {
+            body = JSON.parse(rawBody);
+          } catch (e) {
+            // If JSON parsing fails, keep raw text
+            body = rawBody;
+          }
+        } else {
+          body = rawBody;
+        }
       }
 
-      const data = await response.json();
-      console.log(`✅ API Response received:`, data);
-      return data.success ? data.data : data;
+      if (!response.ok) {
+        console.error(`❌ API Error: ${response.status} ${response.statusText}`, body);
+        const error: any = new Error(`HTTP ${response.status} ${response.statusText}`);
+        error.status = response.status;
+        error.response = {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: body
+        };
+        throw error;
+      }
+
+      console.log(`✅ API Response received:`, body);
+      
+      // Handle success response format
+      if (body && typeof body === 'object' && 'success' in body) {
+        return body.success ? body.data : body;
+      }
+      
+      return body;
     } catch (error) {
       console.error(`💥 Network error for ${url}:`, error);
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
