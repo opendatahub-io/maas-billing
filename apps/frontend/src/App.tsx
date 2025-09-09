@@ -108,21 +108,24 @@ function MainApp() {
         const status = await apiService.getClusterStatus();
         setClusterStatus(status);
         
-        // Just log the status, don't auto-redirect
+        // Check authentication and show login dialog if needed
         if (!status.connected || status.user === 'system:anonymous' || !status.user) {
-          console.warn('🔐 User not authenticated. Policies may not load. Use logout button to login.');
+          console.log('🔐 User not authenticated, showing login dialog...');
+          setShowLoginDialog(true);
         } else {
           console.log(`✅ Authenticated as: ${status.user}`);
+          setShowLoginDialog(false);
         }
       } catch (error) {
         console.warn('Could not check authentication status:', error);
-        // Set default status
+        // Set default status and show login dialog
         setClusterStatus({
           connected: false,
           user: null,
           cluster: null,
           loginUrl: 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
         });
+        setShowLoginDialog(true);
       }
     };
 
