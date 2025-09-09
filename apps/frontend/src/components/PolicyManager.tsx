@@ -115,6 +115,10 @@ const PolicyManager: React.FC = () => {
   };
 
   const formatTimeRange = (policy: Policy) => {
+    // Handle real Kuadrant policies that don't have timeRange
+    if (!policy.timeRange) {
+      return 'Always Active';
+    }
     if (policy.timeRange.unlimited) {
       return 'Unlimited';
     }
@@ -122,10 +126,11 @@ const PolicyManager: React.FC = () => {
   };
 
   const formatRequestLimits = (policy: Policy) => {
+    // Handle real Kuadrant policies that don't have requestLimits
     if (!policy.requestLimits) {
       return null; // Don't show anything for auth policies
     }
-    if (policy.requestLimits.tokenLimit === null) {
+    if (policy.requestLimits.tokenLimit === null || policy.requestLimits.tokenLimit === undefined) {
       return 'Unlimited';
     }
     return `${policy.requestLimits.tokenLimit.toLocaleString()} requests/${policy.requestLimits.timePeriod}`;
