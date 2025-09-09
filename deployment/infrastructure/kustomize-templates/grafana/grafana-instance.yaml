@@ -1,0 +1,17 @@
+kind: Grafana
+apiVersion: grafana.integreatly.org/v1beta1
+metadata:
+  labels:
+    dashboards: grafana
+    folders: grafana
+  name: grafana-a
+  namespace: openshift-operators
+spec:
+  config:
+    auth:
+      disable_login_form: 'false'
+    log:
+      mode: console
+    security:
+      admin_password: start
+      admin_user: root

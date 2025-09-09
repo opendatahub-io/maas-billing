@@ -9,6 +9,8 @@ DEPLOYMENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Default values
 DEPLOYMENT_TYPE=${DEPLOYMENT_TYPE:-simulator}
 TEARDOWN=false
+INSTALL_DEPS=false
+INSTALL_INFRA=false
 AVAILABLE_DEPLOYMENTS=()
 # Colors for output
 RED='\033[0;31m'
@@ -29,13 +31,15 @@ log_error() {
 }
 
 show_usage() {
-    echo "Usage: $0 [--teardown] [deployment-type]"
+    echo "Usage: $0 [OPTIONS] [deployment-type]"
     echo
     echo "Install MaaS deployment with optional teardown and configurable deployment type."
     echo
     echo "Options:"
-    echo "  --teardown    Run teardown before installation (optional)"
-    echo "  --help        Show this help message"
+    echo "  --teardown      Run teardown before installation (optional)"
+    echo "  --install-deps  Install platform dependencies (Istio, cert-manager, KServe, Prometheus)"
+    echo "  --install-infra Install core infrastructure (Kuadrant operators, overlays)"
+    echo "  --help          Show this help message"
     echo
     echo "Deployment Types:"
     for deployment in "${AVAILABLE_DEPLOYMENTS[@]}"; do
@@ -45,10 +49,10 @@ show_usage() {
     echo "Default: $DEPLOYMENT_TYPE"
     echo
     echo "Examples:"
-    echo "  $0                    # Install simulator deployment (default)"
-    echo "  $0 gpu                # Install gpu deployment"
-    echo "  $0 --teardown basic   # Teardown first, then install basic deployment"
-    echo "  $0 --teardown         # Teardown first, then install simulator deployment"
+    echo "  $0 --install-deps --install-infra  # Full installation with dependencies and infrastructure"
+    echo "  $0 gpu                             # Install gpu deployment only (no deps/infra)"
+    echo "  $0 --install-infra basic           # Install infrastructure and basic deployment"
+    echo "  $0 --teardown --install-deps --install-infra  # Complete teardown and reinstall"
 }
 
 detect_available_deployments() {
@@ -120,6 +124,14 @@ parse_arguments() {
                 TEARDOWN=true
                 shift
                 ;;
+            --install-deps)
+                INSTALL_DEPS=true
+                shift
+                ;;
+            --install-infra)
+                INSTALL_INFRA=true
+                shift
+                ;;
             --help)
                 detect_available_deployments
                 show_usage
@@ -175,34 +187,48 @@ main() {
         fi
     fi
     
-    # Install dependencies
-    log_info "Installing dependencies..."
-    scripts/install-dependencies.sh --all
-    log_success "Dependencies installed"
+    # Install dependencies (only if requested)
+    if [ "$INSTALL_DEPS" = true ]; then
+        log_info "Installing dependencies..."
+        scripts/install-dependencies.sh --all
+        log_success "Dependencies installed"
+    else
+        log_info "Skipping dependency installation (use --install-deps to install)"
+    fi
     
-    # Clean up any conflicting operators
-    log_info "Cleaning up conflicting operators..."
-    kubectl -n gateway-system delete subscription sailoperator --ignore-not-found
-    kubectl -n gateway-system delete csv sailoperator.v0.1.0 --ignore-not-found
-    kubectl -n gateway-system delete deployment sail-operator --ignore-not-found
-    kubectl -n gateway-system delete deployment istiod --ignore-not-found
-    
-    # Deploy Kuadrant operators first
-    log_info "Deploying Kuadrant operators..."
-    kustomize build infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
-    log_success "Kuadrant operators deployed"
-    
-    # Wait for operators to be ready
-    log_info "Waiting for operators to be ready..."
-    kubectl wait --for=condition=available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s && \
-    kubectl wait --for=condition=available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s && \
-    kubectl wait --for=condition=available deployment/authorino-operator -n kuadrant-system --timeout=300s
-    log_success "All operators are ready"
-    
-    # Deploy using overlay (always use OpenShift overlay for external access)
-    log_info "Deploying $DEPLOYMENT_TYPE with external access..."
-    kustomize build overlays/openshift | envsubst | kubectl apply -f -
-    log_success "Deployment completed successfully!"
+    # Install infrastructure (only if requested)
+    if [ "$INSTALL_INFRA" = true ]; then
+        # Clean up any conflicting operators
+        log_info "Cleaning up conflicting operators..."
+        kubectl -n gateway-system delete subscription sailoperator --ignore-not-found
+        kubectl -n gateway-system delete csv sailoperator.v0.1.0 --ignore-not-found
+        kubectl -n gateway-system delete deployment sail-operator --ignore-not-found
+        kubectl -n gateway-system delete deployment istiod --ignore-not-found
+        
+        # Deploy Kuadrant operators first
+        log_info "Deploying Kuadrant operators..."
+        kustomize build infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+        log_success "Kuadrant operators deployed"
+        
+        # Wait for operators to be ready
+        log_info "Waiting for operators to be ready..."
+        kubectl wait --for=condition=available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s && \
+        kubectl wait --for=condition=available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s && \
+        kubectl wait --for=condition=available deployment/authorino-operator -n kuadrant-system --timeout=300s
+        log_success "All operators are ready"
+        
+        # Deploy using overlay (always use OpenShift overlay for external access)
+        log_info "Deploying $DEPLOYMENT_TYPE with external access..."
+        kustomize build overlays/openshift | envsubst | kubectl apply -f -
+        log_success "Deployment completed successfully!"
+    else
+        log_info "Skipping infrastructure installation (use --install-infra to install)"
+        
+        # Deploy the example deployment only
+        log_info "Deploying $DEPLOYMENT_TYPE example..."
+        kustomize build "$DEPLOYMENT_PATH" | envsubst | kubectl apply -f -
+        log_success "Example deployment completed successfully!"
+    fi
     
     # Show access information
     echo

@@ -11,4 +11,5 @@ resources:
 - kustomize-templates/kserve
 - kustomize-templates/kuadrant
 - kustomize-templates/key-manager
+- kustomize-templates/grafana # Requires Grafana operator to be pre-installed
 - kustomize-templates/gateway

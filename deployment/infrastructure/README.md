@@ -12,15 +12,17 @@ Base platform components required for Models-as-a-Service (MaaS) deployment.
 # ./scripts/installers/install-istio.sh
 # ./scripts/installers/install-cert-manager.sh
 # ./scripts/installers/install-kserve.sh           # Add --ocp flag for OpenShift clusters
-# ./scripts/installers/install-prometheus.sh       # Optional: for observability
+# ./scripts/installers/install-prometheus.sh       # Optional: for observability (Add --ocp flag for OpenShift clusters)
+# ./scripts/installers/install-grafana.sh         # Optional: for observability requires Grafana operator to be pre-installed
 
 # 2. Set your cluster domain
 export CLUSTER_DOMAIN="apps.your-cluster.com"
 
 # 3. Deploy core infrastructure
-cd infrastructure
-kustomize build . | envsubst | kubectl apply -f -
+kustomize build infrastructure | envsubst | kubectl apply -f -
 ```
+
+Move to [next steps](../examples/) to deploy examples.
 
 ## Dependency Installation
 
