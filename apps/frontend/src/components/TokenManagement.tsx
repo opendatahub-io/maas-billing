@@ -198,8 +198,6 @@ const TokenManagement: React.FC = () => {
     try {
       setTestLoading(true);
       setTestResult(null);
-      setShowRequestDetails(false);
-      setShowResponseDetails(false);
       
       console.log('Testing token:', tokenToTest.substring(0, 10) + '...');
       
