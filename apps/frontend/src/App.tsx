@@ -152,9 +152,10 @@ function MainApp() {
   ];
 
   return (
-    <Box sx={{ display: 'flex' }}>
-        
-        {/* App Bar */}
+    <>
+      <Box sx={{ display: 'flex' }}>
+          
+          {/* App Bar */}
         <AppBar
           position="fixed"
           sx={{
@@ -419,6 +420,7 @@ function MainApp() {
           </Button>
         </DialogActions>
       </Dialog>
+    </>
   );
 }
 
