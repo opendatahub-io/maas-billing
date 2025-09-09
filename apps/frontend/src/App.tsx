@@ -31,7 +31,6 @@ import PolicyManager from './components/PolicyManager';
 import MetricsDashboard from './components/MetricsDashboard';
 import RequestSimulator from './components/RequestSimulator';
 import TokenManagement from './components/TokenManagement';
-import AuthCallback from './components/AuthCallback';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 const drawerWidth = 240;

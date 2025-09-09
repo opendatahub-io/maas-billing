@@ -141,6 +141,21 @@ class ApiService {
       body: JSON.stringify(params),
     });
   }
+
+  // OAuth APIs
+  async exchangeOAuthCode(code: string, redirectUri?: string) {
+    return this.fetch('/auth/oauth/exchange', {
+      method: 'POST',
+      body: JSON.stringify({
+        code: code,
+        redirect_uri: redirectUri || window.location.origin + '/auth/callback'
+      }),
+    });
+  }
+
+  async getClusterStatus() {
+    return this.fetch('/cluster/status');
+  }
 }
 
 const apiService = new ApiService();

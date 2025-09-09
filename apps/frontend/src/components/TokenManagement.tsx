@@ -14,8 +14,6 @@ import {
   Key as KeyIcon,
   Security as SecurityIcon,
   Assessment as TestIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
   Code as CodeIcon,
   Http as HttpIcon
 } from '@mui/icons-material';
@@ -82,8 +80,6 @@ const TokenManagement: React.FC = () => {
   const [useCustomToken, setUseCustomToken] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testLoading, setTestLoading] = useState(false);
-  const [showRequestDetails, setShowRequestDetails] = useState(false);
-  const [showResponseDetails, setShowResponseDetails] = useState(false);
   
   // Available models
   const [availableModels, setAvailableModels] = useState<string[]>([]);
