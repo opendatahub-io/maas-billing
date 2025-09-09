@@ -65,10 +65,6 @@ const PolicyManager: React.FC = () => {
     setFilteredPolicies(filtered);
   }, [searchTerm, policies]);
 
-  const handleCreatePolicy = () => {
-    setSelectedPolicy(null);
-    setIsBuilderOpen(true);
-  };
 
   const togglePolicyExpansion = (policyId: string) => {
     const newExpanded = new Set(expandedPolicies);
@@ -357,17 +353,8 @@ const PolicyManager: React.FC = () => {
             No policies found
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {searchTerm ? 'Try adjusting your search criteria' : 'Get started by creating your first policy'}
+            {searchTerm ? 'Try adjusting your search criteria' : 'No policies found. Ensure you are authenticated with the cluster.'}
           </Typography>
-          {!searchTerm && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleCreatePolicy}
-            >
-              Create Policy
-            </Button>
-          )}
         </Box>
       )}
 
