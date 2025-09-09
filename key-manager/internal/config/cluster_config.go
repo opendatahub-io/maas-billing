@@ -31,8 +31,6 @@ func NewClusterConfig() (*K8sClusterConfig, error) {
 		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
-	// ... remainder of function unchanged ...
-}
 	return &K8sClusterConfig{
 		RestConfig: restConfig,
 		ClientSet:  clientset,
