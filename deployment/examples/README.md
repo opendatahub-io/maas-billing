@@ -15,13 +15,12 @@ deployment/scripts/install.sh
 
 # Deploy specific deployment type
 deployment/scripts/install.sh gpu
-deployment/scripts/install.sh basic
-
+```
 # Add a new deployment type
 
-Any subdirectory under deployment/examples/ named as {name}-deployment will be picked up as a deployment type by deployment/scripts/insall.sh
+Any subdirectory under `deployment/examples/` named as {name}-deployment will be picked up as a deployment type by `deployment/scripts/install.sh`
 
-e.g. deployment/examples/gpu-deployment will display as the deployment option --gpu in the installer.
+e.g. `deployment/examples/gpu-deployment` will display as the `deployment option gpu` in the installer.
 
 ## Installation Sequence
 

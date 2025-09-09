@@ -16,7 +16,7 @@ import (
 
 // PolicyManager handles Kuadrant policy operations
 type PolicyManager struct {
-	kuadrantClient           dynamic.Interface
+	k8sClient                dynamic.Interface
 	clientset                *kubernetes.Clientset
 	keyNamespace             string
 	tokenRateLimitPolicyName string
@@ -24,9 +24,9 @@ type PolicyManager struct {
 }
 
 // NewPolicyManager creates a new policy manager
-func NewPolicyManager(kuadrantClient dynamic.Interface, clientset *kubernetes.Clientset, keyNamespace, tokenRateLimitPolicyName, authPolicyName string) *PolicyManager {
+func NewPolicyManager(k8sClient dynamic.Interface, clientset *kubernetes.Clientset, keyNamespace, tokenRateLimitPolicyName, authPolicyName string) *PolicyManager {
 	return &PolicyManager{
-		kuadrantClient:           kuadrantClient,
+		k8sClient:                k8sClient,
 		clientset:                clientset,
 		keyNamespace:             keyNamespace,
 		tokenRateLimitPolicyName: tokenRateLimitPolicyName,
@@ -70,7 +70,7 @@ func (p *PolicyManager) GetPolicyLimits(policyName string) (int, string, error) 
 	}
 
 	// Get the current TokenRateLimitPolicy
-	policyObj, err := p.kuadrantClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Get(
+	policyObj, err := p.k8sClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Get(
 		context.Background(), p.tokenRateLimitPolicyName, metav1.GetOptions{})
 	if err != nil {
 		return 0, "", fmt.Errorf("failed to get TokenRateLimitPolicy: %w", err)
@@ -147,7 +147,7 @@ func (p *PolicyManager) updateAuthPolicyForTeam(policyName string, add bool) err
 	}
 
 	// Get the current AuthPolicy
-	authPolicyObj, err := p.kuadrantClient.Resource(authPolicyGVR).Namespace(p.keyNamespace).Get(
+	authPolicyObj, err := p.k8sClient.Resource(authPolicyGVR).Namespace(p.keyNamespace).Get(
 		context.Background(), p.authPolicyName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get AuthPolicy: %w", err)
@@ -239,7 +239,7 @@ func (p *PolicyManager) updateAuthPolicyForTeam(policyName string, add bool) err
 	}
 
 	// Apply the updated AuthPolicy
-	_, err = p.kuadrantClient.Resource(authPolicyGVR).Namespace(p.keyNamespace).Update(
+	_, err = p.k8sClient.Resource(authPolicyGVR).Namespace(p.keyNamespace).Update(
 		context.Background(), authPolicyObj, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update AuthPolicy: %w", err)
@@ -259,7 +259,7 @@ func (p *PolicyManager) updateTokenRateLimitPolicyForTeam(policyName string, add
 	}
 
 	// Get the current TokenRateLimitPolicy
-	policyObj, err := p.kuadrantClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Get(
+	policyObj, err := p.k8sClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Get(
 		context.Background(), p.tokenRateLimitPolicyName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get TokenRateLimitPolicy: %w", err)
@@ -305,7 +305,7 @@ func (p *PolicyManager) updateTokenRateLimitPolicyForTeam(policyName string, add
 	}
 
 	// Apply the updated TokenRateLimitPolicy
-	_, err = p.kuadrantClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Update(
+	_, err = p.k8sClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Update(
 		context.Background(), policyObj, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update TokenRateLimitPolicy: %w", err)
@@ -348,7 +348,7 @@ func (p *PolicyManager) verifyPolicyReload() error {
 	// Check AuthPolicy status with timeout
 	timeout := time.Now().Add(30 * time.Second)
 	for time.Now().Before(timeout) {
-		authPolicy, err := p.kuadrantClient.Resource(authPolicyGVR).Namespace(p.keyNamespace).Get(
+		authPolicy, err := p.k8sClient.Resource(authPolicyGVR).Namespace(p.keyNamespace).Get(
 			context.Background(), p.authPolicyName, metav1.GetOptions{})
 		if err != nil {
 			log.Printf("Warning: Failed to get AuthPolicy status: %v", err)
@@ -369,7 +369,7 @@ func (p *PolicyManager) verifyPolicyReload() error {
 	// Check TokenRateLimitPolicy status with timeout
 	timeout = time.Now().Add(30 * time.Second)
 	for time.Now().Before(timeout) {
-		tokenRatePolicy, err := p.kuadrantClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Get(
+		tokenRatePolicy, err := p.k8sClient.Resource(tokenRateLimitGVR).Namespace(p.keyNamespace).Get(
 			context.Background(), p.tokenRateLimitPolicyName, metav1.GetOptions{})
 		if err != nil {
 			log.Printf("Warning: Failed to get TokenRateLimitPolicy status: %v", err)

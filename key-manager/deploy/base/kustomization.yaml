@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: key-manager-base
+
+resources:
+- ../rbac/
+- service.yaml
+- deployment.yaml
+
+namespace: key-manager
+
+labels:
+- pairs:
+    app.kubernetes.io/name: key-manager
+    app.kubernetes.io/component: api
+  includeSelectors: true
+
+# See https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kustomize/
+secretGenerator:
+- name: key-manager-admin-secret
+  envs:
+  - admin.secret.env # secret for the admin API key, e.g. `admin-api-key=letmein`
+
+configMapGenerator:
+- name: key-manager-config
+  envs:
+  - params.env
+
+replacements:
+- source:
+    kind: ConfigMap
+    name: key-manager-config
+    fieldPath: data.key-manager-image
+  targets:
+  - select:
+      kind: Deployment
+      name: key-manager
+    fieldPaths:
+    - spec.template.spec.containers.[name=key-manager].image

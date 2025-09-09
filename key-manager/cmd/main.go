@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	"github.com/opendatahub-io/maas-billing/key-manager/internal/auth"
 	"github.com/opendatahub-io/maas-billing/key-manager/internal/config"
@@ -17,47 +21,72 @@ import (
 )
 
 func main() {
-	// Load configuration
 	cfg := config.Load()
 
-	// Create in-cluster config
-	restConfig, err := rest.InClusterConfig()
-	if err != nil {
-		log.Fatalf("Failed to create in-cluster config: %v", err)
+	router := registerHandlers(cfg)
+
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
-	// Create Kubernetes clientset
-	clientset, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		log.Fatalf("Failed to create Kubernetes clientset: %v", err)
+	go func() {
+		log.Printf("Server starting on port %s", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutdown signal received, shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
 	}
 
-	// Create dynamic client for Kuadrant CRDs
-	kuadrantClient, err := dynamic.NewForConfig(restConfig)
+	log.Println("Server exited gracefully")
+}
+
+func registerHandlers(cfg *config.Config) *gin.Engine {
+	router := gin.Default()
+
+	// Health check endpoint (no auth required)
+	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
+
+	clusterConfig, err := config.NewClusterConfig()
 	if err != nil {
-		log.Fatalf("Failed to create dynamic client: %v", err)
+		log.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
 
 	// Initialize managers
 	policyMgr := teams.NewPolicyManager(
-		kuadrantClient,
-		clientset,
+		clusterConfig.DynClient,
+		clusterConfig.ClientSet,
 		cfg.KeyNamespace,
 		cfg.TokenRateLimitPolicyName,
 		cfg.AuthPolicyName,
 	)
 
-	teamMgr := teams.NewManager(clientset, cfg.KeyNamespace, policyMgr)
-	keyMgr := keys.NewManager(clientset, cfg.KeyNamespace, teamMgr)
-	modelMgr := models.NewManager(kuadrantClient)
+	teamMgr := teams.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, policyMgr)
+	keyMgr := keys.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, teamMgr)
+	modelMgr := models.NewManager(clusterConfig.DynClient)
 
 	// Initialize handlers
-	usageHandler := handlers.NewUsageHandler(clientset, restConfig, cfg.KeyNamespace)
+	usageHandler := handlers.NewUsageHandler(clusterConfig.ClientSet, clusterConfig.RestConfig, cfg.KeyNamespace)
 	teamsHandler := handlers.NewTeamsHandler(teamMgr)
 	keysHandler := handlers.NewKeysHandler(keyMgr, teamMgr)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	legacyHandler := handlers.NewLegacyHandler(keyMgr)
-	healthHandler := handlers.NewHealthHandler()
 
 	// Create default team if enabled
 	if cfg.CreateDefaultTeam {
@@ -68,14 +97,8 @@ func main() {
 		}
 	}
 
-	// Initialize Gin router
-	r := gin.Default()
-
-	// Health check endpoint (no auth required)
-	r.GET("/health", healthHandler.HealthCheck)
-
 	// Setup API routes with admin authentication
-	adminRoutes := r.Group("/", auth.AdminAuthMiddleware())
+	adminRoutes := router.Group("/", auth.AdminAuthMiddleware())
 
 	// Legacy endpoints (backward compatibility)
 	adminRoutes.POST("/generate_key", legacyHandler.GenerateKey)
@@ -103,7 +126,5 @@ func main() {
 	// Model listing endpoint
 	adminRoutes.GET("/models", modelsHandler.ListModels)
 
-	// Start server
-	log.Printf("Starting %s on port %s", cfg.ServiceName, cfg.Port)
-	log.Fatal(r.Run(":" + cfg.Port))
+	return router
 }
