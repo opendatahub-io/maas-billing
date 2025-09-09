@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AppBar,
   Box,
@@ -32,6 +32,7 @@ import MetricsDashboard from './components/MetricsDashboard';
 import RequestSimulator from './components/RequestSimulator';
 import TokenManagement from './components/TokenManagement';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import apiService from './services/api';
 
 const drawerWidth = 240;
 
@@ -39,6 +40,17 @@ function AppContent() {
   const [selectedView, setSelectedView] = useState('policies');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const { mode, toggleTheme } = useTheme();
+  const [clusterStatus, setClusterStatus] = useState<{
+    connected: boolean;
+    user: string | null;
+    cluster: string | null;
+    loginUrl: string;
+  }>({
+    connected: false,
+    user: null,
+    cluster: null,
+    loginUrl: 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
+  });
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -47,6 +59,40 @@ function AppContent() {
   const handleClose = () => {
     setAnchorEl(null);
   };
+
+  const handleLogout = () => {
+    // Redirect to cluster login page with return URL
+    const returnUrl = encodeURIComponent(window.location.href);
+    window.location.href = `${clusterStatus.loginUrl}?then=${returnUrl}`;
+  };
+
+  // Check authentication status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const status = await apiService.getClusterStatus();
+        setClusterStatus(status);
+        
+        // Log status but don't auto-redirect for development
+        if (!status.connected) {
+          console.warn('User not authenticated. Use logout button to redirect to cluster login.');
+        } else {
+          console.log(`✅ Authenticated as: ${status.user}`);
+        }
+      } catch (error) {
+        console.warn('Could not check authentication status:', error);
+        // Set default status, don't redirect automatically
+        setClusterStatus({
+          connected: false,
+          user: null,
+          cluster: null,
+          loginUrl: 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
+        });
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   const renderContent = () => {
     switch (selectedView) {
@@ -158,7 +204,7 @@ function AppContent() {
                   </ListItemIcon>
                   Settings
                 </MenuItem>
-                <MenuItem onClick={handleClose}>
+                <MenuItem onClick={handleLogout}>
                   <ListItemIcon>
                     <Logout fontSize="small" />
                   </ListItemIcon>
