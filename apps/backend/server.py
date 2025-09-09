@@ -58,6 +58,11 @@ CONSOLE_BASE_URL = os.getenv('CONSOLE_BASE_URL', f'https://console-openshift-con
 # SSL Configuration
 SSL_VERIFY = os.getenv('SSL_VERIFY', 'false').lower() == 'true'  # Default to false for development
 
+# Timeout Configuration
+DEFAULT_TIMEOUT = int(os.getenv('DEFAULT_TIMEOUT', '30'))
+CLUSTER_TIMEOUT = int(os.getenv('CLUSTER_TIMEOUT', '10'))
+SUBPROCESS_TIMEOUT = int(os.getenv('SUBPROCESS_TIMEOUT', '5'))
+
 # Default team ID for single-user mode (can be overridden by environment variables)
 DEFAULT_TEAM_ID = os.getenv('DEFAULT_TEAM_ID', 'default')
 DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'noyitz')
@@ -89,7 +94,12 @@ SIMULATOR_METRICS = {
     'rate_limits': 0
 }
 
-# OAuth token storage (in production, use proper session management)
+# OAuth token storage 
+# WARNING: This is for development only. In production, use:
+# - Redis for session storage
+# - Encrypted cookies with proper session management
+# - Database-backed user sessions with expiration
+# - Proper OAuth state validation
 OAUTH_TOKENS = {}
 
 def create_ssl_context():
@@ -144,7 +154,7 @@ def exchange_oauth_code_for_token(code, redirect_uri):
         ctx = create_ssl_context()
         
         # Make the request
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+        with urllib.request.urlopen(req, context=ctx, timeout=DEFAULT_TIMEOUT) as response:
             response_data = json.loads(response.read().decode('utf-8'))
             
             if 'access_token' in response_data:
@@ -184,7 +194,7 @@ def call_key_manager_api(endpoint, method='GET', data=None):
         else:
             raise Exception(f"Unsupported method: {method}")
         
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+        with urllib.request.urlopen(req, context=ctx, timeout=DEFAULT_TIMEOUT) as response:
             response_data = json.loads(response.read().decode('utf-8'))
             return response_data
     except urllib.error.HTTPError as e:
@@ -245,22 +255,17 @@ def get_api_key_from_secret(secret_name):
         
         print(f"🔍 Attempting to get API key for secret: {secret_name}")
         
-        # Known working API key mappings (temporary solution)
-        # TODO: Make this dynamic once subprocess issue is resolved
-        known_keys = {
-            'apikey-noyitz-default-90057c8d': 'kRmkCPutSJb_dConwKVXxV-09iFaKheFbRNv-FkMC2NtpQFC',
-            'apikey-noyitz-default-bed17b8b': 'aLib31_t_zHBbTDiqPbAyWq0j79ALdgecFSNFinb5RFnn5st'
-        }
-        
-        if secret_name in known_keys and known_keys[secret_name]:
-            print(f"🔑 Using known API key for {secret_name}: {known_keys[secret_name][:10]}...")
-            return known_keys[secret_name]
+        # Try to get API keys from environment variables first (for development)
+        env_key = os.getenv(f'API_KEY_{secret_name.replace("-", "_").upper()}')
+        if env_key:
+            print(f"🔑 Using API key from environment for {secret_name}: {env_key[:10]}...")
+            return env_key
         
         # Try the oc command approach
         result = subprocess.run([
             'oc', 'get', 'secret', secret_name, '-n', 'llm', 
             '-o', 'jsonpath={.data.api_key}'
-        ], capture_output=True, text=True, timeout=10)
+        ], capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT)
         
         print(f"🔍 oc command result: returncode={result.returncode}")
         print(f"🔍 stdout length: {len(result.stdout) if result.stdout else 0}")
@@ -347,7 +352,7 @@ def fetch_kuadrant_policies():
         print("🔍 Running locally - attempting to fetch policies via external cluster API")
         try:
             # Try to get cluster token
-            token_result = subprocess.run(['oc', 'whoami', '-t'], capture_output=True, text=True, timeout=5)
+            token_result = subprocess.run(['oc', 'whoami', '-t'], capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT)
             if token_result.returncode == 0:
                 token = token_result.stdout.strip()
                 print("🔍 Using oc token for external cluster API access")
@@ -399,7 +404,7 @@ def fetch_policies_from_k8s_api():
             api_check_request.add_header('Authorization', f'Bearer {token}')
             api_check_request.add_header('Accept', 'application/json')
             
-            with urllib.request.urlopen(api_check_request, context=ctx, timeout=10) as response:
+            with urllib.request.urlopen(api_check_request, context=ctx, timeout=CLUSTER_TIMEOUT) as response:
                 api_data = json.loads(response.read().decode())
                 print(f"✅ Kuadrant API is available. Versions: {[v['version'] for v in api_data.get('versions', [])]}")
         except Exception as api_check_error:
@@ -413,7 +418,7 @@ def fetch_policies_from_k8s_api():
             auth_request.add_header('Authorization', f'Bearer {token}')
             auth_request.add_header('Accept', 'application/json')
             
-            with urllib.request.urlopen(auth_request, context=ctx, timeout=10) as response:
+            with urllib.request.urlopen(auth_request, context=ctx, timeout=CLUSTER_TIMEOUT) as response:
                 auth_data = json.loads(response.read().decode())
                 print(f"🔍 Fetched {len(auth_data.get('items', []))} AuthPolicies")
             
@@ -481,7 +486,7 @@ def fetch_policies_from_k8s_api():
             rate_request.add_header('Authorization', f'Bearer {token}')
             rate_request.add_header('Accept', 'application/json')
             
-            with urllib.request.urlopen(rate_request, context=ctx, timeout=10) as response:
+            with urllib.request.urlopen(rate_request, context=ctx, timeout=CLUSTER_TIMEOUT) as response:
                 rate_data = json.loads(response.read().decode())
                 print(f"🔍 Fetched {len(rate_data.get('items', []))} TokenRateLimitPolicies")
                 
@@ -573,7 +578,7 @@ def fetch_policies_from_external_k8s_api(token):
             auth_url = f'https://{k8s_host}:{k8s_port}/apis/kuadrant.io/v1/namespaces/llm/authpolicies'
             auth_request = urllib.request.Request(auth_url, headers=headers)
             
-            with urllib.request.urlopen(auth_request, context=ctx, timeout=10) as response:
+            with urllib.request.urlopen(auth_request, context=ctx, timeout=CLUSTER_TIMEOUT) as response:
                 auth_data = json.loads(response.read().decode())
                 print(f"🔍 Fetched {len(auth_data.get('items', []))} AuthPolicies from external API")
                 
@@ -640,7 +645,7 @@ def fetch_policies_from_external_k8s_api(token):
             rate_url = f'https://{k8s_host}:{k8s_port}/apis/kuadrant.io/v1alpha1/namespaces/llm/tokenratelimitpolicies'
             rate_request = urllib.request.Request(rate_url, headers=headers)
             
-            with urllib.request.urlopen(rate_request, context=ctx, timeout=10) as response:
+            with urllib.request.urlopen(rate_request, context=ctx, timeout=CLUSTER_TIMEOUT) as response:
                 rate_data = json.loads(response.read().decode())
                 print(f"🔍 Fetched {len(rate_data.get('items', []))} TokenRateLimitPolicies from external API")
                 
@@ -715,7 +720,7 @@ def fetch_cluster_metrics():
         else:
             # For localhost, use oc token
             try:
-                token_result = subprocess.run(['oc', 'whoami', '-t'], capture_output=True, text=True, timeout=5)
+                token_result = subprocess.run(['oc', 'whoami', '-t'], capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT)
                 if token_result.returncode == 0:
                     token = token_result.stdout.strip()
                     print("🔍 Using oc token for cluster Prometheus access from localhost")
@@ -772,7 +777,7 @@ def fetch_cluster_metrics():
                 test_url = f"{prometheus_base_url}/api/v1/query?query=up"
                 req = urllib.request.Request(test_url, headers=headers)
                 
-                with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                with urllib.request.urlopen(req, timeout=CLUSTER_TIMEOUT, context=ctx) as response:
                     test_data = json.loads(response.read().decode('utf-8'))
                     if test_data.get('status') == 'success':
                         print(f"✅ Connected to Prometheus: {prometheus_base_url}")
@@ -784,7 +789,7 @@ def fetch_cluster_metrics():
                                 query_url = f"{prometheus_base_url}/api/v1/query?query={urllib.parse.quote(query)}"
                                 req = urllib.request.Request(query_url, headers=headers)
                                 
-                                with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                                with urllib.request.urlopen(req, timeout=CLUSTER_TIMEOUT, context=ctx) as response:
                                     data = json.loads(response.read().decode('utf-8'))
                                     
                                     if data.get('status') == 'success' and data.get('data', {}).get('result'):
@@ -1089,14 +1094,14 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 
                 try:
                     # Try to get current user - but don't fail if oc command doesn't work
-                    user_result = subprocess.run(['oc', 'whoami'], capture_output=True, text=True, timeout=5)
+                    user_result = subprocess.run(['oc', 'whoami'], capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT)
                     if user_result.returncode == 0:
                         cluster_status["connected"] = True
                         cluster_status["user"] = user_result.stdout.strip()
                         
                         # Try to get cluster info
                         try:
-                            cluster_result = subprocess.run(['oc', 'cluster-info'], capture_output=True, text=True, timeout=5)
+                            cluster_result = subprocess.run(['oc', 'cluster-info'], capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT)
                             if cluster_result.returncode == 0:
                                 # Extract cluster URL from cluster-info output
                                 import re
@@ -1342,11 +1347,9 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 tier = request_data.get('tier', 'unknown')
                 model = request_data.get('model', 'unknown')
                 
-                # Map models to their actual endpoints
-                model_endpoints = {
-                    'vllm-simulator': 'http://simulator-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/v1/chat/completions',
-                    'qwen3-0-6b-instruct': 'http://qwen3-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/v1/chat/completions'
-                }
+                # All models should go through the same Kuadrant gateway endpoint
+                # Kuadrant will handle routing to the appropriate backend based on the model name
+                gateway_endpoint = os.getenv('MODEL_GATEWAY_URL', f'http://simulator-llm.{CLUSTER_DOMAIN}/v1/chat/completions')
                 
                 # For localhost development, try to use the same external endpoints
                 # (requires proper API keys and network access)
@@ -1361,39 +1364,34 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                     # If they fail, we'll provide helpful error messages
                     print(f"🔍 Localhost mode: Will attempt real request to external endpoint")
                 
-                endpoint_url = model_endpoints.get(model)
-                if not endpoint_url:
-                    status_code = 400
-                    response = {
-                        "success": False,
-                        "error": f"Unknown model: {model}",
-                        "debug": {"available_models": list(model_endpoints.keys())}
+                endpoint_url = gateway_endpoint
+                print(f"🔍 Using unified gateway endpoint: {endpoint_url}")
+                print(f"🔍 Model '{model}' will be routed by Kuadrant to the appropriate backend")
+                
+                try:
+                    # Prepare the real request to the model endpoint
+                    real_request_data = {
+                        "model": model,
+                        "messages": request_data.get('messages', []),
+                        "max_tokens": request_data.get('max_tokens', 100)
                     }
-                else:
+                    
+                    # Prepare headers for the real request
+                    real_headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': auth_header  # Pass through the auth header
+                    }
+                    
+                    print(f"🌐 Making REAL request to {endpoint_url} with tier {tier}")
+                    
+                    # Make the real HTTP request to the model endpoint
+                    import urllib.request
+                    import urllib.parse
+                    
+                    req_data = json.dumps(real_request_data).encode('utf-8')
+                    req = urllib.request.Request(endpoint_url, data=req_data, headers=real_headers, method='POST')
+                    
                     try:
-                        # Prepare the real request to the model endpoint
-                        real_request_data = {
-                            "model": model,
-                            "messages": request_data.get('messages', []),
-                            "max_tokens": request_data.get('max_tokens', 100)
-                        }
-                        
-                        # Prepare headers for the real request
-                        real_headers = {
-                            'Content-Type': 'application/json',
-                            'Authorization': auth_header  # Pass through the auth header
-                        }
-                        
-                        print(f"🌐 Making REAL request to {endpoint_url} with tier {tier}")
-                        
-                        # Make the real HTTP request to the model endpoint
-                        import urllib.request
-                        import urllib.parse
-                        
-                        req_data = json.dumps(real_request_data).encode('utf-8')
-                        req = urllib.request.Request(endpoint_url, data=req_data, headers=real_headers, method='POST')
-                        
-                        try:
                             with urllib.request.urlopen(req, timeout=30) as real_response:
                                 real_response_data = json.loads(real_response.read().decode('utf-8'))
                                 
@@ -1543,6 +1541,35 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 model = request_data.get('model', 'vllm-simulator')
                 message = request_data.get('message', 'Hello!')
                 
+                # Input validation
+                if not token or not token.strip():
+                    self.send_response(400)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+                    self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                    self.end_headers()
+                    response = {
+                        "success": False,
+                        "data": {"error": "Token is required"}
+                    }
+                    self.wfile.write(json.dumps(response).encode('utf-8'))
+                    return
+                
+                if not message or not message.strip():
+                    self.send_response(400)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+                    self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                    self.end_headers()
+                    response = {
+                        "success": False,
+                        "data": {"error": "Message is required"}
+                    }
+                    self.wfile.write(json.dumps(response).encode('utf-8'))
+                    return
+                
                 print(f"🧪 Testing token with request:")
                 print(f"   Token (first 10 chars): {token[:10]}...")
                 print(f"   Model: {model}")
@@ -1550,7 +1577,8 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 
                 # All models should go through the same Kuadrant gateway endpoint
                 # Kuadrant will handle routing to the appropriate backend based on the model name
-                endpoint_url = 'http://simulator-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/v1/chat/completions'
+                gateway_endpoint = os.getenv('MODEL_GATEWAY_URL', f'http://simulator-llm.{CLUSTER_DOMAIN}/v1/chat/completions')
+                endpoint_url = gateway_endpoint
                 
                 print(f"🔍 Using unified gateway endpoint for all models: {endpoint_url}")
                 print(f"🔍 Model '{model}' will be routed by Kuadrant to the appropriate backend")

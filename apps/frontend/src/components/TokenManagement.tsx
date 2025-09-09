@@ -628,15 +628,7 @@ const TokenManagement: React.FC = () => {
                           onClick={() => setCustomTokenValue('invalid-token-123')}
                           sx={{ mr: 1, mb: 0.5 }}
                         >
-                          Invalid Token
-                        </Button>
-                        <Button 
-                          size="small" 
-                          variant="outlined" 
-                          onClick={() => setCustomTokenValue('kRmkCPutSJb_dConwKVXxV-09iFaKheFbRNv-FkMC2NtpQFC')}
-                          sx={{ mr: 1, mb: 0.5 }}
-                        >
-                          Your Working Token 1
+                          Test Invalid Token
                         </Button>
                         <Button 
                           size="small" 
@@ -644,23 +636,15 @@ const TokenManagement: React.FC = () => {
                           onClick={() => setCustomTokenValue('freeuser1_key')}
                           sx={{ mr: 1, mb: 0.5 }}
                         >
-                          Free User Token
+                          Test Free User Token
                         </Button>
                         <Button 
                           size="small" 
                           variant="outlined" 
                           onClick={() => setCustomTokenValue('premiumuser1_key')}
-                          sx={{ mr: 1, mb: 0.5 }}
-                        >
-                          Premium User Token
-                        </Button>
-                        <Button 
-                          size="small" 
-                          variant="outlined" 
-                          onClick={() => setCustomTokenValue('aLib31_t_zHBbTDiqPbAyWq0j79ALdgecFSNFinb5RFnn5st')}
                           sx={{ mb: 0.5 }}
                         >
-                          Your Real Token
+                          Test Premium User Token
                         </Button>
                       </Box>
                     </Box>
