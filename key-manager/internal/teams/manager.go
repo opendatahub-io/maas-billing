@@ -272,15 +272,11 @@ func (m *Manager) Delete(teamID string) error {
 		}
 	}
 
-	// Delete all team API keys
-	err = m.deleteAllTeamKeys(teamID)
-	if err != nil {
-		log.Printf("Failed to delete team keys: %v", err)
-	}
+    // Foreground delete: GC removes owned key Secrets first, then the team
+    fg := metav1.DeletePropagationForeground
+    err = m.clientset.CoreV1().Secrets(m.keyNamespace).Delete(
+        context.Background(), teamSecret.Name, metav1.DeleteOptions{PropagationPolicy: &fg})
 
-	// Delete team configuration secret
-	err = m.clientset.CoreV1().Secrets(m.keyNamespace).Delete(
-		context.Background(), teamSecret.Name, metav1.DeleteOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to delete team: %w", err)
 	}
