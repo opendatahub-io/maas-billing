@@ -48,13 +48,19 @@ MOCK_USER = {
     'namespace': 'inference-gateway-tier-premium'
 }
 
-# Key Manager Configuration
-KEY_MANAGER_BASE_URL = 'https://key-manager-route-platform-services.apps.summit-gpu.octo-emerging.redhataicoe.com'
-KEY_MANAGER_ADMIN_KEY = 'admin-key-placeholder'  # This should be configured via environment variable
+# Configuration from environment variables
+CLUSTER_DOMAIN = os.getenv('CLUSTER_DOMAIN', 'apps.summit-gpu.octo-emerging.redhataicoe.com')
+KEY_MANAGER_BASE_URL = os.getenv('KEY_MANAGER_BASE_URL', f'https://key-manager-route-platform-services.{CLUSTER_DOMAIN}')
+KEY_MANAGER_ADMIN_KEY = os.getenv('KEY_MANAGER_ADMIN_KEY', 'admin-key-placeholder')
+OAUTH_BASE_URL = os.getenv('OAUTH_BASE_URL', f'https://oauth-openshift.{CLUSTER_DOMAIN}')
+CONSOLE_BASE_URL = os.getenv('CONSOLE_BASE_URL', f'https://console-openshift-console.{CLUSTER_DOMAIN}')
+
+# SSL Configuration
+SSL_VERIFY = os.getenv('SSL_VERIFY', 'false').lower() == 'true'  # Default to false for development
 
 # Default team ID for single-user mode (can be overridden by environment variables)
 DEFAULT_TEAM_ID = os.getenv('DEFAULT_TEAM_ID', 'default')
-DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'noyitz')  # Using your actual username from the cluster
+DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'noyitz')
 
 # Mock tokens for localhost
 MOCK_TOKENS = [
@@ -86,6 +92,21 @@ SIMULATOR_METRICS = {
 # OAuth token storage (in production, use proper session management)
 OAUTH_TOKENS = {}
 
+def create_ssl_context():
+    """Create SSL context based on configuration"""
+    import ssl
+    ctx = ssl.create_default_context()
+    
+    if not SSL_VERIFY:
+        # For development environments with self-signed certificates
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        print("⚠️  SSL verification disabled (development mode)")
+    else:
+        print("🔒 SSL verification enabled (production mode)")
+    
+    return ctx
+
 def exchange_oauth_code_for_token(code, redirect_uri):
     """Exchange OAuth authorization code for access token"""
     try:
@@ -94,7 +115,7 @@ def exchange_oauth_code_for_token(code, redirect_uri):
         import ssl
         
         # OpenShift OAuth token endpoint
-        token_url = 'https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/token'
+        token_url = f'{OAUTH_BASE_URL}/oauth/token'
         
         # OAuth client credentials (these would need to be registered in OpenShift)
         client_id = 'maas-billing-app'
@@ -120,9 +141,7 @@ def exchange_oauth_code_for_token(code, redirect_uri):
         req = urllib.request.Request(token_url, data=encoded_data, headers=headers, method='POST')
         
         # Create SSL context
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        ctx = create_ssl_context()
         
         # Make the request
         with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
@@ -151,10 +170,8 @@ def call_key_manager_api(endpoint, method='GET', data=None):
         'Content-Type': 'application/json'
     }
     
-    # Create SSL context that accepts self-signed certificates
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    # Create SSL context
+    ctx = create_ssl_context()
     
     try:
         if method == 'GET':
@@ -370,10 +387,8 @@ def fetch_policies_from_k8s_api():
         k8s_host = 'kubernetes.default.svc'
         k8s_port = '443'
         
-        # Create SSL context that accepts the cluster's self-signed cert
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        # Create SSL context
+        ctx = create_ssl_context()
         
         policies = []
         
@@ -542,10 +557,8 @@ def fetch_policies_from_external_k8s_api(token):
         k8s_host = 'api.summit-gpu.octo-emerging.redhataicoe.com'
         k8s_port = '6443'
         
-        # Create SSL context that accepts the cluster's cert
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        # Create SSL context
+        ctx = create_ssl_context()
         
         policies = []
         
@@ -752,10 +765,8 @@ def fetch_cluster_metrics():
         prometheus_connected = False
         for prometheus_base_url in prometheus_endpoints:
             try:
-                # Skip SSL verification for internal cluster communication
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+                # Create SSL context for cluster communication
+                ctx = create_ssl_context()
                 
                 # Test connection
                 test_url = f"{prometheus_base_url}/api/v1/query?query=up"
@@ -1576,10 +1587,8 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 req_data = json.dumps(real_request_data).encode('utf-8')
                 req = urllib.request.Request(endpoint_url, data=req_data, headers=real_headers, method='POST')
                 
-                # Create SSL context that handles self-signed certificates
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+                # Create SSL context
+                ctx = create_ssl_context()
                 
                 try:
                     with urllib.request.urlopen(req, timeout=30, context=ctx) as real_response:

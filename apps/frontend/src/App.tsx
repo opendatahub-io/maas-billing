@@ -60,7 +60,7 @@ function MainApp() {
     connected: false,
     user: null,
     cluster: null,
-    loginUrl: 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
+    loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
   });
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
@@ -78,7 +78,8 @@ function MainApp() {
     
     // Redirect to OpenShift OAuth login for fresh CLI session
     const returnUrl = encodeURIComponent(window.location.origin);
-    const loginUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/token/request?then=${returnUrl}`;
+    const oauthBaseUrl = process.env.REACT_APP_OAUTH_URL || 'https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com';
+    const loginUrl = `${oauthBaseUrl}/oauth/token/request?then=${returnUrl}`;
     
     console.log('🔐 Logging out and redirecting to OpenShift OAuth login...');
     window.location.href = loginUrl;
@@ -123,7 +124,7 @@ function MainApp() {
           connected: false,
           user: null,
           cluster: null,
-          loginUrl: 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
+          loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
         });
         setShowLoginDialog(true);
       }
@@ -379,14 +380,14 @@ function MainApp() {
           
           <TextField
             fullWidth
-            value="oc login --web --server=https://api.summit-gpu.octo-emerging.redhataicoe.com:6443"
+            value={`oc login --web --server=${process.env.REACT_APP_CLUSTER_API_URL || 'https://api.summit-gpu.octo-emerging.redhataicoe.com:6443'}`}
             InputProps={{ 
               readOnly: true,
               endAdornment: (
                 <Button 
                   size="small" 
                   startIcon={<CopyIcon />}
-                  onClick={() => copyToClipboard('oc login --web --server=https://api.summit-gpu.octo-emerging.redhataicoe.com:6443')}
+                  onClick={() => copyToClipboard(`oc login --web --server=${process.env.REACT_APP_CLUSTER_API_URL || 'https://api.summit-gpu.octo-emerging.redhataicoe.com:6443'}`)}
                 >
                   Copy
                 </Button>
