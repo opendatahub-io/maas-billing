@@ -16,6 +16,13 @@ import {
   Typography,
   Avatar,
   Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  Alert,
 } from '@mui/material';
 import {
   Policy as PolicyIcon,
@@ -27,6 +34,7 @@ import {
   Logout,
   LightMode,
   DarkMode,
+  ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 
 import PolicyManager from './components/PolicyManager';
@@ -54,6 +62,7 @@ function MainApp() {
     cluster: null,
     loginUrl: 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
   });
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -76,26 +85,20 @@ function MainApp() {
   };
 
   const redirectToLogin = () => {
-    // For now, provide instructions for CLI login since OAuth integration is complex
-    const instructions = `To use this application, you need to login to the OpenShift cluster via CLI:
+    setShowLoginDialog(true);
+  };
 
-1. Open a terminal
-2. Run: oc login --web --server=https://api.summit-gpu.octo-emerging.redhataicoe.com:6443
-3. Complete the web authentication
-4. Return here and refresh the page
+  const handleCloseLoginDialog = () => {
+    setShowLoginDialog(false);
+  };
 
-The backend needs an authenticated oc CLI session to fetch policies and tokens from the cluster.`;
+  const handleRefreshAfterLogin = () => {
+    setShowLoginDialog(false);
+    window.location.reload();
+  };
 
-    alert(instructions);
-    
-    // Optionally still redirect to web console for convenience
-    const returnUrl = encodeURIComponent(window.location.href);
-    const loginUrl = `https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com?then=${returnUrl}`;
-    
-    // eslint-disable-next-line no-restricted-globals
-    if (confirm('Would you like to open the OpenShift console in a new tab?')) {
-      window.open(loginUrl, '_blank');
-    }
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
   // Check authentication status on mount (but don't auto-redirect)
@@ -344,6 +347,78 @@ The backend needs an authenticated oc CLI session to fetch policies and tokens f
           {renderContent()}
         </Box>
       </Box>
+
+      {/* Login Instructions Dialog */}
+      <Dialog 
+        open={showLoginDialog} 
+        onClose={handleCloseLoginDialog}
+        maxWidth="md"
+        fullWidth
+        disableEscapeKeyDown
+      >
+        <DialogTitle>
+          🔐 OpenShift Cluster Authentication Required
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              This application requires authentication with the OpenShift cluster to fetch policies and manage tokens.
+            </Typography>
+          </Alert>
+          
+          <Typography variant="h6" gutterBottom>
+            Step 1: Login via CLI
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Copy and run this command in your terminal:
+          </Typography>
+          
+          <TextField
+            fullWidth
+            value="oc login --web --server=https://api.summit-gpu.octo-emerging.redhataicoe.com:6443"
+            InputProps={{ 
+              readOnly: true,
+              endAdornment: (
+                <Button 
+                  size="small" 
+                  startIcon={<CopyIcon />}
+                  onClick={() => copyToClipboard('oc login --web --server=https://api.summit-gpu.octo-emerging.redhataicoe.com:6443')}
+                >
+                  Copy
+                </Button>
+              )
+            }}
+            sx={{ fontFamily: 'monospace', mb: 3 }}
+          />
+          
+          <Typography variant="h6" gutterBottom>
+            Step 2: Complete Web Authentication
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            The command will open your browser for authentication. Complete the login process.
+          </Typography>
+          
+          <Typography variant="h6" gutterBottom>
+            Step 3: Return and Refresh
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            After successful authentication, click the "Refresh Application" button below.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            variant="contained" 
+            color="primary"
+            onClick={handleRefreshAfterLogin}
+            size="large"
+          >
+            Refresh Application
+          </Button>
+          <Button onClick={handleCloseLoginDialog}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
   );
 }
 
