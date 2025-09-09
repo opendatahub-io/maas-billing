@@ -18,19 +18,21 @@ type K8sClusterConfig struct {
 func NewClusterConfig() (*K8sClusterConfig, error) {
 	restConfig, err := LoadRestConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes config: %v", err)
+		return nil, fmt.Errorf("failed to create kubernetes config: %w", err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes ClientSet: %v", err)
+		return nil, fmt.Errorf("failed to create Kubernetes ClientSet: %w", err)
 	}
 
 	k8sClient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create dynamic client: %v", err)
+		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
+	// ... remainder of function unchanged ...
+}
 	return &K8sClusterConfig{
 		RestConfig: restConfig,
 		ClientSet:  clientset,
