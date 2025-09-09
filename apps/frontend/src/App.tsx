@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import {
   AppBar,
   Box,
@@ -31,12 +32,13 @@ import PolicyManager from './components/PolicyManager';
 import MetricsDashboard from './components/MetricsDashboard';
 import RequestSimulator from './components/RequestSimulator';
 import TokenManagement from './components/TokenManagement';
+import AuthCallback from './components/AuthCallback';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import apiService from './services/api';
 
 const drawerWidth = 240;
 
-function AppContent() {
+function MainApp() {
   const [selectedView, setSelectedView] = useState('policies');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const { mode, toggleTheme } = useTheme();
@@ -61,9 +63,23 @@ function AppContent() {
   };
 
   const handleLogout = () => {
-    // Redirect to cluster login page with return URL
-    const returnUrl = encodeURIComponent(window.location.href);
-    window.location.href = `${clusterStatus.loginUrl}?then=${returnUrl}`;
+    // Redirect to OpenShift OAuth login with proper OAuth flow
+    const returnUrl = encodeURIComponent(window.location.origin);
+    const clientId = 'openshift-cli-client';
+    const oauthUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${returnUrl}/auth/callback&scope=user:info`;
+    window.location.href = oauthUrl;
+  };
+
+  const redirectToLogin = () => {
+    // Redirect to OpenShift OAuth login
+    const returnUrl = encodeURIComponent(window.location.origin);
+    const clientId = 'openshift-cli-client';
+    const oauthUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${returnUrl}/auth/callback&scope=user:info`;
+    
+    console.log('🔐 Redirecting to OpenShift OAuth login...');
+    console.log('Return URL:', `${window.location.origin}/auth/callback`);
+    
+    window.location.href = oauthUrl;
   };
 
   // Check authentication status on mount
@@ -73,9 +89,11 @@ function AppContent() {
         const status = await apiService.getClusterStatus();
         setClusterStatus(status);
         
-        // Log status but don't auto-redirect for development
-        if (!status.connected) {
-          console.warn('User not authenticated. Use logout button to redirect to cluster login.');
+        // Check if user is authenticated
+        if (!status.connected || status.user === 'system:anonymous' || !status.user) {
+          console.log('🔐 User not authenticated (system:anonymous), redirecting to OpenShift login...');
+          redirectToLogin();
+          return;
         } else {
           console.log(`✅ Authenticated as: ${status.user}`);
         }
@@ -287,10 +305,27 @@ function AppContent() {
   );
 }
 
+function AppContent() {
+  const location = useLocation();
+  
+  // Handle OAuth callback route
+  if (location.pathname === '/auth/callback') {
+    return <AuthCallback />;
+  }
+  
+  // Main app content
+  return <MainApp />;
+}
+
 function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <Router>
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/*" element={<AppContent />} />
+        </Routes>
+      </Router>
     </ThemeProvider>
   );
 }

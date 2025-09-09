@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, CircularProgress, Alert } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
 import apiService from '../services/api';
 
 const AuthCallback: React.FC = () => {
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [message, setMessage] = useState('Processing authentication...');
-  const navigate = useNavigate();
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -51,9 +49,9 @@ const AuthCallback: React.FC = () => {
           // Store token info (backend will handle the actual token)
           localStorage.setItem('oauth_authenticated', 'true');
           
-          // Redirect to policies page after a short delay
+          // Redirect to main app after a short delay
           setTimeout(() => {
-            navigate('/');
+            window.location.href = window.location.origin;
           }, 2000);
         } else {
           setStatus('error');
