@@ -63,23 +63,30 @@ function MainApp() {
   };
 
   const handleLogout = () => {
-    // Redirect to OpenShift OAuth login with proper OAuth flow
+    // Clear any stored auth state
+    localStorage.removeItem('oauth_authenticated');
+    
+    // Redirect to OpenShift web console for fresh login
     const returnUrl = encodeURIComponent(window.location.origin);
-    const clientId = 'openshift-cli-client';
-    const oauthUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${returnUrl}/auth/callback&scope=user:info`;
-    window.location.href = oauthUrl;
+    const loginUrl = `https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com?then=${returnUrl}`;
+    
+    console.log('🔐 Logging out and redirecting to OpenShift login...');
+    window.location.href = loginUrl;
   };
 
   const redirectToLogin = () => {
-    // Redirect to OpenShift OAuth login
-    const returnUrl = encodeURIComponent(window.location.origin);
-    const clientId = 'openshift-cli-client';
-    const oauthUrl = `https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${returnUrl}/auth/callback&scope=user:info`;
+    // Redirect to OpenShift web console with return URL
+    const returnUrl = encodeURIComponent(window.location.href);
+    const loginUrl = `https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com?then=${returnUrl}`;
     
-    console.log('🔐 Redirecting to OpenShift OAuth login...');
-    console.log('Return URL:', `${window.location.origin}/auth/callback`);
+    console.log('🔐 Redirecting to OpenShift web console...');
+    console.log('Login URL:', loginUrl);
+    console.log('Return URL after login:', window.location.href);
     
-    window.location.href = oauthUrl;
+    // Show user-friendly message before redirect
+    alert('You need to login to the OpenShift cluster. You will be redirected to the login page and then brought back here.');
+    
+    window.location.href = loginUrl;
   };
 
   // Check authentication status on mount
