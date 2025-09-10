@@ -36,7 +36,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { io, Socket } from 'socket.io-client';
+import io from 'socket.io-client';
 
 interface QoSMetrics {
   totalRequests: number;
@@ -94,7 +94,7 @@ export default function QoSMonitor() {
   const [recentEvents, setRecentEvents] = useState<RequestEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<any>(null);
   const maxHistoryItems = 30;
   const maxEvents = 20;
 
@@ -130,7 +130,7 @@ export default function QoSMonitor() {
         setIsConnected(false);
       });
 
-      socket.on('connect_error', (error) => {
+      socket.on('connect_error', (error: Error) => {
         setError(`Connection error: ${error.message}`);
         setIsConnected(false);
       });
