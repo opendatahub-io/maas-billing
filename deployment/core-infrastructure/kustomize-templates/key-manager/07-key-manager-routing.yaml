@@ -4,7 +4,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: key-manager-domain-route
+  name: maas-api-domain-route
   namespace: llm
   labels:
     kuadrant.io/gateway: inference-gateway
@@ -13,14 +13,14 @@ spec:
     - name: inference-gateway
       namespace: llm
   hostnames:
-    - "key-manager.apps.summit-gpu.octo-emerging.redhataicoe.com"
+    - "maas-api.apps.summit-gpu.octo-emerging.redhataicoe.com"
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: key-manager
+        - name: maas-api
           namespace: platform-services
           port: 80
           weight: 100

@@ -6,12 +6,12 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: key-manager-route
+  name: maas-api-route
   namespace: platform-services
 spec:
   to:
     kind: Service
-    name: key-manager
+    name: maas-api
   port:
     targetPort: http
   tls:
@@ -23,24 +23,24 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: key-manager-ingress
+  name: maas-api-ingress
   namespace: platform-services
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   tls:
   - hosts:
-    - key-manager.your-domain.com
-    secretName: key-manager-tls
+    - maas-api.your-domain.com
+    secretName: maas-api-tls
   rules:
-  - host: key-manager.your-domain.com
+  - host: maas-api.your-domain.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: key-manager
+            name: maas-api
             port:
               number: 80
 
@@ -49,12 +49,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: key-manager-external
+  name: maas-api-external
   namespace: platform-services
 spec:
   type: LoadBalancer
   selector:
-    app: key-manager
+    app: maas-api
   ports:
   - name: http
     port: 80

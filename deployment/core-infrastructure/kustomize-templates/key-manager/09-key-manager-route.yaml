@@ -4,12 +4,12 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: key-manager-route
+  name: maas-api-route
   namespace: llm
   labels:
     app: maas-gateway
 spec:
-  host: key-manager.apps.summit-gpu.octo-emerging.redhataicoe.com
+  host: maas-api.apps.summit-gpu.octo-emerging.redhataicoe.com
   port:
     targetPort: 80
   to:

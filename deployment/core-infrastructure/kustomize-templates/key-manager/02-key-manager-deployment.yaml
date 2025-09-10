@@ -2,29 +2,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: key-manager
+  name: maas-api
   namespace: platform-services
   labels:
-    app: key-manager
+    app: maas-api
     version: v2
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: key-manager
+      app: maas-api
   template:
     metadata:
       labels:
-        app: key-manager
+        app: maas-api
         version: v2
       annotations:
         sidecar.istio.io/inject: "false"
     spec:
-      serviceAccountName: key-manager
+      serviceAccountName: maas-api
       securityContext:
         runAsNonRoot: true
       containers:
-      - name: key-manager
+      - name: maas-api
         image: ghcr.io/redhat-et/maas-key-manager:latest
         imagePullPolicy: Always
         ports:
@@ -49,7 +49,7 @@ spec:
         - name: ADMIN_API_KEY
           valueFrom:
             secretKeyRef:
-              name: key-manager-admin
+              name: maas-api-admin
               key: admin-key
         - name: GIN_MODE
           value: "debug"
@@ -87,13 +87,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: key-manager
+  name: maas-api
   namespace: platform-services
   labels:
-    app: key-manager
+    app: maas-api
 spec:
   selector:
-    app: key-manager
+    app: maas-api
   ports:
   - name: http
     port: 80
