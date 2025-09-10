@@ -1,11 +1,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: key-manager
+  name: maas-api
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: key-manager
+  name: maas-api
 subjects:
 - kind: ServiceAccount
-  name: key-manager
+  name: maas-api

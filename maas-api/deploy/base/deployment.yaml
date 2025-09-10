@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: key-manager
+  name: maas-api
 spec:
   replicas: 1
   template:
     spec:
-      serviceAccountName: key-manager
+      serviceAccountName: maas-api
       securityContext:
         runAsNonRoot: true
       containers:
-      - name: key-manager
-        image: key-manager:latest
+      - name: maas-api
+        image: maas-api:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -21,7 +21,7 @@ spec:
         - name: ADMIN_API_KEY
           valueFrom:
             secretKeyRef:
-              name: key-manager-admin-secret
+              name: maas-api-admin-secret
               key: admin-api-key
         resources:
           requests:
