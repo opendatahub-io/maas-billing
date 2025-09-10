@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -23,7 +24,8 @@ import (
 
 func main() {
 	cfg := config.Load()
-
+	flag.Parse()
+	
 	router := registerHandlers(cfg)
 
 	srv := &http.Server{

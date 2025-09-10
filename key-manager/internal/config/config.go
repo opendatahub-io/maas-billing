@@ -46,7 +46,6 @@ func Load() *Config {
 	}
 
 	c.bindFlags(flag.CommandLine)
-	flag.Parse()
 
 	return c
 }
