@@ -1,6 +1,6 @@
-# MaaS Key Manager Architecture
+# MaaS API Architecture
 
-**For a live demo see the [Key Manager Quickstart](./README.md)**
+**For a live demo see the [MaaS API Quickstart](./README.md)**
 
 ## Overview
 
@@ -29,7 +29,7 @@ limiting. It provides multi-tenant access control for the KServe inference servi
 
 ## Core Architecture Components
 
-### 1. Key Manager Service
+### 1. MaaS API Service
 
 - **Language**: Go with Gin framework
 - **Purpose**: Central API management service
@@ -183,7 +183,7 @@ limits:
 
 ### KServe Integration
 - **InferenceService CRs**: Deployed in `llm` namespace
-- **Model Discovery**: Key Manager queries KServe resources
+- **Model Discovery**: MaaS API queries KServe resources
 - **OpenAI Compatibility**: Converts KServe models to OpenAI format
 - **Dynamic Updates**: Real-time model availability
 
@@ -198,7 +198,7 @@ limits:
 ### Prometheus Metrics Collection
 - **Source**: Istio Envoy proxy metrics endpoint
 - **Format**: Custom metrics with user/group embedding
-- **Collection**: Direct HTTP requests from Key Manager
+- **Collection**: Direct HTTP requests from MaaS API
 
 ### Metric Structure
 
@@ -228,7 +228,7 @@ sequenceDiagram
     participant Client
     participant Gateway as Istio Gateway
     participant Envoy as Envoy Proxy
-    participant KM as Key Manager
+    participant KM as MaaS API
     participant KServe as Model Service
     participant Metrics as Prometheus
 

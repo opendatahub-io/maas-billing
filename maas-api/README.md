@@ -1,4 +1,4 @@
-# Key Manager Quickstart
+# MaaS API Quickstart
 
 Quickstart for team-based token rate limiting, key management and user/team resource tracking.
 
@@ -19,7 +19,7 @@ export TEAM_ID="test-team"
 export USER_ID="test-user"
 
 # Dynamically detect routes instead of hardcoding them
-export KEY_MANAGER_ROUTE=$(oc get routes key-manager-route -n llm | tail -1 | awk '{print $2}')
+export MAAS_API_ROUTE=$(oc get routes maas-api-route -n llm | tail -1 | awk '{print $2}')
 export QWEN3_ROUTE=$(oc get routes qwen3-route -n llm | tail -1 | awk '{print $2}')
 export SIMULATOR_ROUTE=$(oc get routes simulator-route -n llm | tail -1 | awk '{print $2}')
 ```
@@ -29,7 +29,7 @@ export SIMULATOR_ROUTE=$(oc get routes simulator-route -n llm | tail -1 | awk '{
 ### 1. Create Team
 
 ```bash
-curl -sk -X POST https://$KEY_MANAGER_ROUTE/teams \
+curl -sk -X POST https://$MAAS_API_ROUTE/teams \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -46,7 +46,7 @@ curl -sk -X POST https://$KEY_MANAGER_ROUTE/teams \
 - Multiple keys or users can be added to a team. Users can have multiple keys in multiple teams.
 
 ```bash
-API_RESPONSE=$(curl -sk -s -X POST https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID/keys \
+API_RESPONSE=$(curl -sk -s -X POST https://$MAAS_API_ROUTE/teams/$TEAM_ID/keys \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -81,7 +81,7 @@ curl -s http://$QWEN3_ROUTE/v1/chat/completions \
 Patch team limits, policy, or metadata (partial updates supported):
 
 ```bash
-curl -sk -X PATCH https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID \
+curl -sk -X PATCH https://$MAAS_API_ROUTE/teams/$TEAM_ID \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -113,7 +113,7 @@ curl -s http://$QWEN3_ROUTE/v1/chat/completions \
 TODO: Enable user-scoped model access listing
 
 ```bash
-curl -sk -X GET https://$KEY_MANAGER_ROUTE/models \
+curl -sk -X GET https://$MAAS_API_ROUTE/models \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -141,7 +141,7 @@ curl -sk -X GET https://$KEY_MANAGER_ROUTE/models \
 ### 7. List All Teams (Admin)
 
 ```bash
-curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams \
+curl -sk -X GET https://$MAAS_API_ROUTE/teams \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -185,7 +185,7 @@ curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams \
 ### 8. Get a Team Details (Admin)
 
 ```bash
-curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID \
+curl -sk -X GET https://$MAAS_API_ROUTE/teams/$TEAM_ID \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -236,7 +236,7 @@ curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID \
 ### 9. List Team Keys with Details (Admin)
 
 ```bash
-curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID/keys \
+curl -sk -X GET https://$MAAS_API_ROUTE/teams/$TEAM_ID/keys \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -357,7 +357,7 @@ curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID/keys \
 ### 10. List All User Keys Across Teams (Admin)
 
 ```bash
-curl -sk -X GET https://$KEY_MANAGER_ROUTE/users/$USER_ID/keys \
+curl -sk -X GET https://$MAAS_API_ROUTE/users/$USER_ID/keys \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -410,7 +410,7 @@ curl -sk -X GET https://$KEY_MANAGER_ROUTE/users/$USER_ID/keys \
 - Example of a user with keys across various teams and usage for each of their keys.
 
 ```bash
-curl -sk -X GET https://$KEY_MANAGER_ROUTE/users/$USER_ID/usage \
+curl -sk -X GET https://$MAAS_API_ROUTE/users/$USER_ID/usage \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -463,7 +463,7 @@ curl -sk -X GET https://$KEY_MANAGER_ROUTE/users/$USER_ID/usage \
 ### 12. Get Team Usage Metrics (Admin)
 
 ```bash
-curl -sk -X GET https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID/usage \
+curl -sk -X GET https://$MAAS_API_ROUTE/teams/$TEAM_ID/usage \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
 ```
 
@@ -510,14 +510,14 @@ TODO: fix. Should deletes be cascading? e.g. If a team gets deleted, do the asso
 orphaned keys? A database should be considered eventually to make this cleaner or add some sort of reconciler.
 
 ```bash
-curl -s -X DELETE https://$KEY_MANAGER_ROUTE/delete_key \
+curl -s -X DELETE https://$MAAS_API_ROUTE/delete_key \
   -H "Authorization: ADMIN $ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "key": "'$API_KEY'"
   }'
 
-curl -sk -X DELETE https://$KEY_MANAGER_ROUTE/teams/$TEAM_ID \
+curl -sk -X DELETE https://$MAAS_API_ROUTE/teams/$TEAM_ID \
   -H "Authorization: ADMIN $ADMIN_KEY"
 ```
 

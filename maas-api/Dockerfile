@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o key-manager ./cmd/
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o maas-api ./cmd/
 
 # Runtime stage
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -26,10 +26,10 @@ RUN microdnf update -y && microdnf install -y ca-certificates && microdnf clean 
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /app/key-manager .
+COPY --from=builder /app/maas-api .
 
 # Make binary executable and fix permissions for OpenShift
-RUN chmod +x key-manager && \
+RUN chmod +x maas-api && \
     chgrp -R 0 /app && \
     chmod -R g=u /app
 
@@ -44,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the application
-CMD ["./key-manager"]
+CMD ["./maas-api"]

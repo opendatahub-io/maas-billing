@@ -27,7 +27,7 @@ func Load() *Config {
 	return &Config{
 		// Server configuration
 		Port:        getEnvOrDefault("PORT", "8080"),
-		ServiceName: getEnvOrDefault("SERVICE_NAME", "key-manager"),
+		ServiceName: getEnvOrDefault("SERVICE_NAME", "maas-api"),
 
 		// Kubernetes configuration
 		KeyNamespace:        getEnvOrDefault("KEY_NAMESPACE", "llm"),
