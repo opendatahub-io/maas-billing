@@ -1,9 +1,9 @@
-name: Key Manager Build
+name: MaaS API Build
 
 on:
   pull_request:
     paths:
-      - 'key-manager/**'
+      - 'maas-api/**'
       - 'Makefile'
 
 jobs:
