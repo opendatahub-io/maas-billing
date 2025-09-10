@@ -1,6 +1,6 @@
 module github.com/opendatahub-io/maas-billing/key-manager
 
-go 1.24.2
+go 1.24
 
 require (
 	github.com/gin-gonic/gin v1.10.0
