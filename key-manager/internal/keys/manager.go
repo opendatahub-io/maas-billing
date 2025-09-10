@@ -315,13 +315,13 @@ func (m *Manager) createKeySecret(teamID string, req *CreateTeamKeyRequest, apiK
 	// Build models allowed list
 	modelsAllowed := strings.Join(req.Models, ",")
 
-    // Load owning team-config Secret so that it can own associated secrets.
+	// Load owning team-config Secret so that it can own associated secrets.
 	// This allows them to be cleaned up by the GC when a team is deleted.
-    teamSecret, err := m.clientset.CoreV1().Secrets(m.keyNamespace).Get(
-        context.Background(), fmt.Sprintf("team-%s-config", teamID), metav1.GetOptions{})
-    if err != nil {
-        return nil, fmt.Errorf("team config not found: %w", err)
-    }
+	teamSecret, err := m.clientset.CoreV1().Secrets(m.keyNamespace).Get(
+		context.Background(), fmt.Sprintf("team-%s-config", teamID), metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("team config not found: %w", err)
+	}
 
 	// Create enhanced secret with full team context
 	secret := &corev1.Secret{
@@ -351,12 +351,12 @@ func (m *Manager) createKeySecret(teamID string, req *CreateTeamKeyRequest, apiK
 				"maas/created-at":            time.Now().Format(time.RFC3339),
 				"maas/status":                "active",
 			},
-            OwnerReferences: []metav1.OwnerReference{{
-                APIVersion: "v1",
-                Kind:       "Secret",
-                Name:       teamSecret.Name,
-                UID:        teamSecret.UID,
-            }},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: "v1",
+				Kind:       "Secret",
+				Name:       teamSecret.Name,
+				UID:        teamSecret.UID,
+			}},
 		},
 
 		Type: corev1.SecretTypeOpaque,
