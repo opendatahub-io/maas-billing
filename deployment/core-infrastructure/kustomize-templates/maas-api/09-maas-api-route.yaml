@@ -1,4 +1,4 @@
-# OpenShift Route for Key Manager Service
+# OpenShift Route for MaaS API Service
 # Directs traffic from OpenShift router to Istio gateway
 ---
 apiVersion: route.openshift.io/v1

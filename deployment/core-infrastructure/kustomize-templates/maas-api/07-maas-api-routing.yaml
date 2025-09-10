@@ -1,4 +1,4 @@
-# HTTPRoute for Key Manager Service
+# HTTPRoute for MaaS API Service
 # Provides external access via domain-based routing
 ---
 apiVersion: gateway.networking.k8s.io/v1
