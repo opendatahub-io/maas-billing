@@ -112,6 +112,8 @@ curl -s http://$QWEN3_ROUTE/v1/chat/completions \
 
 TODO: Enable user-scoped model access listing
 
+For `InferenceServices`, use the `/models` endpoint:
+
 ```bash
 curl -sk -X GET https://$KEY_MANAGER_ROUTE/models \
   -H "Authorization: ADMIN $ADMIN_KEY" | jq .
@@ -135,6 +137,30 @@ curl -sk -X GET https://$KEY_MANAGER_ROUTE/models \
       "ready": true
     }
   ]
+}
+```
+
+For `LLMInferenceServices`, use the `/v1/models` endpoint:
+
+```bash
+curl -sk -X GET https://$KEY_MANAGER_ROUTE/v1/models \
+  -H "Authorization: ADMIN $ADMIN_KEY" | jq .
+```
+
+- Example Output
+
+
+```
+{
+  "data": [
+    {
+      "id": "qwen3-0-6b-instruct",
+      "created": 1756849635,
+      "object": "model",
+      "owned_by": "llm"
+    }
+  ],
+  "object": "list"
 }
 ```
 
