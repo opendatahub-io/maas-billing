@@ -4,8 +4,23 @@ kind: Kustomization
 metadata:
   name: key-manager-dev
 
+
 resources:
 - ../../base/
+- ./infra/
+- ./resources/tier-mapping-configmap.yaml
+
+namespace: key-manager
+
+transformers:
+  - transformers/namespace.yaml
+
+# Overwrite the image to use the local image set through kustomize edit set image
+# This is needed because the image is set to ghcr.io/redhat-et/maas-key-manager in the base/deployment.yaml using params.env "injection"
+images:
+- name: ghcr.io/redhat-et/maas-key-manager
+  newName: key-manager  
+  newTag: latest
 
 secretGenerator:
 - name: key-manager-admin-secret

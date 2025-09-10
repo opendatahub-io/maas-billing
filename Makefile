@@ -88,12 +88,15 @@ build: fmt deps ## Build the key-manager binary
 	@cd $(KEY_MANAGER_DIR) && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
 	@echo "Built $(BUILD_DIR)/$(BINARY_NAME)"
 
+SRC_DIRS := $(KEY_MANAGER_DIR)/cmd $(KEY_MANAGER_DIR)/internal
+PKGS := $(foreach d,$(SRC_DIRS),$(d)/...)
+TEST_FLAGS ?= -race -coverprofile=coverage.out
 .PHONY: test
 test: ## Run Go tests
 	@echo "Running tests..."
-	@cd $(KEY_MANAGER_DIR) && go test -v -race -coverprofile=coverage.out ./...
+	@cd $(KEY_MANAGER_DIR) && go test -v $(TEST_FLAGS) $(PKGS)
 	@cd $(KEY_MANAGER_DIR) && go tool cover -html=coverage.out -o coverage.html
-	@echo "Test coverage report generated: $(KEY_MANAGER_DIR)/coverage.html"
+	@echo "Test coverage report generated: $(abspath coverage.html)"
 
 .PHONY: test-short
 test-short: ## Run Go tests (short mode)
@@ -126,7 +129,11 @@ build-push-image: build-image push-image ## Build and push container image
 .PHONY: deploy-dev
 deploy-dev: ## Deploy to development
 	kubectl create namespace key-manager || true
-	kustomize build $(KEY_MANAGER_DIR)/deploy/overlays/dev | kubectl apply -f -
+	cd $(KEY_MANAGER_DIR)/deploy/overlays/dev && \
+		cp kustomization.yaml kustomization.yaml.backup && \
+		trap 'mv kustomization.yaml.backup kustomization.yaml 2>/dev/null || true' EXIT && \
+		kustomize edit set image key-manager=$(FULL_IMAGE) && \
+		kustomize build . | kubectl apply -f -
 
 .PHONY: run
 run: build ## Run the key-manager locally
