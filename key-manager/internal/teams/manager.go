@@ -493,11 +493,13 @@ func (m *Manager) updateTeamKeysPolicy(teamID, newPolicy string) error {
 		if secret.Annotations == nil {
 			secret.Annotations = make(map[string]string)
 		}
-		secret.Annotations["kuadrant.io/groups"] = newPolicy
-		secret.Annotations["maas/policy"] = newPolicy
 
 		// Update policy-specific label
 		oldPolicy := secret.Annotations["maas/policy"]
+
+		secret.Annotations["kuadrant.io/groups"] = newPolicy
+		secret.Annotations["maas/policy"] = newPolicy
+
 		if oldPolicy != "" && oldPolicy != newPolicy {
 			delete(secret.Labels, fmt.Sprintf("maas/policy-%s", oldPolicy))
 		}
