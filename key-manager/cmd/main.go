@@ -73,7 +73,7 @@ func registerHandlers(cfg *config.Config) *gin.Engine {
 
 	tierMapper := tier.NewMapper(clusterConfig.ClientSet, cfg.Namespace)
 	tierHandler := tier.NewHandler(tierMapper)
-	router.POST("/tiers/lookup", tierHandler.PostTierLookup)
+	router.POST("/tiers/lookup", tierHandler.TierLookup)
 
 	// Initialize managers
 	policyMgr := teams.NewPolicyManager(

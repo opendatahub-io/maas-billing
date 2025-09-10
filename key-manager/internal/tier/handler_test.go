@@ -20,7 +20,7 @@ func setupTestRouter(mapper *tier.Mapper) *gin.Engine {
 	router := gin.New()
 
 	handler := tier.NewHandler(mapper)
-	router.POST("/tiers/lookup", handler.PostTierLookup)
+	router.POST("/tiers/lookup", handler.TierLookup)
 
 	return router
 }
