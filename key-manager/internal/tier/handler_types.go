@@ -1,13 +1,14 @@
 package tier
 
-// LookupResponse represents the response for tier lookup
-type LookupResponse struct {
-	Group string `json:"group"`
-	Tier  string `json:"tier"`
+type LookupRequest struct {
+	Groups []string `json:"groups" binding:"required,min=1"` // Array of user groups to lookup
 }
 
-// ErrorResponse represents an error response
+type LookupResponse struct {
+	Tier string `json:"tier"`
+}
+
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
+	Error   string `json:"error"`   // Error code (e.g., "bad_request", "not_found")
+	Message string `json:"message"` // Human-readable error message
 }

@@ -1,10 +1,12 @@
 package tier
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
 	"slices"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -29,26 +31,38 @@ func NewMapper(clientset kubernetes.Interface, namespace string) *Mapper {
 	}
 }
 
-// GetTierForGroup returns the tier that contains the specified group
-func (m *Mapper) GetTierForGroup(ctx context.Context, group string) (string, error) {
+// GetTierForGroups returns the highest level tier for a user with multiple group memberships.
+//
+// Returns error if no groups provided or no groups found in any tier.
+// Returns "free" as default if ConfigMap is missing (fallback).
+func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string, error) {
+	if len(groups) == 0 {
+		return "", fmt.Errorf("no groups provided")
+	}
+
 	tiers, err := m.loadTierConfig(ctx)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Printf("ConfigMap %s not found, defaulting group %s to 'free' tier",
-				MappingConfigMap, group)
+			log.Printf("ConfigMap %s not found, defaulting to 'free' tier", MappingConfigMap)
 			return "free", nil
 		}
 		log.Printf("Failed to load tier configuration from ConfigMap %s: %v", MappingConfigMap, err)
 		return "", fmt.Errorf("failed to load tier configuration: %w", err)
 	}
 
+	slices.SortFunc(tiers, func(a, b Tier) int {
+		return cmp.Compare(b.Level, a.Level)
+	})
+
 	for _, tier := range tiers {
-		if slices.Contains(tier.Groups, group) {
-			return tier.Name, nil
+		for _, userGroup := range groups {
+			if slices.Contains(tier.Groups, userGroup) {
+				return tier.Name, nil
+			}
 		}
 	}
 
-	return "", &GroupNotFoundError{Group: group}
+	return "", &GroupNotFoundError{Group: fmt.Sprintf("groups [%s]", strings.Join(groups, ", "))}
 }
 
 func (m *Mapper) loadTierConfig(ctx context.Context) ([]Tier, error) {

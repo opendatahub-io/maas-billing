@@ -17,22 +17,23 @@ func NewHandler(mapper *Mapper) *Handler {
 	}
 }
 
-// GetTierLookup handles GET /tiers/lookup?group={group}
-func (h *Handler) GetTierLookup(c *gin.Context) {
-	group := c.Query("group")
-	if group == "" {
+// PostTierLookup handles POST /tiers/lookup with JSON body containing groups array
+//
+// This endpoint determines the highest level tier for a user with multiple group memberships following the rules:
+// 1. Finds all tiers that contain any of the user's groups
+// 2. Selects the tier with the highest level value (higher numbers win)
+// 3. If multiple tiers have the same level, the first one found wins (order of tiers in the configuration source)
+func (h *Handler) PostTierLookup(c *gin.Context) {
+	var req LookupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Error:   "bad_request",
-			Message: "group query parameter is required",
+			Message: "invalid request body: " + err.Error(),
 		})
 		return
 	}
 
-	h.lookupTier(c, group)
-}
-
-func (h *Handler) lookupTier(c *gin.Context, group string) {
-	tier, err := h.mapper.GetTierForGroup(c.Request.Context(), group)
+	tier, err := h.mapper.GetTierForGroups(c.Request.Context(), req.Groups...)
 	if err != nil {
 		var groupNotFoundErr *GroupNotFoundError
 		if errors.As(err, &groupNotFoundErr) {
@@ -52,8 +53,7 @@ func (h *Handler) lookupTier(c *gin.Context, group string) {
 	}
 
 	response := LookupResponse{
-		Group: group,
-		Tier:  tier,
+		Tier: tier,
 	}
 
 	c.JSON(http.StatusOK, response)

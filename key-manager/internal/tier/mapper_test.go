@@ -10,7 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-func TestMapper_GetTierForGroup(t *testing.T) {
+func TestMapper_GetTierForGroups(t *testing.T) {
 	ctx := t.Context()
 
 	configMap := &corev1.ConfigMap{
@@ -22,67 +22,125 @@ func TestMapper_GetTierForGroup(t *testing.T) {
 			"tiers": `
 - name: free
   description: Free tier
+  level: 1
   groups:
   - system:authenticated
+  - free-users
 - name: premium
   description: Premium tier
+  level: 10
   groups:
   - premium-users
   - beta-testers
 - name: enterprise
   description: Enterprise tier
+  level: 20
   groups:
   - enterprise-users
   - admin-users
+- name: developer
+  description: Developer tier
+  level: 15
+  groups:
+  - developer-users
+  - beta-testers
 `,
 		},
 	}
 
 	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
-
 	mapper := tier.NewMapper(clientset, "test-namespace")
 
 	tests := []struct {
 		name          string
-		group         string
+		groups        []string
 		expectedTier  string
 		expectedError bool
+		description   string
 	}{
 		{
-			name:         "system authenticated group",
-			group:        "system:authenticated",
+			name:         "single group - free tier",
+			groups:       []string{"system:authenticated"},
 			expectedTier: "free",
+			description:  "User belongs to only free tier group",
 		},
 		{
-			name:         "premium user group",
-			group:        "premium-users",
+			name:         "single group - premium tier",
+			groups:       []string{"premium-users"},
 			expectedTier: "premium",
+			description:  "User belongs to only premium tier group",
 		},
 		{
-			name:         "beta tester group",
-			group:        "beta-testers",
+			name:         "single group - enterprise tier",
+			groups:       []string{"enterprise-users"},
+			expectedTier: "enterprise",
+			description:  "User belongs to only enterprise tier group",
+		},
+		{
+			name:         "multiple groups - enterprise wins over free",
+			groups:       []string{"system:authenticated", "enterprise-users"},
+			expectedTier: "enterprise",
+			description:  "User belongs to both free and enterprise - enterprise has higher level (20 > 1)",
+		},
+		{
+			name:         "multiple groups - premium wins over free",
+			groups:       []string{"free-users", "premium-users"},
 			expectedTier: "premium",
+			description:  "User belongs to both free and premium - premium has higher level (10 > 1)",
 		},
 		{
-			name:         "enterprise user group",
-			group:        "enterprise-users",
+			name:         "multiple groups - enterprise wins over premium",
+			groups:       []string{"premium-users", "enterprise-users"},
 			expectedTier: "enterprise",
+			description:  "User belongs to both premium and enterprise - enterprise has higher level (20 > 10)",
 		},
 		{
-			name:         "admin user group",
-			group:        "admin-users",
+			name:         "multiple groups - enterprise wins over developer",
+			groups:       []string{"developer-users", "enterprise-users"},
 			expectedTier: "enterprise",
+			description:  "User belongs to both developer and enterprise - enterprise has higher level (20 > 15)",
 		},
 		{
-			name:          "unknown group returns error",
-			group:         "unknown-group",
+			name:         "multiple groups - developer wins over premium",
+			groups:       []string{"premium-users", "developer-users"},
+			expectedTier: "developer",
+			description:  "User belongs to both premium and developer - developer has higher level (15 > 10)",
+		},
+		{
+			name:         "three groups - enterprise wins",
+			groups:       []string{"free-users", "premium-users", "enterprise-users"},
+			expectedTier: "enterprise",
+			description:  "User belongs to free, premium, and enterprise - enterprise has highest level (20)",
+		},
+		{
+			name:         "all groups - enterprise wins",
+			groups:       []string{"system:authenticated", "premium-users", "developer-users", "admin-users"},
+			expectedTier: "enterprise",
+			description:  "User belongs to groups across all tiers - enterprise has highest level (20)",
+		},
+		{
+			name:          "no groups provided",
+			groups:        []string{},
 			expectedError: true,
+			description:   "Empty groups array should return error",
+		},
+		{
+			name:          "unknown groups",
+			groups:        []string{"unknown-group-1", "unknown-group-2"},
+			expectedError: true,
+			description:   "Groups not found in any tier should return error",
+		},
+		{
+			name:         "mix of known and unknown groups",
+			groups:       []string{"premium-users", "unknown-group"},
+			expectedTier: "premium",
+			description:  "Should find tier for known group and ignore unknown ones",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tier, err := mapper.GetTierForGroup(ctx, tt.group)
+			mappedTiers, err := mapper.GetTierForGroups(ctx, tt.groups...)
 
 			if tt.expectedError && err == nil {
 				t.Errorf("expected error but got none")
@@ -94,27 +152,66 @@ func TestMapper_GetTierForGroup(t *testing.T) {
 				return
 			}
 
-			if tier != tt.expectedTier {
-				t.Errorf("expected tier %s, got %s", tt.expectedTier, tier)
+			if mappedTiers != tt.expectedTier {
+				t.Errorf("expected mappedTiers %s, got %s", tt.expectedTier, mappedTiers)
 			}
 		})
 	}
 }
 
-func TestMapper_GetTierForGroup_MissingConfigMap(t *testing.T) {
+func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
 	ctx := t.Context()
 
 	clientset := fake.NewSimpleClientset()
-
 	mapper := tier.NewMapper(clientset, "test-namespace")
 
-	// Should default to free tier when ConfigMap is missing (infrastructure issue)
-	tier, err := mapper.GetTierForGroup(ctx, "any-group")
+	// Should default to free tier when ConfigMap is missing
+	tier, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 
 	if tier != "free" {
 		t.Errorf("expected default tier 'free', got %s", tier)
+	}
+}
+
+func TestMapper_GetTierForGroups_LevelTieBreaker(t *testing.T) {
+	ctx := t.Context()
+
+	// Test case where two tiers have the same level
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      tier.MappingConfigMap,
+			Namespace: "test-namespace",
+		},
+		Data: map[string]string{
+			"tiers": `
+- name: tier-a
+  description: Tier A
+  level: 10
+  groups:
+  - group-a
+- name: tier-b
+  description: Tier B
+  level: 10
+  groups:
+  - group-b
+`,
+		},
+	}
+
+	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
+	mapper := tier.NewMapper(clientset, "test-namespace")
+
+	// When levels are equal, first tier found should win
+	tier, err := mapper.GetTierForGroups(ctx, "group-a", "group-b")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Should return tier-a since it appears first in the config and has same level
+	if tier != "tier-a" {
+		t.Errorf("expected tier 'tier-a', got %s", tier)
 	}
 }
