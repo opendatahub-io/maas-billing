@@ -25,7 +25,7 @@ import (
 func main() {
 	cfg := config.Load()
 	flag.Parse()
-	
+
 	router := registerHandlers(cfg)
 
 	srv := &http.Server{
