@@ -13,7 +13,7 @@ rules:
 
 # KServe resources for model management
 - apiGroups: ["serving.kserve.io"]
-  resources: ["inferenceservices"]
+  resources: ["inferenceservices", "llminferenceservices"]
   verbs: ["get", "list", "watch"]
 
 # Kuadrant resources for policy management

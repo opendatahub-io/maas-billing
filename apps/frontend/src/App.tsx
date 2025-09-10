@@ -23,18 +23,21 @@ import {
   Button,
   TextField,
   Alert,
+  Tooltip,
 } from '@mui/material';
 import {
   Policy as PolicyIcon,
   BarChart as MetricsIcon,
   PlayArrow as SimulatorIcon,
   Key as TokenIcon,
+  Speed as QoSIcon,
   AccountCircle,
   Settings,
   Logout,
   LightMode,
   DarkMode,
   ContentCopy as CopyIcon,
+  Science as ExperimentalIcon,
 } from '@mui/icons-material';
 
 import PolicyManager from './components/PolicyManager';
@@ -42,6 +45,7 @@ import MetricsDashboard from './components/MetricsDashboard';
 import RequestSimulator from './components/RequestSimulator';
 import TokenManagement from './components/TokenManagement';
 import AuthCallback from './components/AuthCallback';
+import QoSMonitor from './components/QoSMonitor';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import apiService from './services/api';
 
@@ -50,6 +54,7 @@ const drawerWidth = 240;
 function MainApp() {
   const [selectedView, setSelectedView] = useState('policies');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [experimentalMode, setExperimentalMode] = useState(false);
   const { mode, toggleTheme } = useTheme();
   const [clusterStatus, setClusterStatus] = useState<{
     connected: boolean;
@@ -102,6 +107,14 @@ function MainApp() {
     navigator.clipboard.writeText(text);
   };
 
+  const toggleExperimentalMode = () => {
+    setExperimentalMode(!experimentalMode);
+    // If turning off experimental mode and currently viewing QoS, switch to policies
+    if (experimentalMode && selectedView === 'qos') {
+      setSelectedView('policies');
+    }
+  };
+
   // Check authentication status on mount (but don't auto-redirect)
   useEffect(() => {
     const checkAuth = async () => {
@@ -132,13 +145,14 @@ function MainApp() {
 
     checkAuth();
   }, []);
-
   const renderContent = () => {
     switch (selectedView) {
       case 'policies':
         return <PolicyManager />;
       case 'metrics':
         return <MetricsDashboard />;
+      case 'qos':
+        return <QoSMonitor />;
       case 'simulator':
         return <RequestSimulator />;
       case 'tokens':
@@ -151,6 +165,7 @@ function MainApp() {
   const menuItems = [
     { id: 'policies', label: 'Policy Manager', icon: <PolicyIcon /> },
     { id: 'metrics', label: 'Live Metrics', icon: <MetricsIcon /> },
+    ...(experimentalMode ? [{ id: 'qos', label: 'QoS Monitor', icon: <QoSIcon /> }] : []),
     { id: 'simulator', label: 'Request Simulator', icon: <SimulatorIcon /> },
     { id: 'tokens', label: 'API Tokens', icon: <TokenIcon /> },
   ];
@@ -216,6 +231,23 @@ function MainApp() {
                 sx={{ mr: 2 }}
               />
             )}
+            
+            {/* Experimental Mode Toggle */}
+            <Tooltip title={experimentalMode ? 'Disable Experimental Features' : 'Enable Experimental Features'}>
+              <IconButton
+                color="inherit"
+                onClick={toggleExperimentalMode}
+                sx={{ 
+                  mr: 2,
+                  backgroundColor: experimentalMode ? 'rgba(238, 0, 0, 0.2)' : 'transparent',
+                  '&:hover': {
+                    backgroundColor: experimentalMode ? 'rgba(238, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                  }
+                }}
+              >
+                <ExperimentalIcon sx={{ color: experimentalMode ? '#ff6b6b' : 'white' }} />
+              </IconButton>
+            </Tooltip>
             
             {/* Theme Toggle */}
             <IconButton
