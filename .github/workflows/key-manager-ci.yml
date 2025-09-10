@@ -28,6 +28,16 @@ jobs:
     - name: Run tests
       run: make test
 
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-reports
+        path: |
+          key-manager/coverage.out
+          key-manager/coverage.html
+        retention-days: 30
+
     - name: Build image
       run: make build-image
 
