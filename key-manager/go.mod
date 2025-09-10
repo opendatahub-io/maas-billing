@@ -1,4 +1,4 @@
-module github.com/opendatahub-io/maas-billing/key-manager
+module github.com/opendatahub-io/maas-billing/maas-api
 
 go 1.24.2
 

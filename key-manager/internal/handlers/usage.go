@@ -11,8 +11,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/types"
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/usage"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/types"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/usage"
 )
 
 // UsageHandler handles usage-related endpoints

@@ -12,12 +12,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/auth"
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/config"
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/handlers"
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/keys"
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/models"
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/teams"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/auth"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/keys"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/teams"
 )
 
 func main() {

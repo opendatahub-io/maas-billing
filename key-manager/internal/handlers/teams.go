@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/teams"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/teams"
 )
 
 // TeamsHandler handles team-related endpoints

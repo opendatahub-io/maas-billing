@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/opendatahub-io/maas-billing/key-manager/internal/keys"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/keys"
 )
 
 // LegacyHandler handles legacy endpoint compatibility
