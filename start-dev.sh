@@ -31,6 +31,17 @@ fi
 
 # Note: Backend port checking is removed since it can use any available port starting from 3002
 
+# Start QoS prioritizer service in background
+echo "⚡ Starting QoS prioritizer service..."
+cd apps/qos-prioritizer
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing QoS prioritizer dependencies..."
+    npm install --silent
+fi
+npm run dev > ../../qos-prioritizer.log 2>&1 &
+QOS_PID=$!
+cd ../..
+
 # Start backend in background
 echo "🔧 Starting backend server..."
 cd apps/backend
@@ -84,6 +95,13 @@ echo "⏳ Waiting for servers to start..."
 sleep 5
 
 # Check if servers are running
+if kill -0 $QOS_PID 2>/dev/null; then
+    echo "✅ QoS prioritizer started (PID: $QOS_PID)"
+    echo "   QoS Service: http://localhost:3005"
+else
+    echo "❌ QoS prioritizer failed to start"
+fi
+
 if kill -0 $BACKEND_PID 2>/dev/null; then
     echo "✅ Backend server started (PID: $BACKEND_PID)"
     echo "   Backend API: http://localhost:$BACKEND_PORT"
@@ -103,17 +121,20 @@ echo ""
 echo "📊 MaaS Platform is ready!"
 echo "   🌐 Frontend: http://localhost:3000"
 echo "   🔧 Backend API: http://localhost:$BACKEND_PORT"
+echo "   ⚡ QoS Service: http://localhost:3005"
 echo "   📈 Metrics: http://localhost:$BACKEND_PORT/api/v1/metrics/live-requests"
 echo ""
 echo "📁 Logs:"
+echo "   QoS Prioritizer: tail -f qos-prioritizer.log"
 echo "   Backend: tail -f backend.log"
 echo "   Frontend: tail -f frontend.log"
 echo ""
 echo "🛑 To stop the servers:"
-echo "   kill $BACKEND_PID $FRONTEND_PID"
+echo "   kill $QOS_PID $BACKEND_PID $FRONTEND_PID"
 echo ""
 
 # Save PIDs to file for easy cleanup
+echo "$QOS_PID" > .qos.pid
 echo "$BACKEND_PID" > .backend.pid
 echo "$FRONTEND_PID" > .frontend.pid
 
@@ -121,6 +142,10 @@ echo "Press Ctrl+C to stop monitoring..."
 
 # Monitor the processes
 while true; do
+    if ! kill -0 $QOS_PID 2>/dev/null; then
+        echo "❌ QoS prioritizer stopped unexpectedly"
+        break
+    fi
     if ! kill -0 $BACKEND_PID 2>/dev/null; then
         echo "❌ Backend server stopped unexpectedly"
         break

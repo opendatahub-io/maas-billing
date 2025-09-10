@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/openai/openai-go/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -77,4 +78,36 @@ func (m *Manager) ListAvailableModels() ([]ModelInfo, error) {
 	}
 
 	return modelList, nil
+}
+
+// ListAvailableLLMs lists all LLMInferenceServices across all namespaces.
+func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]openai.Model, error) {
+	// Define InferenceService GVR
+	llmGVR := schema.GroupVersionResource{
+		Group:    "serving.kserve.io",
+		Version:  "v1alpha1",
+		Resource: "llminferenceservices",
+	}
+
+	log.Printf("DEBUG: Attempting to list LLMInferenceServices with GVR: %+v", llmGVR)
+
+	// List all InferenceServices across all namespaces
+	list, err := m.k8sClient.Resource(llmGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Printf("DEBUG: Failed to list LLMInferenceServices: %v", err)
+		return nil, fmt.Errorf("failed to list LLMInferenceServices: %w", err)
+	}
+
+	log.Printf("DEBUG: Found %d LLMInferenceServices", len(list.Items))
+
+	models := make([]openai.Model, len(list.Items))
+
+	for idx, item := range list.Items {
+		model := &models[idx]
+		model.ID = item.GetName()
+		model.Created = item.GetCreationTimestamp().Unix()
+		model.OwnedBy = item.GetNamespace()
+	}
+
+	return models, nil
 }

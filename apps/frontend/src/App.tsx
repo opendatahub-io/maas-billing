@@ -14,21 +14,25 @@ import {
   Toolbar,
   Typography,
   Avatar,
+  Tooltip,
 } from '@mui/material';
 import {
   Policy as PolicyIcon,
   BarChart as MetricsIcon,
   PlayArrow as SimulatorIcon,
+  Speed as QoSIcon,
   AccountCircle,
   Settings,
   Logout,
   LightMode,
   DarkMode,
+  Science as ExperimentalIcon,
 } from '@mui/icons-material';
 
 import PolicyManager from './components/PolicyManager';
 import MetricsDashboard from './components/MetricsDashboard';
 import RequestSimulator from './components/RequestSimulator';
+import QoSMonitor from './components/QoSMonitor';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 const drawerWidth = 240;
@@ -36,6 +40,7 @@ const drawerWidth = 240;
 function AppContent() {
   const [selectedView, setSelectedView] = useState('policies');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [experimentalMode, setExperimentalMode] = useState(false);
   const { mode, toggleTheme } = useTheme();
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
@@ -46,12 +51,22 @@ function AppContent() {
     setAnchorEl(null);
   };
 
+  const toggleExperimentalMode = () => {
+    setExperimentalMode(!experimentalMode);
+    // If turning off experimental mode and currently viewing QoS, switch to policies
+    if (experimentalMode && selectedView === 'qos') {
+      setSelectedView('policies');
+    }
+  };
+
   const renderContent = () => {
     switch (selectedView) {
       case 'policies':
         return <PolicyManager />;
       case 'metrics':
         return <MetricsDashboard />;
+      case 'qos':
+        return <QoSMonitor />;
       case 'simulator':
         return <RequestSimulator />;
       default:
@@ -62,6 +77,7 @@ function AppContent() {
   const menuItems = [
     { id: 'policies', label: 'Policy Manager', icon: <PolicyIcon /> },
     { id: 'metrics', label: 'Live Metrics', icon: <MetricsIcon /> },
+    ...(experimentalMode ? [{ id: 'qos', label: 'QoS Monitor', icon: <QoSIcon /> }] : []),
     { id: 'simulator', label: 'Request Simulator', icon: <SimulatorIcon /> },
   ];
 
@@ -97,6 +113,23 @@ function AppContent() {
             </Typography>
             
             <Box sx={{ flexGrow: 1 }} />
+            
+            {/* Experimental Mode Toggle */}
+            <Tooltip title={experimentalMode ? 'Disable Experimental Features' : 'Enable Experimental Features'}>
+              <IconButton
+                color="inherit"
+                onClick={toggleExperimentalMode}
+                sx={{ 
+                  mr: 2,
+                  backgroundColor: experimentalMode ? 'rgba(238, 0, 0, 0.2)' : 'transparent',
+                  '&:hover': {
+                    backgroundColor: experimentalMode ? 'rgba(238, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                  }
+                }}
+              >
+                <ExperimentalIcon sx={{ color: experimentalMode ? '#ff6b6b' : 'white' }} />
+              </IconButton>
+            </Tooltip>
             
             {/* Theme Toggle */}
             <IconButton
