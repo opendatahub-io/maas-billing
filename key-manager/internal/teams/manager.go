@@ -255,6 +255,10 @@ func (m *Manager) Update(teamID string, req *UpdateTeamRequest) error {
 
 // Delete removes team and all associated resources
 func (m *Manager) Delete(teamID string) error {
+	if teamID == "default" { // optional guard
+		return fmt.Errorf("default team cannot be deleted")
+	}
+
 	// Check if team exists
 	teamSecret, err := m.clientset.CoreV1().Secrets(m.keyNamespace).Get(
 		context.Background(), fmt.Sprintf("team-%s-config", teamID), metav1.GetOptions{})
@@ -284,13 +288,6 @@ func (m *Manager) Delete(teamID string) error {
 		}
 	}
 
-	if m.policyMgr != nil {
-		err = m.policyMgr.RemoveTeamFromTokenRateLimit(teamPolicy)
-		if err != nil {
-			log.Printf("Warning: Failed to update TokenRateLimitPolicy for team deletion %s: %v", teamID, err)
-		}
-	}
-
 	// Foreground delete: GC removes owned key Secrets first, then the team
 	fg := metav1.DeletePropagationForeground
 	err = m.clientset.CoreV1().Secrets(m.keyNamespace).Delete(
@@ -300,7 +297,12 @@ func (m *Manager) Delete(teamID string) error {
 		return fmt.Errorf("failed to delete team: %w", err)
 	}
 
-	log.Printf("Team deleted successfully: %s", teamID)
+	if cleanupErr != nil {
+		log.Printf("Team %s deleted, with cleanup warnings: %v", teamID, cleanupErr)
+	} else {
+		log.Printf("Team deleted successfully: %s", teamID)
+	}
+
 	return nil
 }
 
