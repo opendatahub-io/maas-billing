@@ -1,4 +1,4 @@
-name: Key Manager Build
+name: Key Manager
 
 on:
   pull_request:
@@ -8,17 +8,25 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-latest  
+    defaults:
+      run:
+        working-directory: key-manager
+
     steps:
     - uses: actions/checkout@v5
 
     - uses: actions/setup-go@v5
       with:
-        go-version: '1.24.2'
-
+        go-version-file: key-manager/go.mod
+        cache: true
+        cache-dependency-path: key-manager/go.sum
+ 
     - name: Check code formatting
       run: make fmt-check
+      
+    - name: Run tests
+      run: make test
 
     - name: Build image
       run: make build-image

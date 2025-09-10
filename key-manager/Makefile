@@ -13,8 +13,6 @@ FULL_IMAGE ?= $(REPO):$(TAG)
 
 PROJECT_DIR:=$(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 
-# Key Manager settings
-KEY_MANAGER_DIR := $(PROJECT_DIR)/key-manager
 BINARY_NAME := key-manager
 BUILD_DIR := $(PROJECT_DIR)/bin
 
@@ -48,13 +46,13 @@ help: ## Show this help message
 .PHONY: fmt
 fmt: ## Format Go code using gofmt
 	@echo "Formatting Go code..."
-	@cd $(KEY_MANAGER_DIR) && gofmt -s -w .
+	gofmt -s -w .
 	@echo "Code formatting complete"
 
 .PHONY: fmt-check
 fmt-check: ## Check if Go code is formatted
 	@echo "Checking Go code formatting..."
-	@cd $(KEY_MANAGER_DIR) && if [ -n "$$(gofmt -l .)" ]; then \
+	if [ -n "$$(gofmt -l .)" ]; then \
 		echo "The following files need formatting:"; \
 		gofmt -l .; \
 		exit 1; \
@@ -64,7 +62,7 @@ fmt-check: ## Check if Go code is formatted
 .PHONY: vet
 vet: ## Run go vet
 	@echo "Running go vet..."
-	@cd $(KEY_MANAGER_DIR) && go vet ./...
+	go vet ./...
 
 .PHONY: lint
 lint: fmt-check vet ## Run all linting checks
@@ -73,32 +71,30 @@ lint: fmt-check vet ## Run all linting checks
 .PHONY: tidy
 tidy: ## Tidy Go modules
 	@echo "Tidying Go modules..."
-	@cd $(KEY_MANAGER_DIR) && go mod tidy
-	@cd $(KEY_MANAGER_DIR) && go mod verify
+	go mod tidy
+	go mod verify
 
 .PHONY: deps
 deps: ## Download Go dependencies
 	@echo "Downloading Go dependencies..."
-	@cd $(KEY_MANAGER_DIR) && go mod download
+	go mod download
 
 .PHONY: build
-build: fmt deps ## Build the key-manager binary
+build: deps fmt test ## Build the key-manager binary
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	@cd $(KEY_MANAGER_DIR) && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
 	@echo "Built $(BUILD_DIR)/$(BINARY_NAME)"
 
+SRC_DIRS := $(PROJECT_DIR)/cmd $(PROJECT_DIR)/internal
+PKGS := $(foreach d,$(SRC_DIRS),$(d)/...)
+TEST_FLAGS ?= -race -coverprofile=coverage.out
 .PHONY: test
 test: ## Run Go tests
-	@echo "Running tests..."
-	@cd $(KEY_MANAGER_DIR) && go test -v -race -coverprofile=coverage.out ./...
-	@cd $(KEY_MANAGER_DIR) && go tool cover -html=coverage.out -o coverage.html
-	@echo "Test coverage report generated: $(KEY_MANAGER_DIR)/coverage.html"
-
-.PHONY: test-short
-test-short: ## Run Go tests (short mode)
-	@echo "Running tests (short mode)..."
-	@cd $(KEY_MANAGER_DIR) && go test -short -v ./...
+	@echo "Running tests in..."
+	go test -v $(TEST_FLAGS) $(PKGS)
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "Test coverage report generated: $(abspath coverage.html)"
 
 .PHONY: build-image
 build-image: ## Build container image (use REPO= and TAG= to specify image)
@@ -107,7 +103,7 @@ build-image: ## Build container image (use REPO= and TAG= to specify image)
 		exit 1; \
 	fi
 	@echo "Building container image $(FULL_IMAGE)..."
-	@cd $(KEY_MANAGER_DIR) && $(CONTAINER_ENGINE) build $(CONTAINER_ENGINE_EXTRA_FLAGS) -t $(FULL_IMAGE) .
+	$(CONTAINER_ENGINE) build $(CONTAINER_ENGINE_EXTRA_FLAGS) -t $(FULL_IMAGE) .
 	@echo "Container image $(FULL_IMAGE) built successfully"
 
 .PHONY: push-image
@@ -126,7 +122,7 @@ build-push-image: build-image push-image ## Build and push container image
 .PHONY: deploy-dev
 deploy-dev: ## Deploy to development
 	kubectl create namespace key-manager || true
-	kustomize build $(KEY_MANAGER_DIR)/deploy/overlays/dev | kubectl apply -f -
+	kustomize build $(PROJECT_DIR)/deploy/overlays/dev | kubectl apply -f -
 
 .PHONY: run
 run: build ## Run the key-manager locally
