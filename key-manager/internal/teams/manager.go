@@ -2,6 +2,7 @@ package teams
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -264,7 +265,25 @@ func (m *Manager) Delete(teamID string) error {
 	// Get team policy before deletion for cleanup
 	teamPolicy := teamSecret.Annotations["maas/policy"]
 
-	// Update TokenRateLimitPolicy to remove the team's policy
+	// Cleanup all related policies
+	var cleanupErr error
+	if m.policyMgr != nil && teamPolicy != "" {
+		// optional: only remove if unused by other teams
+		if unused, err := m.isPolicyUnused(teamPolicy, teamID); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("check policy usage: %w", err))
+		} else if unused {
+			if err := m.policyMgr.RemoveTeamFromAuthPolicy(teamPolicy); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("authpolicy: %w", err))
+			}
+			if err := m.policyMgr.RemoveTeamFromTokenRateLimit(teamPolicy); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("tokenratelimit: %w", err))
+			}
+			if err := m.policyMgr.RestartKuadrantComponents(); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("restart kuadrant: %w", err))
+			}
+		}
+	}
+
 	if m.policyMgr != nil {
 		err = m.policyMgr.RemoveTeamFromTokenRateLimit(teamPolicy)
 		if err != nil {
@@ -390,6 +409,25 @@ func (m *Manager) getTeamAPIKeys(teamID string) ([]string, error) {
 	}
 
 	return keys, nil
+}
+
+// helper: true if no other team-config secret references this policy
+func (m *Manager) isPolicyUnused(policy, thisTeam string) (bool, error) {
+	secs, err := m.clientset.CoreV1().Secrets(m.keyNamespace).List(
+		context.Background(), metav1.ListOptions{LabelSelector: "maas/resource-type=team-config"})
+	if err != nil {
+		return false, err
+	}
+	users := 0
+	for _, s := range secs.Items {
+		if s.Annotations["maas/policy"] == policy && s.Labels["maas/team-id"] != thisTeam {
+			users++
+			if users > 0 {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
 }
 
 func (m *Manager) getTeamMembersFromAPIKeys(teamID string) ([]TeamMember, error) {
