@@ -176,6 +176,23 @@ curl -H 'Authorization: APIKEY premiumuser1_key' \
 | Free     | `freeuser1_key`, `freeuser2_key`       | 100 tokens per 1min       |
 | Premium  | `premiumuser1_key`, `premiumuser2_key` | 500 tokens per 1min       |
 
+## User Metrics (Temporary Workaround Until Upstream)
+
+This feature is still in development in upstream Kuadrant. In the meantime, you can patch the Limitador image with the following for development work with metrics until the feature lands upstream.
+
+```bash
+# patch with this interim image providing metrics
+kubectl patch limitador limitador \
+  -n kuadrant-system \
+  --type merge -p '{"spec":{"image":"ghcr.io/redhat-et/limitador:metrics","version":""}}'
+
+# kick the deployment
+kubectl rollout status deployment/limitador-limitador -n kuadrant-system
+
+# run some completions to generate some metrics and then curl the metrics endpoint
+kubectl exec -n kuadrant-system deployment/limitador-limitador -- curl -s localhost:8080/metrics
+```
+
 ## Component Details
 
 ### Models (`kustomize-templates/models/`)
