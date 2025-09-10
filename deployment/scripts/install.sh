@@ -207,7 +207,7 @@ main() {
         
         # Deploy Kuadrant operators first
         log_info "Deploying Kuadrant operators..."
-        kustomize build infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+        kustomize build infrastructure/kustomize-templates/kuadrant | envsubst '${CLUSTER_DOMAIN}' | kubectl apply -f -
         log_success "Kuadrant operators deployed"
         
         # Wait for operators to be ready
@@ -219,14 +219,14 @@ main() {
         
         # Deploy using overlay (always use OpenShift overlay for external access)
         log_info "Deploying $DEPLOYMENT_TYPE with external access..."
-        kustomize build overlays/openshift | envsubst | kubectl apply -f -
+        kustomize build overlays/openshift | envsubst '${CLUSTER_DOMAIN}' | kubectl apply -f -
         log_success "Deployment completed successfully!"
     else
         log_info "Skipping infrastructure installation (use --install-infra to install)"
         
         # Deploy the example deployment only
         log_info "Deploying $DEPLOYMENT_TYPE example..."
-        kustomize build "$DEPLOYMENT_PATH" | envsubst | kubectl apply -f -
+        kustomize build "$DEPLOYMENT_PATH" | envsubst '${CLUSTER_DOMAIN}' | kubectl apply -f -
         log_success "Example deployment completed successfully!"
     fi
     

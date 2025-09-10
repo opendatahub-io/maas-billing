@@ -6,7 +6,7 @@ Base platform components required for Models-as-a-Service (MaaS) deployment.
 
 ```bash
 # 1. Install required dependencies (recommended)
-./scripts/install-dependencies.sh --all
+./deployment/scripts/install-dependencies.sh --all
 
 # Alternative: Install dependencies individually
 # ./scripts/installers/install-istio.sh
@@ -19,7 +19,11 @@ Base platform components required for Models-as-a-Service (MaaS) deployment.
 export CLUSTER_DOMAIN="apps.your-cluster.com"
 
 # 3. Deploy core infrastructure
-kustomize build infrastructure | envsubst | kubectl apply -f -
+kustomize build deployment/infrastructure | envsubst | kubectl apply -f -
+
+# 4. Deploy custom wasm-shim (Change coming in limitador soon that will replace this)
+kubectl patch deployment kuadrant-operator-controller-manager -n kuadrant-system --type=json -p='[{"op": "replace", "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/1/value", "value": "oci://ghcr.io/nerdalert/wasm-shim:latest"}]'
+
 ```
 
 Move to [next steps](../examples/) to deploy examples.
@@ -30,18 +34,18 @@ The `install-dependencies.sh` script provides a convenient way to install all re
 
 ```bash
 # Interactive mode - prompts for confirmation
-./scripts/install-dependencies.sh
+./deployment/scripts/install-dependencies.sh
 
 # Install all components without prompts
-./scripts/install-dependencies.sh --all
+./deployment/scripts/install-dependencies.sh --all
 
 # Install specific components
-./scripts/install-dependencies.sh --istio --cert-manager
-./scripts/install-dependencies.sh --kserve
-./scripts/install-dependencies.sh --prometheus
+./deployment/scripts/install-dependencies.sh --istio --cert-manager
+./deployment/scripts/install-dependencies.sh --kserve
+./deployment/scripts/install-dependencies.sh --prometheus
 
 # Show available options
-./scripts/install-dependencies.sh --help
+./deployment/scripts/install-dependencies.sh --help
 ```
 
 **Components installed in order:**

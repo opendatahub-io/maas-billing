@@ -16,6 +16,10 @@ deployment/scripts/install.sh
 # Deploy specific deployment type
 deployment/scripts/install.sh gpu
 ```
+
+> [!NOTE]
+> Observability of users is still in progress, it can be enabled following the instructions [here](https://gist.github.com/nerdalert/0df4874cdc74c8f676686ce77f352f7b)
+
 # Add a new deployment type
 
 Any subdirectory under `deployment/examples/` named as {name}-deployment will be picked up as a deployment type by `deployment/scripts/install.sh`
@@ -150,7 +154,7 @@ curl -H 'Authorization: APIKEY freeuser1_key' \
 ### Rate Limiting
 ```bash
 # Test rate limiting (Free tier: expect 429 after 5 requests in 2min)
-for i in {1..10}; do
+for i in {1..50}; do
   printf "Request #%-2s -> " "$i"
   curl -s -o /dev/null -w "%{http_code}\n" \
        -H 'Authorization: APIKEY freeuser1_key' \

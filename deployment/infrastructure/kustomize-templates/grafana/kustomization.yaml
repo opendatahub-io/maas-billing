@@ -10,3 +10,4 @@ namespace: llm-observability
 
 resources:
   - grafana-instance.yaml
+  - route.yaml

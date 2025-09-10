@@ -7,3 +7,4 @@ metadata:
 resources:
 - service-monitors.yaml
 - token-metrics.yaml
+- grafana.yaml
