@@ -1,11 +1,11 @@
 package tier
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"log"
 	"slices"
+	"sort"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,8 +50,8 @@ func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string
 		return "", fmt.Errorf("failed to load tier configuration: %w", err)
 	}
 
-	slices.SortFunc(tiers, func(a, b Tier) int {
-		return cmp.Compare(b.Level, a.Level)
+	sort.SliceStable(tiers, func(i, j int) bool {
+		return tiers[i].Level > tiers[j].Level
 	})
 
 	for _, tier := range tiers {

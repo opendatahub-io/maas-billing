@@ -165,18 +165,18 @@ func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	mapper := tier.NewMapper(clientset, "test-namespace")
 
-	// Should default to free tier when ConfigMap is missing
-	tier, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
+	// Should default to free mappedTier when ConfigMap is missing
+	mappedTier, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	if tier != "free" {
-		t.Errorf("expected default tier 'free', got %s", tier)
+	if mappedTier != "free" {
+		t.Errorf("expected default mappedTier 'free', got %s", mappedTier)
 	}
 }
 
-func TestMapper_GetTierForGroups_LevelTieBreaker(t *testing.T) {
+func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	ctx := t.Context()
 
 	// Test case where two tiers have the same level
@@ -205,13 +205,13 @@ func TestMapper_GetTierForGroups_LevelTieBreaker(t *testing.T) {
 	mapper := tier.NewMapper(clientset, "test-namespace")
 
 	// When levels are equal, first tier found should win
-	tier, err := mapper.GetTierForGroups(ctx, "group-a", "group-b")
+	mappedTier, err := mapper.GetTierForGroups(ctx, "group-a", "group-b")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 
 	// Should return tier-a since it appears first in the config and has same level
-	if tier != "tier-a" {
-		t.Errorf("expected tier 'tier-a', got %s", tier)
+	if mappedTier != "tier-a" {
+		t.Errorf("expected mappedTier 'tier-a', got %s", mappedTier)
 	}
 }
