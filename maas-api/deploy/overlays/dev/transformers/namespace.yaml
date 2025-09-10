@@ -12,3 +12,42 @@ target:
   group: gateway.networking.k8s.io
   version: v1
   kind: Gateway
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: set-auth-policy-namespace
+patch: |-
+  - op: replace
+    path: /metadata/namespace
+    value: openshift-ingress
+target:
+  group: kuadrant.io
+  version: v1
+  kind: AuthPolicy 
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: set-rate-limit-policy-namespace
+patch: |-
+  - op: replace
+    path: /metadata/namespace
+    value: openshift-ingress
+target:
+  group: kuadrant.io
+  version: v1
+  kind: RateLimitPolicy
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: set-kuadrant-namespace
+patch: |-
+  - op: replace
+    path: /metadata/namespace
+    value: kuadrant-system
+target:
+  group: kuadrant.io
+  version: v1beta1
+  kind: Kuadrant

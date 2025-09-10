@@ -11,13 +11,18 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
+const (
+	testNamespace = "test-namespace"
+	testTenant    = "test-tenant"
+)
+
 func TestMapper_GetTierForGroups(t *testing.T) {
 	ctx := t.Context()
 
-	configMap := fixtures.CreateTierConfigMap("test-namespace")
+	configMap := fixtures.CreateTierConfigMap(testNamespace)
 
 	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(clientset, "test-namespace")
+	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	tests := []struct {
 		name          string
@@ -131,7 +136,7 @@ func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
 	ctx := t.Context()
 
 	clientset := fake.NewSimpleClientset()
-	mapper := tier.NewMapper(clientset, "test-namespace")
+	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	// Should default to free mappedTier when ConfigMap is missing
 	mappedTier, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
@@ -151,7 +156,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tier.MappingConfigMap,
-			Namespace: "test-namespace",
+			Namespace: testNamespace,
 		},
 		Data: map[string]string{
 			"tiers": `
@@ -170,7 +175,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	}
 
 	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(clientset, "test-namespace")
+	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	// When levels are equal, first tier found should win
 	mappedTier, err := mapper.GetTierForGroups(ctx, "group-a", "group-b")

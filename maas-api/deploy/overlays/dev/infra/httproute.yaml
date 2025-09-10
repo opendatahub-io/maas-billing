@@ -10,7 +10,13 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: /maas-api
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
         - name: maas-api
           port: 8080

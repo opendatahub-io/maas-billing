@@ -1,0 +1,75 @@
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: gateway-auth-policy
+  namespace: openshift-ingress
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: openshift-ai-inference
+  rules:
+    metadata:
+      # Enriching identity metadata with a proper subscription tier based on user groups
+      matchedTier:
+        http:
+          # TODO: network policy to limit access to this endpoint
+          url: http://maas-api.maas-api.svc.cluster.local:8080/tiers/lookup
+          contentType: application/json
+          method: POST
+          body:
+            expression: |-
+              { "groups": auth.identity.user.groups }
+        cache:
+          key:
+            selector: auth.identity.user.username
+          ttl: 300
+    authentication:
+      openshift-identities:
+        when:
+          - predicate: |
+              request.path.startsWith("/maas-api")
+        kubernetesTokenReview: {}
+      service-accounts:
+        kubernetesTokenReview:
+          audiences:
+            - openshift-ai-inference-sa
+        defaults:
+          # token normalization - https://docs.kuadrant.io/1.2.x/authorino/docs/user-guides/token-normalization/
+          # full username: system:serviceaccount:<ns>:<name>
+          user_id:
+            expression: |
+              auth.identity.user.username.split(":")[3]
+    authorization:
+      tier-access:
+        kubernetesSubjectAccessReview:
+          user:
+            expression: auth.identity.user.username
+          authorizationGroups:
+            expression: auth.identity.user.groups
+          resourceAttributes:
+            group:
+              value: serving.kserve.io
+            resource:
+              # For RHOAI this needs different target 
+              # value: llminferenceservices
+              value: inferenceservices
+            # ns/name an be inferred from path /{ns}/{model-name}
+            # expression: request.path.split('/')[1]
+            namespace:
+              value: llm
+            name:
+              value: vllm-simulator
+            verb:
+              value: post
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                user_id:
+                  expression: auth.identity.user_id
+                tier:
+                  expression: auth.metadata.matchedTier["tier"]

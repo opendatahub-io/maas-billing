@@ -28,12 +28,12 @@ func createTestMapper(withConfigMap bool) *tier.Mapper {
 	var objects []runtime.Object
 
 	if withConfigMap {
-		configMap := fixtures.CreateTierConfigMap("test-namespace")
+		configMap := fixtures.CreateTierConfigMap(testNamespace)
 		objects = append(objects, configMap)
 	}
 
 	clientset := fake.NewSimpleClientset(objects...)
-	return tier.NewMapper(clientset, "test-namespace")
+	return tier.NewMapper(clientset, testTenant, testNamespace)
 }
 
 func TestHandler_PostTierLookup_Success(t *testing.T) {
