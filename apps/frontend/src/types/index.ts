@@ -33,13 +33,20 @@ export interface Policy {
   id: string;
   name: string;
   description: string;
-  items: PolicyItem[];
+  items: any[]; // Real Kuadrant policy items (auth rules, rate limit rules, etc.)
   requestLimits?: RequestLimits;
-  timeRange: TimeRange;
+  timeRange?: TimeRange; // Optional since real policies don't have this
   created: string;
   modified: string;
-  // Kuadrant-specific properties
-  type: 'auth' | 'rateLimit';
+  // Real Kuadrant policy properties
+  type: 'auth' | 'rate-limit';
+  namespace: string;
+  targetRef?: {
+    kind: string;
+    name: string;
+  };
+  status?: any;
+  fullSpec?: any;
   config?: {
     auth?: {
       type: string;
@@ -172,4 +179,26 @@ export interface SimulationRequest {
   timeOfDay: string;
   queryText: string;
   count: number;
+}
+
+export interface SimulationResult {
+  id: string;
+  timestamp: string;
+  request: {
+    model: string;
+    tier: string;
+    messages: Array<{ role: string; content: string }>;
+    maxTokens: number;
+    headers: Record<string, string>;
+    body: any;
+  };
+  response: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: any;
+    error?: string;
+  };
+  success: boolean;
+  duration: number;
 }

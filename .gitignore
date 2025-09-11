@@ -9,7 +9,29 @@ build/
 
 *.pid
 
+# Package lock files
+package-lock.json
+apps/frontend/package-lock.json
+apps/backend/package-lock.json
+
 # Go test coverage files
 coverage.out
 coverage.html
 bin/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.coverage
+.pytest_cache/
+htmlcov/

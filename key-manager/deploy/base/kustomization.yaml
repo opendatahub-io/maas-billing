@@ -23,6 +23,7 @@ secretGenerator:
   envs:
   - admin.secret.env # secret for the admin API key, e.g. `admin-api-key=letmein`
 
+# This approach is used across odh components to set the image through GitOps
 configMapGenerator:
 - name: key-manager-config
   envs:

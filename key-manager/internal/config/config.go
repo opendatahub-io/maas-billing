@@ -1,12 +1,19 @@
 package config
 
-import "os"
+import (
+	"flag"
+	"os"
+)
 
 // Config holds application configuration
 type Config struct {
+	// Name of the "MaaS Instance" key-manager handles keys for
+	Name string
+	// Namespace where key-manager is deployed
+	Namespace string
+
 	// Server configuration
-	Port        string
-	ServiceName string
+	Port string
 
 	// Kubernetes configuration
 	KeyNamespace        string
@@ -24,24 +31,30 @@ type Config struct {
 
 // Load loads configuration from environment variables
 func Load() *Config {
-	return &Config{
-		// Server configuration
-		Port:        getEnvOrDefault("PORT", "8080"),
-		ServiceName: getEnvOrDefault("SERVICE_NAME", "key-manager"),
-
-		// Kubernetes configuration
-		KeyNamespace:        getEnvOrDefault("KEY_NAMESPACE", "llm"),
-		SecretSelectorLabel: getEnvOrDefault("SECRET_SELECTOR_LABEL", "kuadrant.io/apikeys-by"),
-		SecretSelectorValue: getEnvOrDefault("SECRET_SELECTOR_VALUE", "rhcl-keys"),
-
-		// Kuadrant configuration
+	c := &Config{
+		Name:      getEnvOrDefault("INSTANCE_NAME", "openshift-ai-inference"),
+		Namespace: getEnvOrDefault("NAMESPACE", "key-manager"),
+		Port:      getEnvOrDefault("PORT", "8080"),
+		// Secrets provider configuration
+		KeyNamespace:             getEnvOrDefault("KEY_NAMESPACE", "llm"),
+		SecretSelectorLabel:      getEnvOrDefault("SECRET_SELECTOR_LABEL", "kuadrant.io/apikeys-by"),
+		SecretSelectorValue:      getEnvOrDefault("SECRET_SELECTOR_VALUE", "rhcl-keys"),
 		TokenRateLimitPolicyName: getEnvOrDefault("TOKEN_RATE_LIMIT_POLICY_NAME", "gateway-token-rate-limits"),
 		AuthPolicyName:           getEnvOrDefault("AUTH_POLICY_NAME", "gateway-auth-policy"),
-
-		// Default team configuration
-		CreateDefaultTeam: getEnvOrDefault("CREATE_DEFAULT_TEAM", "true") == "true",
-		AdminAPIKey:       getEnvOrDefault("ADMIN_API_KEY", ""),
+		CreateDefaultTeam:        getEnvOrDefault("CREATE_DEFAULT_TEAM", "true") == "true",
+		AdminAPIKey:              getEnvOrDefault("ADMIN_API_KEY", ""),
 	}
+
+	c.bindFlags(flag.CommandLine)
+
+	return c
+}
+
+// bindFlags will parse the given flagset and bind values to selected config options
+func (c *Config) bindFlags(fs *flag.FlagSet) {
+	fs.StringVar(&c.Name, "name", c.Name, "Name of the MaaS instance")
+	fs.StringVar(&c.Namespace, "namespace", c.Namespace, "Namespace")
+	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 }
 
 // getEnvOrDefault gets environment variable or returns default value

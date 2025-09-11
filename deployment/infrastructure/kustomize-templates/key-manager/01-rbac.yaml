@@ -67,7 +67,7 @@ metadata:
   name: key-manager-inference-services
 rules:
 - apiGroups: ["serving.kserve.io"]
-  resources: ["inferenceservices"]
+  resources: ["inferenceservices", "llminferenceservices"]
   verbs: ["get", "list", "watch"]
 ---
 # Allow key-manager to restart Kuadrant deployments
