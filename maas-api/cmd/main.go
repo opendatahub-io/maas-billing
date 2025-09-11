@@ -75,6 +75,11 @@ func registerHandlers(cfg *config.Config) *gin.Engine {
 	tierHandler := tier.NewHandler(tierMapper)
 	router.POST("/tiers/lookup", tierHandler.TierLookup)
 
+	modelMgr := models.NewManager(clusterConfig.DynClient)
+	modelsHandler := handlers.NewModelsHandler(modelMgr)
+	router.GET("/models", modelsHandler.ListModels)
+	router.GET("/v1/models", modelsHandler.ListLLMs)
+
 	// Initialize managers
 	policyMgr := teams.NewPolicyManager(
 		clusterConfig.DynClient,
@@ -86,14 +91,11 @@ func registerHandlers(cfg *config.Config) *gin.Engine {
 
 	teamMgr := teams.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, policyMgr)
 	keyMgr := keys.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, teamMgr)
-	modelMgr := models.NewManager(clusterConfig.DynClient)
 
 	// Initialize handlers
 	usageHandler := handlers.NewUsageHandler(clusterConfig.ClientSet, clusterConfig.RestConfig, cfg.KeyNamespace)
 	teamsHandler := handlers.NewTeamsHandler(teamMgr)
 	keysHandler := handlers.NewKeysHandler(keyMgr, teamMgr)
-	modelsHandler := handlers.NewModelsHandler(modelMgr)
-	legacyHandler := handlers.NewLegacyHandler(keyMgr)
 
 	// Create default team if enabled
 	if cfg.CreateDefaultTeam {
@@ -104,35 +106,25 @@ func registerHandlers(cfg *config.Config) *gin.Engine {
 		}
 	}
 
-	// Setup API routes with admin authentication
-	adminRoutes := router.Group("/", auth.AdminAuthMiddleware())
-
-	// Legacy endpoints (backward compatibility)
-	adminRoutes.POST("/generate_key", legacyHandler.GenerateKey)
-	adminRoutes.DELETE("/delete_key", legacyHandler.DeleteKey)
-
 	// Team management endpoints
-	adminRoutes.POST("/teams", teamsHandler.CreateTeam)
-	adminRoutes.GET("/teams", teamsHandler.ListTeams)
-	adminRoutes.GET("/teams/:team_id", teamsHandler.GetTeam)
-	adminRoutes.PATCH("/teams/:team_id", teamsHandler.UpdateTeam)
-	adminRoutes.DELETE("/teams/:team_id", teamsHandler.DeleteTeam)
+	teamRoutes := router.Group("/teams", auth.AdminAuthMiddleware())
+	teamRoutes.POST("", teamsHandler.CreateTeam)
+	teamRoutes.GET("", teamsHandler.ListTeams)
+	teamRoutes.GET("/:team_id", teamsHandler.GetTeam)
+	teamRoutes.PATCH("/:team_id", teamsHandler.UpdateTeam)
+	teamRoutes.DELETE("/:team_id", teamsHandler.DeleteTeam)
+	teamRoutes.POST("/:team_id/keys", keysHandler.CreateTeamKey)
+	teamRoutes.GET("/:team_id/keys", keysHandler.ListTeamKeys)
+	teamRoutes.GET("/:team_id/usage", usageHandler.GetTeamUsage)
 
-	// Team-scoped API key management
-	adminRoutes.POST("/teams/:team_id/keys", keysHandler.CreateTeamKey)
-	adminRoutes.GET("/teams/:team_id/keys", keysHandler.ListTeamKeys)
-	adminRoutes.DELETE("/keys/:key_name", keysHandler.DeleteTeamKey)
+	// User management endpoints
+	userRoutes := router.Group("/users", auth.AdminAuthMiddleware())
+	userRoutes.GET("/:user_id/keys", keysHandler.ListUserKeys)
+	userRoutes.GET("/:user_id/usage", usageHandler.GetUserUsage)
 
-	// User key management
-	adminRoutes.GET("/users/:user_id/keys", keysHandler.ListUserKeys)
-
-	// Usage endpoints
-	adminRoutes.GET("/users/:user_id/usage", usageHandler.GetUserUsage)
-	adminRoutes.GET("/teams/:team_id/usage", usageHandler.GetTeamUsage)
-
-	// Model listing endpoint
-	adminRoutes.GET("/models", modelsHandler.ListModels)
-	adminRoutes.GET("/v1/models", modelsHandler.ListLLMs)
+	// Key management endpoints
+	keyRoutes := router.Group("/keys", auth.AdminAuthMiddleware())
+	keyRoutes.DELETE("/:key_name", keysHandler.DeleteTeamKey)
 
 	return router
 }

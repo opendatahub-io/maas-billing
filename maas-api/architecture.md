@@ -11,10 +11,6 @@ limiting. It provides multi-tenant access control for the KServe inference servi
 
 | Endpoint                 | Method | Purpose                                    | Request Body            | Response                      |
 |--------------------------|--------|--------------------------------------------|-------------------------|-------------------------------|
-| `/health`                | GET    | Service health check                       | None                    | Health status                 |
-| `/generate_key`          | POST   | Legacy API key generation                  | `{"user_id": "string"}` | API key details               |
-| `/delete_key`            | DELETE | Legacy API key deletion                    | `{"key": "string"}`     | Success confirmation          |
-| `/models`                | GET    | List available AI models                   | None                    | OpenAI-compatible models list |
 | `/models`                | GET    | List available AI models (ISVCs)           | None                    | OpenAI-compatible models list |
 | `/v1/models`             | GET    | List available AI models (LLMIsvc)         | None                    | OpenAI-compatible models list |
 | `/teams`                 | POST   | Create new team with policy                | Team config             | Team details                  |
@@ -28,6 +24,12 @@ limiting. It provides multi-tenant access control for the KServe inference servi
 | `/keys/{key_name}`       | DELETE | Delete specific API key                    | None                    | Success confirmation          |
 | `/users/{user_id}/keys`  | GET    | List all user keys across teams            | None                    | Array of user API keys        |
 | `/users/{user_id}/usage` | GET    | Get user usage metrics across all teams    | None                    | User usage statistics         |
+
+### Auxiliary API Reference
+
+| Endpoint                 | Method | Purpose                                    | Request Body | Response                      |
+|--------------------------|--------|--------------------------------------------|--------------|-------------------------------|
+| `/health`                | GET    | Service health check                       | None         | Health status                 |
 
 ## Core Architecture Components
 

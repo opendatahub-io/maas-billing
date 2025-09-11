@@ -25,7 +25,7 @@ func NewModelsHandler(modelMgr *models.Manager) *ModelsHandler {
 
 // ListModels handles GET /models
 func (h *ModelsHandler) ListModels(c *gin.Context) {
-	modelList, err := h.modelMgr.ListAvailableModels()
+	modelList, err := h.modelMgr.ListAvailableModels(c.Request.Context())
 	if err != nil {
 		log.Printf("Failed to get available models: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve models"})
