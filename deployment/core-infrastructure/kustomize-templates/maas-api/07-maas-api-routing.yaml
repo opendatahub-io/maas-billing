@@ -13,7 +13,7 @@ spec:
     - name: inference-gateway
       namespace: llm
   hostnames:
-    - "maas-api.apps.summit-gpu.octo-emerging.redhataicoe.com"
+    - "maas-api.${CLUSTER_DOMAIN}"
   rules:
     - matches:
         - path:
