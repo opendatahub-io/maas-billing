@@ -1,31 +1,22 @@
-# Build stage
-FROM golang:1.24.2-alpine AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.24 AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy go mod files
 COPY go.mod go.sum ./
 
-# Download dependencies
 RUN go mod download
 
-# Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o maas-api ./cmd/
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o maas-api ./cmd/
 
-# Runtime stage
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 # Install CA certificates for HTTPS requests
-RUN microdnf update -y && microdnf install -y ca-certificates && microdnf clean all
+RUN microdnf update -y && microdnf install -y ca-certificates curl-minimal && microdnf clean all
 
-# Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage
 COPY --from=builder /app/maas-api .
 
 # Make binary executable and fix permissions for OpenShift
@@ -36,12 +27,9 @@ RUN chmod +x maas-api && \
 # Use a non-root user (OpenShift will assign random UID)
 USER 1001
 
-# Expose port
 EXPOSE 8080
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the application
 CMD ["./maas-api"]
