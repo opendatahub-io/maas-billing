@@ -7,9 +7,9 @@ import (
 
 // Config holds application configuration
 type Config struct {
-	// Name of the "MaaS Instance" key-manager handles keys for
+	// Name of the "MaaS Instance" maas-api handles keys for
 	Name string
-	// Namespace where key-manager is deployed
+	// Namespace where maas-api is deployed
 	Namespace string
 
 	// Server configuration

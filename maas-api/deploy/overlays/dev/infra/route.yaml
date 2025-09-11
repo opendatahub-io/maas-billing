@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: key-manager-dev-route
+  name: maas-api-dev-route
 spec:
   parentRefs:
     - name: openshift-ai-inference
@@ -12,6 +12,6 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: key-manager
+        - name: maas-api
           port: 8080
           weight: 100
