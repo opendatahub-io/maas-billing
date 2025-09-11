@@ -189,6 +189,25 @@ class ApiService {
   async getClusterStatus() {
     return this.fetch('/cluster/status');
   }
+
+  // Team Management APIs
+  async getTeams() {
+    return this.fetch('/teams');
+  }
+
+  async getTeam(teamId: string) {
+    return this.fetch(`/teams/${teamId}`);
+  }
+
+  async createTeamToken(teamId: string, params: {
+    user_id: string;
+    alias: string;
+  }) {
+    return this.fetch(`/teams/${teamId}/keys`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
 }
 
 const apiService = new ApiService();

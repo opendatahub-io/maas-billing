@@ -180,3 +180,25 @@ export interface SimulationRequest {
   queryText: string;
   count: number;
 }
+
+export interface SimulationResult {
+  id: string;
+  timestamp: string;
+  request: {
+    model: string;
+    tier: string;
+    messages: Array<{ role: string; content: string }>;
+    maxTokens: number;
+    headers: Record<string, string>;
+    body: any;
+  };
+  response: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: any;
+    error?: string;
+  };
+  success: boolean;
+  duration: number;
+}

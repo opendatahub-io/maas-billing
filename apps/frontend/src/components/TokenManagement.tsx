@@ -13,9 +13,7 @@ import {
   Add as AddIcon,
   Key as KeyIcon,
   Security as SecurityIcon,
-  Assessment as TestIcon,
-  Code as CodeIcon,
-  Http as HttpIcon
+  Groups as TeamsIcon,
 } from '@mui/icons-material';
 import apiService from '../services/api';
 
@@ -45,21 +43,15 @@ interface UserTier {
   policy?: string;
 }
 
-interface TestResult {
-  success: boolean;
-  response?: string;
-  error?: string;
-  statusCode?: number;
-  request?: {
-    url: string;
-    method: string;
-    headers: Record<string, string>;
-    body: any;
-  };
-  responseDetails?: {
-    status: number;
-    headers: Record<string, string>;
-    body: any;
+interface Team {
+  team_id: string;
+  team_name: string;
+  policy: string;
+  description: string;
+  rate_limit: {
+    limit: number | string;
+    window: string;
+    description: string;
   };
 }
 
@@ -67,27 +59,91 @@ const TokenManagement: React.FC = () => {
   const [tokens, setTokens] = useState<UserToken[]>([]);
   const [userTier, setUserTier] = useState<UserTier | null>(null);
   const [newTokenName, setNewTokenName] = useState('');
-  const [newTokenDescription, setNewTokenDescription] = useState('');
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Test functionality state
-  const [testModel, setTestModel] = useState('vllm-simulator');
-  const [testMessage, setTestMessage] = useState('Hello, test my token!');
-  const [selectedTokenForTest, setSelectedTokenForTest] = useState('');
-  const [customTokenValue, setCustomTokenValue] = useState('');
-  const [useCustomToken, setUseCustomToken] = useState(false);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [testLoading, setTestLoading] = useState(false);
-  
-  // Available models
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  // Team-based token creation state
+  const [availableTeams, setAvailableTeams] = useState<Team[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState('');
+  const [teamsLoading, setTeamsLoading] = useState(false);
 
   useEffect(() => {
     loadUserData();
-    loadAvailableModels();
+    loadAvailableTeams();
   }, []);
+
+  // Group tokens by team for display
+  const getTokensByTeam = () => {
+    const tokensByTeam: { [teamId: string]: UserToken[] } = {};
+    
+    tokens.forEach(token => {
+      const teamId = token.team_id || 'unknown';
+      if (!tokensByTeam[teamId]) {
+        tokensByTeam[teamId] = [];
+      }
+      tokensByTeam[teamId].push(token);
+    });
+    
+    return tokensByTeam;
+  };
+
+  // Create team data from actual tokens and policies
+  const createTeamDataFromTokens = async (): Promise<Team[]> => {
+    const uniqueTeams = new Set<string>();
+    const teamPolicies: { [teamId: string]: string } = {};
+    
+    // Extract unique teams from tokens
+    tokens.forEach(token => {
+      if (token.team_id) {
+        uniqueTeams.add(token.team_id);
+        if (token.policy) {
+          teamPolicies[token.team_id] = token.policy;
+        }
+      }
+    });
+
+    // Get rate limit info from policies with proper typing
+    const rateLimit: { [key: string]: { limit: number | string; window: string; description: string } } = {
+      'unlimited-policy': { limit: 100000, window: '1h', description: '100,000 tokens per hour' },
+      'test-tokens': { limit: 'No specific limit', window: 'N/A', description: 'Testing tier - inherits default limits' },
+      'premium': { limit: 50000, window: '1m', description: '50,000 tokens per minute' },
+      'free': { limit: 10000, window: '1m', description: '10,000 tokens per minute' },
+      'enterprise': { limit: 'Unlimited', window: 'N/A', description: 'Enterprise tier - no limits' }
+    };
+
+    return Array.from(uniqueTeams).map(teamId => {
+      const policy = teamPolicies[teamId] || 'unknown';
+      const rateLimitInfo = rateLimit[policy] || { limit: 'Unknown', window: 'N/A', description: 'Policy information not available' };
+      
+      return {
+        team_id: teamId,
+        team_name: teamId === 'default' ? 'Default Team' : 
+                   teamId === 'test-team' ? 'Test Team' :
+                   teamId.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        policy: policy,
+        description: teamId === 'default' ? 'Default team for all users' :
+                     teamId === 'test-team' ? 'Testing team' :
+                     `${teamId} team`,
+        rate_limit: rateLimitInfo
+      };
+    });
+  };
+
+  // Get team info for a team ID
+  const getTeamInfo = (teamId: string) => {
+    return availableTeams.find(team => team.team_id === teamId) || {
+      team_id: teamId,
+      team_name: teamId === 'default' ? 'Default Team' : teamId.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      policy: tokens.find(t => t.team_id === teamId)?.policy || 'unknown',
+      description: '',
+      rate_limit: {
+        limit: 'Unknown',
+        window: 'N/A',
+        description: 'Policy information not available'
+      }
+    };
+  };
 
   const loadUserData = async () => {
     try {
@@ -121,13 +177,26 @@ const TokenManagement: React.FC = () => {
     }
   };
 
-  const loadAvailableModels = async () => {
+  const loadAvailableTeams = async () => {
     try {
-      const models = await apiService.getModels();
-      setAvailableModels(models.map((m: any) => m.name));
+      setTeamsLoading(true);
+      const teams = await apiService.getTeams();
+      console.log('Loaded teams:', teams);
+      
+      // Create team data based on actual tokens and policies
+      const teamsData = teams && teams.length > 0 ? teams : await createTeamDataFromTokens();
+      
+      setAvailableTeams(teamsData);
+      
+      // Auto-select default team if none selected
+      if (!selectedTeam && teamsData.length > 0) {
+        setSelectedTeam(teamsData[0].team_id);
+      }
     } catch (error) {
-      console.error('Error loading models:', error);
-      setAvailableModels(['vllm-simulator', 'qwen3-0.6b-instruct']);
+      console.error('Error loading teams:', error);
+      setError('Failed to load teams');
+    } finally {
+      setTeamsLoading(false);
     }
   };
 
@@ -137,18 +206,31 @@ const TokenManagement: React.FC = () => {
       return;
     }
 
+    if (!selectedTeam) {
+      setError('Please select a team');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       
-      const response = await apiService.createToken({
-        name: newTokenName.trim(),
-        description: newTokenDescription.trim() || 'Generated via UI'
+      const response = await apiService.createTeamToken(selectedTeam, {
+        user_id: 'noyitz', // TODO: Get from auth context
+        alias: newTokenName.trim(),
       });
       
-      setGeneratedToken(response.token);
+      console.log('Token creation response:', response);
+      
+      // Extract the API key from the response
+      const apiKey = response?.data?.api_key || response?.api_key || response?.actualApiKey;
+      if (apiKey) {
+        setGeneratedToken(apiKey);
+      } else {
+        console.warn('No API key found in response:', response);
+        setGeneratedToken('Token created successfully, but API key not returned');
+      }
       setNewTokenName('');
-      setNewTokenDescription('');
       
       // Refresh token list
       await loadUserData();
@@ -166,97 +248,20 @@ const TokenManagement: React.FC = () => {
 
     try {
       setLoading(true);
-      await apiService.revokeToken(tokenName);
-      await loadUserData(); // Refresh list
+      setError(null);
+      console.log('🗑️ Attempting to delete token:', tokenName);
+      
+      const result = await apiService.revokeToken(tokenName);
+      console.log('🗑️ Delete result:', result);
+      
+      // Refresh the token list to reflect the deletion
+      await loadUserData();
+      console.log('✅ Token list refreshed after deletion');
     } catch (error: any) {
+      console.error('❌ Token deletion failed:', error);
       setError(error.message || 'Failed to revoke token');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleTestToken = async () => {
-    let tokenToTest: string;
-    
-    if (useCustomToken) {
-      tokenToTest = customTokenValue;
-    } else {
-      // Find the selected token and use its actual API key value
-      const selectedToken = tokens.find(t => t.name === selectedTokenForTest);
-      if (!selectedToken?.actualApiKey) {
-        setError('Selected token does not have a valid API key value. Please try another token or use a custom token.');
-        return;
-      }
-      tokenToTest = selectedToken.actualApiKey;
-    }
-    
-    if (!tokenToTest || !testMessage.trim()) {
-      setError('Please select a token (or enter a custom one) and enter a test message');
-      return;
-    }
-
-    try {
-      setTestLoading(true);
-      setTestResult(null);
-      
-      console.log('Testing token:', tokenToTest.substring(0, 10) + '...');
-      
-      const response = await apiService.testToken({
-        token: tokenToTest,
-        model: testModel,
-        message: testMessage.trim()
-      });
-      
-      console.log('Test response received:', response);
-      
-      setTestResult({
-        success: true,
-        response: response.message || 'Test successful!',
-        statusCode: response.statusCode || 200,
-        request: response.request || null,
-        responseDetails: response.response || null
-      });
-    } catch (error: any) {
-      console.error('Token test error:', error);
-      
-      // The API service might throw the full response as an error
-      // Try to extract the actual response data
-      let errorData = null;
-      let actualResponse = null;
-      
-      try {
-        // Check if the error contains the response data
-        if (error.response) {
-          actualResponse = error.response;
-        } else if (error.message) {
-          // Try to parse error message as JSON
-          try {
-            actualResponse = JSON.parse(error.message);
-          } catch (e) {
-            // If not JSON, check if it contains a JSON string
-            const jsonMatch = error.message.match(/\{.*\}/s);
-            if (jsonMatch) {
-              actualResponse = JSON.parse(jsonMatch[0]);
-            }
-          }
-        }
-        
-        if (actualResponse && actualResponse.data) {
-          errorData = actualResponse.data;
-        }
-      } catch (e) {
-        console.warn('Could not parse error response:', e);
-      }
-
-      setTestResult({
-        success: false,
-        error: errorData?.error || errorData?.message || error.message || 'Test failed',
-        statusCode: errorData?.statusCode || error.statusCode || 500,
-        request: errorData?.request,
-        responseDetails: errorData?.responseDetails || errorData?.response
-      });
-    } finally {
-      setTestLoading(false);
     }
   };
 
@@ -279,7 +284,7 @@ const TokenManagement: React.FC = () => {
     switch (status) {
       case 'active': return 'success';
       case 'unused': return 'warning';
-      case 'expired': return 'error';
+      case 'expired': return 'default'; // Changed from 'error' to avoid red
       default: return 'default';
     }
   };
@@ -297,83 +302,225 @@ const TokenManagement: React.FC = () => {
         </Alert>
       )}
 
-      {/* User Account Information */}
+      {/* Multi-Team Account Information */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <SecurityIcon />
-            Account Information
+            Team Memberships & Rate Limits
           </Typography>
-          {userTier ? (
-            <Box>
-              <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-                <Chip 
-                  label={`Policy: ${userTier.policy || userTier.name}`} 
-                  color="primary" 
-                  variant="outlined"
-                />
-                <Chip 
-                  label={`${userTier.usage}/${userTier.limit} tokens this month`}
-                  color={userTier.usage > userTier.limit * 0.8 ? 'warning' : 'success'}
-                />
-                {userTier.team_name && (
-                  <Chip 
-                    label={`Team: ${userTier.team_name}`} 
-                    color="secondary" 
-                    variant="outlined"
-                  />
-                )}
+          
+          {/* Summary Stats */}
+          {!loading && tokens.length > 0 && (
+            <Box sx={{ mb: 3, p: 2, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
+              <Stack direction="row" spacing={3} sx={{ flexWrap: 'wrap', gap: 2 }}>
+                <Box>
+                  <Typography variant="h6" color="primary.main">
+                    {Object.keys(getTokensByTeam()).length}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Team{Object.keys(getTokensByTeam()).length !== 1 ? 's' : ''}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h6" color="primary.main">
+                    {tokens.length}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Total Token{tokens.length !== 1 ? 's' : ''}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h6" color="primary.main">
+                    {new Set(tokens.map(t => t.policy)).size}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Unique Polic{new Set(tokens.map(t => t.policy)).size !== 1 ? 'ies' : 'y'}
+                  </Typography>
+                </Box>
               </Stack>
-              <Typography variant="body2" color="text.secondary">
-                Available Models: {userTier.models?.join(', ') || 'No models available'}
-              </Typography>
-              {userTier.team_id && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Team ID: {userTier.team_id}
-                </Typography>
-              )}
+            </Box>
+          )}
+          
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Your active team memberships with policies, rate limits, and token counts.
+          </Typography>
+          
+          {loading ? (
+            <Box display="flex" justifyContent="center" p={2}>
+              <CircularProgress size={20} />
             </Box>
           ) : (
-            <CircularProgress size={20} />
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'grey.50' }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Team</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Policy & Rate Limits</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>Tokens</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Active Tokens</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {Object.entries(getTokensByTeam()).map(([teamId, teamTokens]) => {
+                    const teamInfo = getTeamInfo(teamId);
+                    return (
+                      <TableRow key={teamId} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                        <TableCell>
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                              {teamInfo.team_name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ID: {teamId}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Stack spacing={1}>
+                            <Box>
+                              <Chip 
+                                label={teamInfo.policy}
+                                color="primary" 
+                                size="small"
+                                variant="outlined"
+                              />
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {teamInfo.rate_limit.description}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip 
+                            label={teamTokens.length}
+                            color="info" 
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Stack spacing={0.5}>
+                            {teamTokens.slice(0, 3).map(token => (
+                              <Box key={token.name} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                                  {token.displayName || token.alias || token.name}
+                                </Typography>
+                                <Chip 
+                                  label={token.status}
+                                  color={getStatusColor(token.status) as any}
+                                  size="small"
+                                  sx={{ height: 16, fontSize: '0.7rem' }}
+                                />
+                              </Box>
+                            ))}
+                            {teamTokens.length > 3 && (
+                              <Typography variant="caption" color="text.secondary">
+                                +{teamTokens.length - 3} more...
+                              </Typography>
+                            )}
+                          </Stack>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Stack direction="row" spacing={0.5} justifyContent="center">
+                            {teamTokens.slice(0, 2).map(token => (
+                              <Tooltip key={token.name} title={`Copy ${token.displayName || token.alias || token.name} API key`}>
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => copyToClipboard(token.actualApiKey || token.name)}
+                                >
+                                  <CopyIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            ))}
+                            {teamTokens.length > 2 && (
+                              <Typography variant="caption" color="text.secondary">
+                                +{teamTokens.length - 2}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              
+              {Object.keys(getTokensByTeam()).length === 0 && (
+                <Box sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No team memberships found. Create your first token below.
+                  </Typography>
+                </Box>
+              )}
+            </TableContainer>
           )}
         </CardContent>
       </Card>
 
-      {/* Token Generation */}
+      {/* Team-Based Token Creation */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <AddIcon />
-            Generate New Token
+            <TeamsIcon />
+            Create Token by Team
           </Typography>
-          <Stack spacing={2}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Select a team to create a token with the team's policy and rate limits.
+          </Typography>
+          
+          <Stack spacing={3}>
+            {/* Team Selection */}
+            <FormControl fullWidth>
+              <Typography variant="body2" sx={{ mb: 1 }}>Select Team *</Typography>
+              <Select
+                value={selectedTeam}
+                onChange={(e) => setSelectedTeam(e.target.value)}
+                disabled={teamsLoading}
+              >
+                {teamsLoading ? (
+                  <MenuItem disabled>Loading teams...</MenuItem>
+                ) : availableTeams.length === 0 ? (
+                  <MenuItem disabled>No teams available</MenuItem>
+                ) : (
+                  availableTeams.map((team) => (
+                    <MenuItem key={team.team_id} value={team.team_id}>
+                      <Box sx={{ width: '100%' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {team.team_name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Policy: {team.policy} • {team.rate_limit.description}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+
+
+            {/* Token Name Input */}
             <TextField
               fullWidth
-              label="Token Name"
+              label="Token Name/Alias *"
               value={newTokenName}
               onChange={(e) => setNewTokenName(e.target.value)}
-              placeholder="my-project-token"
-              required
+              placeholder="e.g., my-test-token, premium-api-key"
+              disabled={loading}
+              helperText="Choose a descriptive name for your token"
             />
-            <TextField
-              fullWidth
-              label="Description (Optional)"
-              value={newTokenDescription}
-              onChange={(e) => setNewTokenDescription(e.target.value)}
-              placeholder="Token for ML project"
-              multiline
-              rows={2}
-            />
-            <Box>
-              <Button 
-                variant="contained" 
-                onClick={handleGenerateToken}
-                disabled={!newTokenName.trim() || loading}
-                startIcon={loading ? <CircularProgress size={20} /> : <KeyIcon />}
-              >
-                {loading ? 'Generating...' : 'Generate Token'}
-              </Button>
-            </Box>
+
+            {/* Create Button */}
+            <Button
+              variant="contained"
+              onClick={handleGenerateToken}
+              disabled={loading || !selectedTeam || !newTokenName.trim()}
+              startIcon={loading ? <CircularProgress size={16} /> : <AddIcon />}
+              size="large"
+            >
+              {loading ? 'Creating Token...' : 'Create Team Token'}
+            </Button>
           </Stack>
         </CardContent>
       </Card>
@@ -386,7 +533,7 @@ const TokenManagement: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Token Generated Successfully!
+          🎉 Token Generated Successfully!
         </DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -420,97 +567,112 @@ const TokenManagement: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Active Tokens List */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Active Tokens
-          </Typography>
-          {loading ? (
-            <Box display="flex" justifyContent="center" p={2}>
-              <CircularProgress />
-            </Box>
-          ) : (tokens || []).length === 0 ? (
-            <Typography variant="body2" color="text.secondary" textAlign="center" py={2}>
-              No tokens found. Generate your first token above.
+      {/* Individual Token Management */}
+      {tokens.length > 0 && (
+        <Card sx={{ mt: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <KeyIcon />
+              Token Management
             </Typography>
-          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Detailed view and management of all your API tokens.
+            </Typography>
+            
             <TableContainer component={Paper} variant="outlined">
-              <Table>
+              <Table size="small">
                 <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Created</TableCell>
-                    <TableCell>Last Used</TableCell>
-                    <TableCell>Usage</TableCell>
-                    <TableCell align="right">Actions</TableCell>
+                  <TableRow sx={{ bgcolor: 'grey.50' }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Token Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Team & Policy</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>API Key</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(tokens || []).map((token) => (
-                    <TableRow key={token.secret_name || token.name}>
+                  {tokens.map((token) => (
+                    <TableRow key={token.name} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
                       <TableCell>
-                        <Typography variant="subtitle2">
-                          {token.displayName || token.alias || token.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Secret: {token.name}
-                        </Typography>
-                        {token.team_name && (
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            Team: {token.team_name}
+                        <Box>
+                          <Typography variant="subtitle2">
+                            {token.displayName || token.alias || token.name}
                           </Typography>
-                        )}
-                        {token.actualApiKey && (
-                          <Typography variant="caption" color="success.main" display="block">
-                            ✓ API Key: {token.actualApiKey.substring(0, 10)}...
+                          <Typography variant="caption" color="text.secondary">
+                            {token.secret_name || token.name}
                           </Typography>
-                        )}
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Stack spacing={0.5}>
                           <Chip 
-                            label={token.status} 
-                            color={getStatusColor(token.status) as any}
+                            label={token.team_name || 'Unknown Team'}
+                            color="secondary" 
                             size="small"
+                            variant="outlined"
                           />
-                          {token.policy && (
-                            <Chip 
-                              label={token.policy} 
-                              color="default"
-                              size="small"
-                              variant="outlined"
-                            />
-                          )}
+                          <Chip 
+                            label={token.policy || 'No Policy'}
+                            color="primary"
+                            size="small"
+                            variant="outlined"
+                          />
                         </Stack>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {formatDate(token.created)}
-                        </Typography>
+                        <Chip 
+                          label={token.status}
+                          color={getStatusColor(token.status) as any}
+                          size="small"
+                        />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {token.lastUsed ? formatDate(token.lastUsed) : 'Never'}
-                        </Typography>
+                        <Box>
+                          <Typography variant="body2">
+                            {formatDate(token.created)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {token.usage} uses
+                          </Typography>
+                        </Box>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
-                          {token.usage} requests
-                        </Typography>
+                        {token.actualApiKey ? (
+                          <Box sx={{ 
+                            fontFamily: 'monospace', 
+                            fontSize: '0.75rem',
+                            p: 1,
+                            bgcolor: 'grey.100',
+                            borderRadius: 1,
+                            border: '1px solid',
+                            borderColor: 'grey.300',
+                            maxWidth: 200,
+                            overflow: 'hidden'
+                          }}>
+                            {token.actualApiKey.substring(0, 16)}...
+                          </Box>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">
+                            Not available
+                          </Typography>
+                        )}
                       </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Tooltip title="Copy secret name">
-                            <IconButton size="small" onClick={() => copyToClipboard(token.secret_name || token.name)}>
+                      <TableCell align="center">
+                        <Stack direction="row" spacing={1} justifyContent="center">
+                          <Tooltip title="Copy full API key">
+                            <IconButton 
+                              size="small" 
+                              onClick={() => copyToClipboard(token.actualApiKey || token.name)}
+                              disabled={!token.actualApiKey}
+                            >
                               <CopyIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Revoke token">
                             <IconButton 
                               size="small" 
-                              color="error"
+                              sx={{ color: 'text.secondary', '&:hover': { color: 'warning.main', bgcolor: 'warning.50' } }}
                               onClick={() => handleRevokeToken(token.secret_name || token.name)}
                             >
                               <DeleteIcon fontSize="small" />
@@ -523,391 +685,10 @@ const TokenManagement: React.FC = () => {
                 </TableBody>
               </Table>
             </TableContainer>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Quick Test */}
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <TestIcon />
-            Quick Test
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Test your tokens by sending a request to the selected model.
-          </Typography>
-          
-          <Stack spacing={2}>
-            <FormControl fullWidth>
-              <Typography variant="body2" sx={{ mb: 1 }}>Model</Typography>
-              <Select
-                value={testModel}
-                onChange={(e) => setTestModel(e.target.value)}
-              >
-                {(availableModels || []).map((model) => (
-                  <MenuItem key={model} value={model}>
-                    {model}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            
-            <TextField
-              fullWidth
-              label="Test Message"
-              value={testMessage}
-              onChange={(e) => setTestMessage(e.target.value)}
-              placeholder="Hello, test my token!"
-            />
-            
-            <FormControl fullWidth>
-              <Typography variant="body2" sx={{ mb: 1 }}>Token Selection</Typography>
-              <Stack spacing={2}>
-                <Box>
-                  <Button 
-                    variant={!useCustomToken ? "contained" : "outlined"} 
-                    onClick={() => setUseCustomToken(false)}
-                    size="small"
-                  >
-                    Use My Tokens
-                  </Button>
-                  <Button 
-                    variant={useCustomToken ? "contained" : "outlined"} 
-                    onClick={() => setUseCustomToken(true)}
-                    size="small"
-                    sx={{ ml: 1 }}
-                  >
-                    Custom Token
-                  </Button>
-                </Box>
-                
-                {!useCustomToken ? (
-                  <Select
-                    value={selectedTokenForTest}
-                    onChange={(e) => setSelectedTokenForTest(e.target.value)}
-                    displayEmpty
-                  >
-                    <MenuItem value="">Select a token to test</MenuItem>
-                    {(tokens || []).filter(t => t.status === 'active').map((token) => (
-                      <MenuItem key={token.name} value={token.name}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                          <Typography variant="body2">
-                            {token.displayName || token.alias || token.name} {token.team_name && `(${token.team_name})`}
-                          </Typography>
-                          {token.actualApiKey ? (
-                            <Chip label="✓ Ready" color="success" size="small" />
-                          ) : (
-                            <Chip label="⚠ No API Key" color="warning" size="small" />
-                          )}
-                          {token.policy && (
-                            <Chip label={token.policy} size="small" />
-                          )}
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                ) : (
-                  <Box>
-                    <TextField
-                      fullWidth
-                      label="Custom Token Value"
-                      value={customTokenValue}
-                      onChange={(e) => setCustomTokenValue(e.target.value)}
-                      placeholder="Enter the actual API key value (not the secret name)"
-                      helperText="Use the actual API key value from the Kubernetes secret, not the secret name"
-                    />
-                    <Box sx={{ mt: 1 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Quick test values:
-                      </Typography>
-                      <Box sx={{ mt: 0.5 }}>
-                        <Button 
-                          size="small" 
-                          variant="outlined" 
-                          onClick={() => setCustomTokenValue('invalid-token-123')}
-                          sx={{ mr: 1, mb: 0.5 }}
-                        >
-                          Test Invalid Token
-                        </Button>
-                        <Button 
-                          size="small" 
-                          variant="outlined" 
-                          onClick={() => setCustomTokenValue('freeuser1_key')}
-                          sx={{ mr: 1, mb: 0.5 }}
-                        >
-                          Test Free User Token
-                        </Button>
-                        <Button 
-                          size="small" 
-                          variant="outlined" 
-                          onClick={() => setCustomTokenValue('premiumuser1_key')}
-                          sx={{ mb: 0.5 }}
-                        >
-                          Test Premium User Token
-                        </Button>
-                      </Box>
-                    </Box>
-                    
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      <Typography variant="body2">
-                        <strong>💡 Note:</strong> We're working on automatically fetching API key values. For now, use the "Custom Token" option.
-                      </Typography>
-                    </Alert>
-                  </Box>
-                )}
-              </Stack>
-            </FormControl>
-            
-            <Box>
-              <Button 
-                variant="outlined"
-                onClick={handleTestToken}
-                disabled={
-                  (!useCustomToken && !selectedTokenForTest) || 
-                  (useCustomToken && !customTokenValue.trim()) || 
-                  !testMessage.trim() || 
-                  testLoading
-                }
-                startIcon={testLoading ? <CircularProgress size={20} /> : <TestIcon />}
-              >
-                {testLoading ? 'Testing...' : 'Send Test Request'}
-              </Button>
-              {useCustomToken && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                  💡 Try testing with invalid tokens to see authentication errors
-                </Typography>
-              )}
-            </Box>
-            
-            {testResult && (
-              <Box sx={{ mt: 2 }}>
-                {/* Main Result Alert */}
-                <Alert 
-                  severity={testResult.success ? 'success' : 'error'}
-                  sx={{ mb: 2 }}
-                >
-                  <Typography variant="subtitle2">
-                    {testResult.success ? '✅ Token Authentication Successful!' : '❌ Token Authentication Failed'}
-                    {testResult.statusCode && ` (HTTP ${testResult.statusCode})`}
-                  </Typography>
-                  <Typography variant="body2">
-                    {testResult.success ? testResult.response : testResult.error}
-                  </Typography>
-                </Alert>
-                
-                {/* Debug Info */}
-                <Card variant="outlined" sx={{ mb: 2, bgcolor: 'info.50' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" gutterBottom>
-                      🐛 Debug Info (Full Response Data):
-                    </Typography>
-                    <Box sx={{ fontFamily: 'monospace', fontSize: '0.7rem', bgcolor: 'white', p: 1, borderRadius: 1, maxHeight: 150, overflow: 'auto' }}>
-                      <pre style={{ margin: 0 }}>
-                        {JSON.stringify({ 
-                          hasRequest: !!testResult.request,
-                          hasResponse: !!testResult.responseDetails,
-                          fullResponse: testResult
-                        }, null, 2)}
-                      </pre>
-                    </Box>
-                  </CardContent>
-                </Card>
-                
-                {/* Always Show Request Details */}
-                <Card variant="outlined" sx={{ mb: 2 }}>
-                  <CardContent>
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-                      <HttpIcon color="primary" />
-                      <Typography variant="h6">
-                        📤 HTTP Request
-                      </Typography>
-                      {testResult.request && (
-                        <IconButton 
-                          size="small" 
-                          onClick={() => copyToClipboard(JSON.stringify(testResult.request, null, 2))}
-                          title="Copy request details"
-                        >
-                          <CopyIcon fontSize="small" />
-                        </IconButton>
-                      )}
-                    </Stack>
-                    
-                    {testResult.request ? (
-                      <>
-                        {/* URL and Method */}
-                        <Box sx={{ mb: 2, p: 1.5, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'primary.main' }}>
-                            {testResult.request.method} {testResult.request.url}
-                          </Typography>
-                        </Box>
-                        
-                        {/* Headers and Body in a Grid */}
-                        <Stack spacing={2} direction={{ xs: 'column', md: 'row' }}>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <CodeIcon fontSize="small" />
-                              Headers:
-                            </Typography>
-                            <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'grey.50', p: 1.5, borderRadius: 1, border: '1px solid', borderColor: 'grey.300' }}>
-                              {Object.entries(testResult.request.headers).map(([key, value]) => (
-                                <Box key={key} sx={{ mb: 0.3 }}>
-                                  <strong style={{ color: '#1976d2' }}>{key}:</strong>{' '}
-                                  <span style={{ color: key === 'Authorization' ? '#d32f2f' : '#333', wordBreak: 'break-all' }}>
-                                    {key === 'Authorization' ? 
-                                      `${value.substring(0, 12)}...${value.substring(value.length - 6)}` : 
-                                      value
-                                    }
-                                  </span>
-                                </Box>
-                              ))}
-                            </Box>
-                          </Box>
-                          
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <CodeIcon fontSize="small" />
-                              Body:
-                            </Typography>
-                            <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'grey.50', p: 1.5, borderRadius: 1, border: '1px solid', borderColor: 'grey.300' }}>
-                              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
-                                {JSON.stringify(testResult.request.body, null, 2)}
-                              </pre>
-                            </Box>
-                          </Box>
-                        </Stack>
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                        Request details not available
-                      </Typography>
-                    )}
-                  </CardContent>
-                </Card>
-                
-                {/* Always Show Response Details */}
-                <Card variant="outlined">
-                  <CardContent>
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-                      <HttpIcon color={testResult.success ? 'success' : 'error'} />
-                      <Typography variant="h6">
-                        📥 HTTP Response
-                      </Typography>
-                      {testResult.responseDetails && (
-                        <IconButton 
-                          size="small" 
-                          onClick={() => copyToClipboard(JSON.stringify(testResult.responseDetails, null, 2))}
-                          title="Copy response details"
-                        >
-                          <CopyIcon fontSize="small" />
-                        </IconButton>
-                      )}
-                    </Stack>
-                    
-                    {testResult.responseDetails ? (
-                      <>
-                        {/* Status */}
-                        <Box sx={{ 
-                          mb: 2, 
-                          p: 1.5, 
-                          bgcolor: testResult.success ? 'success.50' : 'error.50', 
-                          borderRadius: 1, 
-                          border: '1px solid', 
-                          borderColor: testResult.success ? 'success.200' : 'error.200' 
-                        }}>
-                          <Typography variant="body2" sx={{ 
-                            fontFamily: 'monospace', 
-                            fontWeight: 'bold', 
-                            color: testResult.success ? 'success.main' : 'error.main' 
-                          }}>
-                            HTTP {testResult.responseDetails.status} {testResult.success ? 'OK' : 'Error'}
-                          </Typography>
-                        </Box>
-                        
-                        {/* Headers and Body in a Grid */}
-                        <Stack spacing={2} direction={{ xs: 'column', md: 'row' }}>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <CodeIcon fontSize="small" />
-                              Headers:
-                            </Typography>
-                            <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'grey.50', p: 1.5, borderRadius: 1, border: '1px solid', borderColor: 'grey.300', maxHeight: 200, overflow: 'auto' }}>
-                              {Object.entries(testResult.responseDetails.headers).map(([key, value]) => (
-                                <Box key={key} sx={{ mb: 0.3 }}>
-                                  <strong style={{ color: '#1976d2' }}>{key}:</strong>{' '}
-                                  <span style={{ color: '#333', wordBreak: 'break-all' }}>{value}</span>
-                                </Box>
-                              ))}
-                            </Box>
-                          </Box>
-                          
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <CodeIcon fontSize="small" />
-                              Body:
-                            </Typography>
-                            <Box sx={{ 
-                              fontFamily: 'monospace', 
-                              fontSize: '0.8rem', 
-                              bgcolor: 'grey.50', 
-                              p: 1.5, 
-                              borderRadius: 1, 
-                              border: '1px solid', 
-                              borderColor: 'grey.300',
-                              maxHeight: 300, 
-                              overflow: 'auto' 
-                            }}>
-                              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
-                                {testResult.responseDetails.body ? 
-                                  JSON.stringify(testResult.responseDetails.body, null, 2) : 
-                                  '(empty response body)'
-                                }
-                              </pre>
-                            </Box>
-                          </Box>
-                        </Stack>
-                        
-                        {/* Security Analysis for Failed Requests */}
-                        {!testResult.success && testResult.responseDetails.headers && (
-                          <Box sx={{ mt: 2, p: 2, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.200' }}>
-                            <Typography variant="subtitle2" gutterBottom color="warning.main">
-                              🔒 Security Analysis:
-                            </Typography>
-                            {testResult.responseDetails.headers['x-ext-auth-reason'] && (
-                              <Box sx={{ mb: 1 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                                  Kuadrant Auth Failure:
-                                </Typography>
-                                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'white', p: 1, borderRadius: 1 }}>
-                                  {testResult.responseDetails.headers['x-ext-auth-reason']}
-                                </Typography>
-                              </Box>
-                            )}
-                            {testResult.responseDetails.headers['www-authenticate'] && (
-                              <Box>
-                                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                                  Available Auth Methods:
-                                </Typography>
-                                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'white', p: 1, borderRadius: 1 }}>
-                                  {testResult.responseDetails.headers['www-authenticate']}
-                                </Typography>
-                              </Box>
-                            )}
-                          </Box>
-                        )}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                        Response details not available
-                      </Typography>
-                    )}
-                  </CardContent>
-                </Card>
-              </Box>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
     </Box>
   );
 };

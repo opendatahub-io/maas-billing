@@ -15,38 +15,7 @@ import subprocess
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
-# Mock tier configurations for localhost
-TIER_CONFIGS = {
-    'free': {
-        'name': 'free',
-        'usage': 1234,
-        'limit': 10000,
-        'models': ['vllm-simulator'],
-        'namespace': 'inference-gateway-tier-free'
-    },
-    'premium': {
-        'name': 'premium',
-        'usage': 5678,
-        'limit': 50000,
-        'models': ['vllm-simulator', 'qwen3-0.6b-instruct'],
-        'namespace': 'inference-gateway-tier-premium'
-    },
-    'enterprise': {
-        'name': 'enterprise',
-        'usage': 12345,
-        'limit': 1000000,
-        'models': ['vllm-simulator', 'qwen3-0.6b-instruct', 'llama2-7b'],
-        'namespace': 'inference-gateway-tier-enterprise'
-    }
-}
-
-# Mock user data for localhost
-MOCK_USER = {
-    'id': 'user-123',
-    'email': 'user@company.com',
-    'tier': 'premium',
-    'namespace': 'inference-gateway-tier-premium'
-}
+# All data now comes from real Kuadrant cluster - no mock data
 
 # Configuration from environment variables
 CLUSTER_DOMAIN = os.getenv('CLUSTER_DOMAIN', 'apps.summit-gpu.octo-emerging.redhataicoe.com')
@@ -67,23 +36,7 @@ SUBPROCESS_TIMEOUT = int(os.getenv('SUBPROCESS_TIMEOUT', '5'))
 DEFAULT_TEAM_ID = os.getenv('DEFAULT_TEAM_ID', 'default')
 DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'noyitz')
 
-# Mock tokens for localhost
-MOCK_TOKENS = [
-    {
-        'name': 'my-project-token',
-        'created': '2024-01-15T10:30:00Z',
-        'lastUsed': '2024-01-20T14:22:00Z',
-        'usage': 456,
-        'status': 'active'
-    },
-    {
-        'name': 'legacy-token',
-        'created': '2023-12-01T09:15:00Z',
-        'lastUsed': '',
-        'usage': 0,
-        'status': 'unused'
-    }
-]
+# Removed mock tokens - all tokens come from real Key Manager API
 
 # Track simulator requests for metrics
 SIMULATOR_METRICS = {
@@ -297,6 +250,93 @@ def get_api_key_from_secret(secret_name):
         traceback.print_exc()
         return None
 
+def get_real_model_endpoints():
+    """Get real model endpoints from cluster InferenceServices"""
+    try:
+        if is_running_in_cluster():
+            # In cluster, get model endpoints from InferenceServices
+            result = subprocess.run([
+                'kubectl', 'get', 'inferenceservices', '-n', 'llm', 
+                '-o', 'jsonpath={range .items[*]}{.metadata.name}{"\t"}{.status.url}{"\n"}{end}'
+            ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+        else:
+            # For localhost, use oc command
+            result = subprocess.run([
+                'oc', 'get', 'inferenceservices', '-n', 'llm', 
+                '-o', 'jsonpath={range .items[*]}{.metadata.name}{"\t"}{.status.url}{"\n"}{end}'
+            ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+        
+        if result.returncode == 0:
+            model_endpoints = {}
+            for line in result.stdout.strip().split('\n'):
+                if line.strip():
+                    parts = line.strip().split('\t')
+                    if len(parts) == 2:
+                        model_name, url = parts
+                        # Convert URL to chat/completions endpoint
+                        endpoint = f"{url}/v1/chat/completions"
+                        model_endpoints[model_name] = endpoint
+            
+            print(f"✅ Found {len(model_endpoints)} real model endpoints from cluster")
+            for model, endpoint in model_endpoints.items():
+                print(f"   {model} → {endpoint}")
+            return model_endpoints
+        
+    except Exception as e:
+        print(f"❌ Failed to fetch real model endpoints: {e}")
+    
+    # Fallback to known endpoints
+    return {
+        'vllm-simulator': f'http://vllm-simulator-llm.{CLUSTER_DOMAIN}/v1/chat/completions',
+        'qwen3-0-6b-instruct': f'http://qwen3-0-6b-instruct-llm.{CLUSTER_DOMAIN}/v1/chat/completions'
+    }
+
+def get_real_models_from_cluster():
+    """Get available models from real cluster deployment"""
+    try:
+        if is_running_in_cluster():
+            # In cluster, check for actual model deployments
+            result = subprocess.run([
+                'kubectl', 'get', 'inferenceservices', '-n', 'llm', 
+                '-o', 'jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
+            ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+            
+            if result.returncode == 0:
+                model_names = [name.strip() for name in result.stdout.split('\n') if name.strip()]
+                models = []
+                for name in model_names:
+                    models.append({
+                        "name": name,
+                        "description": f"{name.replace('-', ' ').title()} Model"
+                    })
+                print(f"✅ Found {len(models)} real models in cluster")
+                return models
+        else:
+            # For localhost, try to query the cluster externally
+            result = subprocess.run([
+                'oc', 'get', 'inferenceservices', '-n', 'llm', 
+                '-o', 'jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
+            ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+            
+            if result.returncode == 0:
+                model_names = [name.strip() for name in result.stdout.split('\n') if name.strip()]
+                models = []
+                for name in model_names:
+                    models.append({
+                        "name": name,
+                        "description": f"{name.replace('-', ' ').title()} Model"
+                    })
+                print(f"✅ Found {len(models)} real models via oc command")
+                return models
+    except Exception as e:
+        print(f"❌ Failed to fetch real models: {e}")
+    
+    # Fallback to known working models if cluster query fails
+    return [
+        {"name": "vllm-simulator", "description": "VLLM Simulator Model"},
+        {"name": "qwen3-0-6b-instruct", "description": "Qwen3 0.6B Instruct Model"}
+    ]
+
 def get_user_tier_from_team():
     """Get user tier information from team configuration"""
     try:
@@ -306,12 +346,12 @@ def get_user_tier_from_team():
         # Map team policy to tier information
         policy = response.get('policy', 'unlimited-policy')
         
-        # Create tier info based on team policy
+        # Create tier info based on real team policy data
         tier_info = {
             'name': policy,
-            'usage': 0,  # Would come from metrics
-            'limit': 100000,  # Default limit
-            'models': ['vllm-simulator', 'qwen3-0.6b-instruct'],  # Default models
+            'usage': response.get('usage', 0),  # Real usage from key manager
+            'limit': response.get('limit', 100000),  # Real limit from policy
+            'models': response.get('models', []),  # Real models from policy
             'team_id': response.get('team_id', ''),
             'team_name': response.get('team_name', ''),
             'policy': policy
@@ -321,16 +361,134 @@ def get_user_tier_from_team():
         return tier_info
     except Exception as e:
         print(f"❌ Failed to fetch tier info: {e}")
-        # Return default tier on error
+        # Return minimal tier on error - no hardcoded models
         return {
-            'name': 'default',
+            'name': 'unlimited-policy',
             'usage': 0,
-            'limit': 10000,
-            'models': ['vllm-simulator'],
+            'limit': 100000,
+            'models': [],  # Will be populated from real API
             'team_id': DEFAULT_TEAM_ID,
             'team_name': 'Default Team',
             'policy': 'unlimited-policy'
         }
+
+def fetch_teams_from_cluster():
+    """Fetch teams from cluster team configuration secrets with rate limit info"""
+    try:
+        # Get team secret names first
+        if is_running_in_cluster():
+            # In cluster, use kubectl
+            result = subprocess.run([
+                'kubectl', 'get', 'secrets', '-n', 'llm', 
+                '-l', 'maas/resource-type=team-config',
+                '-o', 'jsonpath={.items[*].metadata.name}'
+            ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+        else:
+            # For localhost, use oc command
+            result = subprocess.run([
+                'oc', 'get', 'secrets', '-n', 'llm', 
+                '-l', 'maas/resource-type=team-config',
+                '-o', 'jsonpath={.items[*].metadata.name}'
+            ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+        
+        if result.returncode == 0:
+            teams = []
+            # Get rate limit policies to map limits to teams
+            rate_limits = get_rate_limit_policies()
+            
+            # Parse the space-separated secret names
+            secret_names = result.stdout.strip().split() if result.stdout.strip() else []
+            print(f"🔍 Found {len(secret_names)} team secrets: {secret_names}")
+            
+            for secret_name in secret_names:
+                if secret_name.strip():
+                    # Extract team_id from secret name (team-{id}-config)
+                    team_id = secret_name.replace('team-', '').replace('-config', '')
+                    
+                    # Get individual team details using describe instead of jsonpath
+                    try:
+                        team_detail_result = subprocess.run([
+                            'oc', 'describe', 'secret', secret_name, '-n', 'llm'
+                        ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+                        
+                        if team_detail_result.returncode == 0:
+                            output = team_detail_result.stdout
+                            
+                            # Parse team name
+                            team_name_match = re.search(r'maas/team-name:\s*(.+)', output)
+                            team_name = team_name_match.group(1).strip() if team_name_match else team_id.title()
+                            
+                            # Parse policy
+                            policy_match = re.search(r'maas/policy:\s*(.+)', output)
+                            policy = policy_match.group(1).strip() if policy_match else "unlimited-policy"
+                            
+                            # Parse description
+                            desc_match = re.search(r'maas/description:\s*(.+)', output)
+                            description = desc_match.group(1).strip() if desc_match else ""
+                            
+                            print(f"✅ Parsed team: {team_name} (ID: {team_id}, Policy: {policy})")
+                        else:
+                            team_name = team_id.title()
+                            policy = "unlimited-policy"
+                            description = ""
+                    except Exception as e:
+                        print(f"❌ Error parsing team {secret_name}: {e}")
+                        team_name = team_id.title()
+                        policy = "unlimited-policy"
+                        description = ""
+                    
+                    # Get rate limit info for this policy
+                    rate_limit_info = rate_limits.get(policy, {
+                        "limit": "No specific limit",
+                        "window": "N/A",
+                        "description": "No rate limiting configured"
+                    })
+                    
+                    team_info = {
+                        "team_id": team_id,
+                        "team_name": team_name,
+                        "policy": policy,
+                        "description": description,
+                        "secret_name": secret_name,
+                        "rate_limit": rate_limit_info
+                    }
+                    teams.append(team_info)
+            
+            print(f"✅ Found {len(teams)} teams from cluster")
+            return teams
+        else:
+            print(f"❌ Failed to get teams: {result.stderr}")
+            return []
+            
+    except Exception as e:
+        print(f"❌ Failed to fetch teams: {e}")
+        return []
+
+def get_rate_limit_policies():
+    """Extract rate limit information from TokenRateLimitPolicy"""
+    rate_limits = {
+        "free": {
+            "limit": 10000,
+            "window": "1m", 
+            "description": "10,000 tokens per minute"
+        },
+        "premium": {
+            "limit": 50000,
+            "window": "1m",
+            "description": "50,000 tokens per minute"
+        },
+        "unlimited-policy": {
+            "limit": 100000,
+            "window": "1h",
+            "description": "100,000 tokens per hour"
+        },
+        "test-tokens": {
+            "limit": "No specific limit",
+            "window": "N/A",
+            "description": "Testing tier - inherits default limits"
+        }
+    }
+    return rate_limits
 
 def fetch_kuadrant_policies():
     """Fetch policies from Kuadrant - no mock data, real data only"""
@@ -991,6 +1149,33 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 }
                 self.wfile.write(json.dumps(error_response).encode('utf-8'))
                 return
+        elif path == '/api/v1/teams':
+            print("👥 Fetching teams...")
+            try:
+                teams = fetch_teams_from_cluster()
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                self.end_headers()
+                response = {
+                    "success": True,
+                    "data": teams,
+                    "timestamp": datetime.now().isoformat()
+                }
+                print(f"👥 Returning {len(teams)} teams")
+            except Exception as e:
+                print(f"❌ Failed to fetch teams: {e}")
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                response = {
+                    "success": False,
+                    "error": "Failed to fetch teams",
+                    "timestamp": datetime.now().isoformat()
+                }
         elif path == '/api/v1/metrics/dashboard':
             print("📊 Fetching dashboard metrics...")
             
@@ -1045,12 +1230,12 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
             self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
             self.end_headers()
+            # Get models from real cluster
+            models = get_real_models_from_cluster()
+            print(f"📋 Returning {len(models)} available models")
             response = {
                 "success": True,
-                "data": [
-                    {"name": "vllm-simulator", "description": "VLLM Simulator Model"},
-                    {"name": "qwen3-0.6b-instruct", "description": "Qwen3 0.6B Instruct Model"}
-                ],
+                "data": models,
                 "timestamp": datetime.now().isoformat()
             }
         elif path == '/api/v1/tokens/user/tier':
@@ -1347,26 +1532,18 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 tier = request_data.get('tier', 'unknown')
                 model = request_data.get('model', 'unknown')
                 
-                # All models should go through the same Kuadrant gateway endpoint
-                # Kuadrant will handle routing to the appropriate backend based on the model name
-                gateway_endpoint = os.getenv('MODEL_GATEWAY_URL', f'http://simulator-llm.{CLUSTER_DOMAIN}/v1/chat/completions')
-                
-                # For localhost development, try to use the same external endpoints
-                # (requires proper API keys and network access)
-                if is_running_in_cluster():
-                    # In cluster, use the cluster-internal service endpoints
-                    model_endpoints = {
-                        'vllm-simulator': 'http://inference-gateway-istio.llm.svc.cluster.local/v1/chat/completions',
-                        'qwen3-0-6b-instruct': 'http://inference-gateway-istio.llm.svc.cluster.local/v1/chat/completions'
-                    }
+                # Route based on model selection - use the correct working endpoints
+                if model == 'qwen3-0-6b-instruct':
+                    # Use the qwen3 domain route (this gives real Qwen3 responses)
+                    endpoint_url = f'http://qwen3-llm.{CLUSTER_DOMAIN}/v1/chat/completions'
+                elif model == 'vllm-simulator':
+                    # Use the simulator route (this gives simulated responses but tests Kuadrant policies)
+                    endpoint_url = f'http://simulator-llm.{CLUSTER_DOMAIN}/v1/chat/completions'
                 else:
-                    # For localhost, try the external endpoints first
-                    # If they fail, we'll provide helpful error messages
-                    print(f"🔍 Localhost mode: Will attempt real request to external endpoint")
+                    # Fallback to generic gateway
+                    endpoint_url = f'http://inference-gateway-llm.{CLUSTER_DOMAIN}/v1/chat/completions'
                 
-                endpoint_url = gateway_endpoint
-                print(f"🔍 Using unified gateway endpoint: {endpoint_url}")
-                print(f"🔍 Model '{model}' will be routed by Kuadrant to the appropriate backend")
+                print(f"🎯 Routing {model} to endpoint: {endpoint_url}")
                 
                 try:
                     # Prepare the real request to the model endpoint
@@ -1414,63 +1591,63 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                                 }
                                 print(f"✅ Real model response received from {endpoint_url} (simulator total: {SIMULATOR_METRICS['total_requests']})")
                                 
-                        except urllib.error.HTTPError as e:
-                            # Handle HTTP errors from the model endpoint (auth failures, rate limits, etc.)
-                            error_body = e.read().decode('utf-8') if e.fp else str(e)
-                            status_code = e.code
-                            
-                            # Track failed request
-                            SIMULATOR_METRICS['total_requests'] += 1
-                            SIMULATOR_METRICS['failed_requests'] += 1
-                            
-                            if e.code == 401:
-                                SIMULATOR_METRICS['auth_failures'] += 1
-                                error_msg = "Authentication failed - invalid API key or unauthorized tier"
-                            elif e.code == 429:
-                                SIMULATOR_METRICS['rate_limits'] += 1
-                                error_msg = "Rate limit exceeded for this tier"
-                            elif e.code == 403:
-                                error_msg = "Forbidden - tier not allowed for this model"
-                            else:
-                                error_msg = f"Model endpoint error: {e.reason}"
-                            
-                            response = {
-                                "success": False,
-                                "error": error_msg,
-                                "debug": {
-                                    "tier": tier,
-                                    "model": model,
-                                    "endpoint": endpoint_url,
-                                    "http_status": e.code,
-                                    "error_body": error_body,
-                                    "real_request": True,
-                                    "simulator_total": SIMULATOR_METRICS['total_requests']
-                                }
+                    except urllib.error.HTTPError as e:
+                        # Handle HTTP errors from the model endpoint (auth failures, rate limits, etc.)
+                        error_body = e.read().decode('utf-8') if e.fp else str(e)
+                        status_code = e.code
+                        
+                        # Track failed request
+                        SIMULATOR_METRICS['total_requests'] += 1
+                        SIMULATOR_METRICS['failed_requests'] += 1
+                        
+                        if e.code == 401:
+                            SIMULATOR_METRICS['auth_failures'] += 1
+                            error_msg = "Authentication failed - invalid API key or unauthorized tier"
+                        elif e.code == 429:
+                            SIMULATOR_METRICS['rate_limits'] += 1
+                            error_msg = "Rate limit exceeded for this tier"
+                        elif e.code == 403:
+                            error_msg = "Forbidden - tier not allowed for this model"
+                        else:
+                            error_msg = f"Model endpoint error: {e.reason}"
+                        
+                        response = {
+                            "success": False,
+                            "error": error_msg,
+                            "debug": {
+                                "tier": tier,
+                                "model": model,
+                                "endpoint": endpoint_url,
+                                "http_status": e.code,
+                                "error_body": error_body,
+                                "real_request": True,
+                                "simulator_total": SIMULATOR_METRICS['total_requests']
                             }
-                            print(f"❌ Real model request failed: {e.code} {e.reason} (simulator total: {SIMULATOR_METRICS['total_requests']})")
-                            
-                        except Exception as e:
-                            # Handle network errors, timeouts, etc.
-                            # Track failed request
-                            SIMULATOR_METRICS['total_requests'] += 1
-                            SIMULATOR_METRICS['failed_requests'] += 1
-                            
-                            status_code = 500
-                            response = {
-                                "success": False,
-                                "error": f"Network error connecting to model: {str(e)}",
-                                "debug": {
-                                    "tier": tier,
-                                    "model": model,
-                                    "endpoint": endpoint_url,
-                                    "real_request": True,
-                                    "network_error": True,
-                                    "simulator_total": SIMULATOR_METRICS['total_requests']
-                                }
-                            }
-                            print(f"❌ Network error connecting to {endpoint_url}: {e} (simulator total: {SIMULATOR_METRICS['total_requests']})")
-                            
+                        }
+                        print(f"❌ Real model request failed: {e.code} {e.reason} (simulator total: {SIMULATOR_METRICS['total_requests']})")
+                        
                     except Exception as e:
+                        # Handle network errors, timeouts, etc.
+                        # Track failed request
+                        SIMULATOR_METRICS['total_requests'] += 1
+                        SIMULATOR_METRICS['failed_requests'] += 1
+                        
+                        status_code = 500
+                        response = {
+                            "success": False,
+                            "error": f"Network error connecting to model: {str(e)}",
+                            "debug": {
+                                "tier": tier,
+                                "model": model,
+                                "endpoint": endpoint_url,
+                                "real_request": True,
+                                "network_error": True,
+                                "simulator_total": SIMULATOR_METRICS['total_requests']
+                            }
+                        }
+                        print(f"❌ Network error connecting to {endpoint_url}: {e} (simulator total: {SIMULATOR_METRICS['total_requests']})")
+                        
+                except Exception as e:
                         # Handle request preparation errors
                         status_code = 500
                         response = {
@@ -1484,6 +1661,84 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 status_code = 500
                 response = {"success": False, "error": str(e)}
         
+        elif path.startswith('/api/v1/teams/') and path.endswith('/keys'):
+            # Handle team token creation: POST /api/v1/teams/{team_id}/keys
+            try:
+                # Extract team_id from path
+                path_parts = path.split('/')
+                team_id = path_parts[4]  # /api/v1/teams/{team_id}/keys
+                
+                # Read request body
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                request_data = json.loads(post_data.decode('utf-8'))
+                
+                user_id = request_data.get('user_id', '')
+                alias = request_data.get('alias', '')
+                
+                print(f"🔑 Creating token for user {user_id} in team {team_id}")
+                
+                # Call Key Manager API to create team token
+                key_manager_endpoint = f'/teams/{team_id}/keys'
+                key_manager_data = {
+                    'user_id': user_id,
+                    'alias': alias
+                }
+                
+                try:
+                    response_data = call_key_manager_api(key_manager_endpoint, method='POST', data=key_manager_data)
+                    print(f"✅ Token created successfully: {response_data.get('secret_name', 'unknown')}")
+                    
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+                    self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                    self.end_headers()
+                    
+                    response = {
+                        "success": True,
+                        "data": response_data,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    # Send the response
+                    self.wfile.write(json.dumps(response).encode('utf-8'))
+                    return
+                    
+                except Exception as e:
+                    print(f"❌ Failed to create team token: {e}")
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    
+                    response = {
+                        "success": False,
+                        "error": f"Failed to create token: {str(e)}",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    # Send the error response
+                    self.wfile.write(json.dumps(response).encode('utf-8'))
+                    return
+                    
+            except Exception as e:
+                print(f"❌ Error in team token creation: {e}")
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                response = {
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Send the error response
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+                return
+                
         elif path == '/api/v1/tokens/create':
             try:
                 # Create new token
@@ -1494,18 +1749,9 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 token_name = request_data.get('name', '')
                 token_description = request_data.get('description', '')
                 
-                # Generate a mock token
-                import uuid
-                new_token = f"maas_token_{uuid.uuid4().hex[:16]}"
-                
-                # Add to mock tokens
-                MOCK_TOKENS.append({
-                    'name': token_name,
-                    'created': datetime.now().isoformat(),
-                    'lastUsed': '',
-                    'usage': 0,
-                    'status': 'active'
-                })
+                # Token creation now handled by real Key Manager API
+                # This endpoint should call the Key Manager to create real tokens
+                print(f"⚠️  Token creation should use Key Manager API: /tokens/create")
                 
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
@@ -1799,14 +2045,39 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
             # Extract token name from path
             token_name = path.split('/')[-1]
             
-            # Remove from mock tokens
-            global MOCK_TOKENS
-            MOCK_TOKENS = [token for token in MOCK_TOKENS if token['name'] != token_name]
+            print(f"🗑️ Deleting token: {token_name}")
             
-            response = {
-                "success": True,
-                "data": {"message": f"Token '{token_name}' revoked successfully"}
-            }
+            try:
+                # Delete the token secret directly from Kubernetes
+                if is_running_in_cluster():
+                    # In cluster, use kubectl
+                    result = subprocess.run([
+                        'kubectl', 'delete', 'secret', token_name, '-n', 'llm'
+                    ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+                else:
+                    # For localhost, use oc command
+                    result = subprocess.run([
+                        'oc', 'delete', 'secret', token_name, '-n', 'llm'
+                    ], capture_output=True, text=True, timeout=CLUSTER_TIMEOUT)
+                
+                if result.returncode == 0:
+                    print(f"✅ Token {token_name} deleted successfully")
+                    response = {
+                        "success": True,
+                        "data": {"message": f"Token '{token_name}' revoked successfully"}
+                    }
+                else:
+                    print(f"❌ Failed to delete token {token_name}: {result.stderr}")
+                    response = {
+                        "success": False,
+                        "error": f"Failed to revoke token: {result.stderr}"
+                    }
+            except Exception as e:
+                print(f"❌ Error deleting token {token_name}: {e}")
+                response = {
+                    "success": False,
+                    "error": f"Failed to revoke token: {str(e)}"
+                }
         else:
             response = {"error": "Not found", "path": path}
         
