@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Button,
   Chip,
-  IconButton,
   TextField,
   Typography,
   Table,
@@ -14,29 +12,32 @@ import {
   TableRow,
   Paper,
   Tooltip,
+  Collapse,
+  Card,
+  CardContent,
+  Stack,
+  Divider,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   Search as SearchIcon,
   Schedule as ScheduleIcon,
-  Stars as TierIcon,
-  Memory as ModelIcon,
   Security as AuthIcon,
   Speed as RateLimitIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  Policy as PolicyIcon,
+  Group as GroupIcon,
+  Key as KeyIcon,
 } from '@mui/icons-material';
 
 import { Policy } from '../types';
-import PolicyBuilder from './PolicyBuilder';
 import apiService from '../services/api';
 
 const PolicyManager: React.FC = () => {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [filteredPolicies, setFilteredPolicies] = useState<Policy[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null);
-  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [expandedPolicies, setExpandedPolicies] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,10 +45,15 @@ const PolicyManager: React.FC = () => {
       try {
         setLoading(true);
         const data = await apiService.getPolicies();
-        setPolicies(data);
-        setFilteredPolicies(data);
+        // Ensure data is always an array
+        const policies = Array.isArray(data) ? data : [];
+        setPolicies(policies);
+        setFilteredPolicies(policies);
       } catch (error) {
         console.error('Failed to fetch policies:', error);
+        // Set empty arrays on error to prevent map errors
+        setPolicies([]);
+        setFilteredPolicies([]);
       } finally {
         setLoading(false);
       }
@@ -64,41 +70,119 @@ const PolicyManager: React.FC = () => {
     setFilteredPolicies(filtered);
   }, [searchTerm, policies]);
 
-  const handleCreatePolicy = () => {
-    setSelectedPolicy(null);
-    setIsBuilderOpen(true);
-  };
 
-  const handleEditPolicy = (policy: Policy) => {
-    setSelectedPolicy(policy);
-    setIsBuilderOpen(true);
-  };
-
-  const handleDeletePolicy = async (policyId: string) => {
-    try {
-      await apiService.deletePolicy(policyId);
-      setPolicies(prev => prev.filter(p => p.id !== policyId));
-    } catch (error) {
-      console.error('Failed to delete policy:', error);
+  const togglePolicyExpansion = (policyId: string) => {
+    const newExpanded = new Set(expandedPolicies);
+    if (newExpanded.has(policyId)) {
+      newExpanded.delete(policyId);
+    } else {
+      newExpanded.add(policyId);
     }
+    setExpandedPolicies(newExpanded);
   };
 
-  const handleSavePolicy = async (policy: Policy) => {
-    try {
-      if (selectedPolicy) {
-        // Update existing policy
-        const updatedPolicy = await apiService.updatePolicy(policy.id, policy);
-        setPolicies(prev => prev.map(p => p.id === policy.id ? updatedPolicy : p));
-      } else {
-        // Create new policy
-        const newPolicy = await apiService.createPolicy(policy);
-        setPolicies(prev => [...prev, newPolicy]);
-      }
-      setIsBuilderOpen(false);
-      setSelectedPolicy(null);
-    } catch (error) {
-      console.error('Failed to save policy:', error);
-    }
+  const renderPolicyDetails = (policy: Policy) => {
+    return (
+      <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
+        <Stack spacing={3}>
+          {/* Basic Information */}
+          <Card variant="outlined">
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PolicyIcon fontSize="small" />
+                Policy Details
+              </Typography>
+              <Stack spacing={1}>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Namespace:</Typography>
+                  <Typography variant="body2">{policy.namespace}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Target:</Typography>
+                  <Typography variant="body2">
+                    {policy.targetRef?.kind}/{policy.targetRef?.name || 'Unknown'}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Created:</Typography>
+                  <Typography variant="body2">{new Date(policy.created).toLocaleString()}</Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          {/* Rules Details */}
+          {policy.items && policy.items.length > 0 && (
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {policy.type === 'auth' ? <AuthIcon fontSize="small" /> : <RateLimitIcon fontSize="small" />}
+                  {policy.type === 'auth' ? 'Authentication & Authorization Rules' : 'Rate Limiting Rules'}
+                </Typography>
+                <Stack spacing={2}>
+                  {policy.items.map((item: any, index: number) => (
+                    <Card key={index} variant="outlined" sx={{ bgcolor: 'grey.50' }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" gutterBottom>
+                          {item.id} ({item.type})
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {item.description}
+                        </Typography>
+                        
+                        {/* Authentication Rules */}
+                        {item.type === 'authentication' && (
+                          <Box>
+                            <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <KeyIcon fontSize="small" />
+                              API Key Authentication
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                              Prefix: {item.config?.credentials?.authorizationHeader?.prefix || 'APIKEY'}
+                            </Typography>
+                          </Box>
+                        )}
+                        
+                        {/* Authorization Rules */}
+                        {item.type === 'authorization' && item.allowedGroups && (
+                          <Box>
+                            <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <GroupIcon fontSize="small" />
+                              Allowed Groups
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              {item.allowedGroups.map((group: string) => (
+                                <Chip key={group} label={group} size="small" color="primary" variant="outlined" />
+                              ))}
+                            </Box>
+                          </Box>
+                        )}
+                        
+                        {/* Rate Limit Rules */}
+                        {item.type === 'rate-limit' && item.rates && (
+                          <Box>
+                            <Typography variant="subtitle2" gutterBottom>Rate Limits:</Typography>
+                            {item.rates.map((rate: any, rateIndex: number) => (
+                              <Chip 
+                                key={rateIndex}
+                                label={`${rate.limit} tokens per ${rate.window}`}
+                                size="small"
+                                color="warning"
+                                sx={{ mr: 1, mb: 1 }}
+                              />
+                            ))}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              </CardContent>
+            </Card>
+          )}
+        </Stack>
+      </Box>
+    );
   };
 
   const getTierColor = (tierName: string) => {
@@ -115,6 +199,10 @@ const PolicyManager: React.FC = () => {
   };
 
   const formatTimeRange = (policy: Policy) => {
+    // Handle real Kuadrant policies that don't have timeRange
+    if (!policy.timeRange) {
+      return 'Always Active';
+    }
     if (policy.timeRange.unlimited) {
       return 'Unlimited';
     }
@@ -122,10 +210,11 @@ const PolicyManager: React.FC = () => {
   };
 
   const formatRequestLimits = (policy: Policy) => {
+    // Handle real Kuadrant policies that don't have requestLimits
     if (!policy.requestLimits) {
       return null; // Don't show anything for auth policies
     }
-    if (policy.requestLimits.tokenLimit === null) {
+    if (policy.requestLimits.tokenLimit === null || policy.requestLimits.tokenLimit === undefined) {
       return 'Unlimited';
     }
     return `${policy.requestLimits.tokenLimit.toLocaleString()} requests/${policy.requestLimits.timePeriod}`;
@@ -150,18 +239,13 @@ const PolicyManager: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" component="h1">
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
           Policy Management
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreatePolicy}
-          sx={{ ml: 2 }}
-        >
-          Create Policy
-        </Button>
+        <Typography variant="body1" color="text.secondary">
+          View and manage Kuadrant policies for authentication and rate limiting
+        </Typography>
       </Box>
 
       {/* Search */}
@@ -183,108 +267,82 @@ const PolicyManager: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Policy</TableCell>
-              <TableCell>Description</TableCell>
-              <TableCell>Tiers & Models</TableCell>
-              <TableCell>Request Limits</TableCell>
-              <TableCell>Time Range</TableCell>
+              <TableCell width="40px"></TableCell>
+              <TableCell>Policy Name & Type</TableCell>
+              <TableCell>Namespace</TableCell>
+              <TableCell>Target</TableCell>
+              <TableCell>Rules</TableCell>
               <TableCell>Status</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell>Created</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredPolicies.map((policy) => (
-              <TableRow key={policy.id} hover>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Chip
-                      icon={getPolicyTypeIcon(policy.type)}
-                      label={policy.type === 'auth' ? 'Auth' : 'Rate Limit'}
-                      color={getPolicyTypeColor(policy.type) as any}
-                      size="small"
+              <React.Fragment key={policy.id}>
+                <TableRow 
+                  hover 
+                  sx={{ cursor: 'pointer' }} 
+                  onClick={() => togglePolicyExpansion(policy.id)}
+                >
+                  <TableCell>
+                    {expandedPolicies.has(policy.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Chip
+                        icon={getPolicyTypeIcon(policy.type)}
+                        label={policy.type === 'auth' ? 'AUTH POLICY' : 'RATE LIMIT'}
+                        color={getPolicyTypeColor(policy.type) as any}
+                        size="small"
+                        variant="filled"
+                      />
+                      <Box>
+                        <Typography variant="subtitle2" fontWeight="bold">
+                          {policy.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {policy.id}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={policy.namespace} size="small" variant="outlined" />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {policy.targetRef?.kind || 'Gateway'}/{policy.targetRef?.name || 'inference-gateway'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={`${policy.items?.length || 0} configured`} 
+                      size="small" 
+                      color="info" 
                       variant="outlined"
                     />
-                    <Box>
-                      <Typography variant="subtitle2" fontWeight="bold">
-                        {policy.name}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {policy.description}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {policy.items.map((item) => (
-                      <Chip
-                        key={item.id}
-                        size="small"
-                        icon={item.type === 'tier' ? <TierIcon /> : <ModelIcon />}
-                        label={item.value}
-                        variant="filled"
-                        sx={{
-                          ...(item.type === 'tier' && {
-                            backgroundColor: getTierColor(item.value),
-                            color: 'white',
-                            fontWeight: 'bold',
-                            '& .MuiChip-icon': {
-                              color: 'white'
-                            }
-                          })
-                        }}
-                      />
-                    ))}
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  {formatRequestLimits(policy) ? (
-                    <Typography variant="body2">
-                      {formatRequestLimits(policy)}
-                    </Typography>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" fontStyle="italic">
-                      N/A (Auth only)
-                    </Typography>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <ScheduleIcon fontSize="small" color="action" />
-                    <Typography variant="body2">
-                      {formatTimeRange(policy)}
-                    </Typography>
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={policy.isActive ? 'Active' : 'Inactive'}
-                    color={policy.isActive ? 'success' : 'default'}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  <Tooltip title="Edit Policy">
-                    <IconButton
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={policy.isActive ? 'Active' : 'Inactive'}
+                      color={policy.isActive ? 'success' : 'default'}
                       size="small"
-                      onClick={() => handleEditPolicy(policy)}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete Policy">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDeletePolicy(policy.id)}
-                      color="error"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {new Date(policy.created).toLocaleDateString()}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+                    <Collapse in={expandedPolicies.has(policy.id)} timeout="auto" unmountOnExit>
+                      {renderPolicyDetails(policy)}
+                    </Collapse>
+                  </TableCell>
+                </TableRow>
+              </React.Fragment>
             ))}
           </TableBody>
         </Table>
@@ -305,32 +363,11 @@ const PolicyManager: React.FC = () => {
             No policies found
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {searchTerm ? 'Try adjusting your search criteria' : 'Get started by creating your first policy'}
+            {searchTerm ? 'Try adjusting your search criteria' : 'No policies found. Ensure you are authenticated with the cluster.'}
           </Typography>
-          {!searchTerm && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleCreatePolicy}
-            >
-              Create Policy
-            </Button>
-          )}
         </Box>
       )}
 
-      {/* Policy Builder Dialog */}
-      <PolicyBuilder
-        open={isBuilderOpen}
-        policy={selectedPolicy}
-        teams={[]}
-        models={[]}
-        onSave={handleSavePolicy}
-        onClose={() => {
-          setIsBuilderOpen(false);
-          setSelectedPolicy(null);
-        }}
-      />
     </Box>
   );
 };

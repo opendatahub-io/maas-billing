@@ -67,7 +67,7 @@ metadata:
   name: maas-api-inference-services
 rules:
 - apiGroups: ["serving.kserve.io"]
-  resources: ["inferenceservices"]
+  resources: ["inferenceservices", "llminferenceservices"]
   verbs: ["get", "list", "watch"]
 ---
 # Allow maas-api to restart Kuadrant deployments

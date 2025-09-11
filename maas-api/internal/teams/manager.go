@@ -2,6 +2,7 @@ package teams
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -254,6 +255,10 @@ func (m *Manager) Update(teamID string, req *UpdateTeamRequest) error {
 
 // Delete removes team and all associated resources
 func (m *Manager) Delete(teamID string) error {
+	if teamID == "default" { // optional guard
+		return fmt.Errorf("default team cannot be deleted")
+	}
+
 	// Check if team exists
 	teamSecret, err := m.clientset.CoreV1().Secrets(m.keyNamespace).Get(
 		context.Background(), fmt.Sprintf("team-%s-config", teamID), metav1.GetOptions{})
@@ -264,28 +269,40 @@ func (m *Manager) Delete(teamID string) error {
 	// Get team policy before deletion for cleanup
 	teamPolicy := teamSecret.Annotations["maas/policy"]
 
-	// Update TokenRateLimitPolicy to remove the team's policy
-	if m.policyMgr != nil {
-		err = m.policyMgr.RemoveTeamFromTokenRateLimit(teamPolicy)
-		if err != nil {
-			log.Printf("Warning: Failed to update TokenRateLimitPolicy for team deletion %s: %v", teamID, err)
+	// Cleanup all related policies
+	var cleanupErr error
+	if m.policyMgr != nil && teamPolicy != "" {
+		// optional: only remove if unused by other teams
+		if unused, err := m.isPolicyUnused(teamPolicy, teamID); err != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("check policy usage: %w", err))
+		} else if unused {
+			if err := m.policyMgr.RemoveTeamFromAuthPolicy(teamPolicy); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("authpolicy: %w", err))
+			}
+			if err := m.policyMgr.RemoveTeamFromTokenRateLimit(teamPolicy); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("tokenratelimit: %w", err))
+			}
+			if err := m.policyMgr.RestartKuadrantComponents(); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("restart kuadrant: %w", err))
+			}
 		}
 	}
 
-	// Delete all team API keys
-	err = m.deleteAllTeamKeys(teamID)
-	if err != nil {
-		log.Printf("Failed to delete team keys: %v", err)
-	}
-
-	// Delete team configuration secret
+	// Foreground delete: GC removes owned key Secrets first, then the team
+	fg := metav1.DeletePropagationForeground
 	err = m.clientset.CoreV1().Secrets(m.keyNamespace).Delete(
-		context.Background(), teamSecret.Name, metav1.DeleteOptions{})
+		context.Background(), teamSecret.Name, metav1.DeleteOptions{PropagationPolicy: &fg})
+
 	if err != nil {
 		return fmt.Errorf("failed to delete team: %w", err)
 	}
 
-	log.Printf("Team deleted successfully: %s", teamID)
+	if cleanupErr != nil {
+		log.Printf("Team %s deleted, with cleanup warnings: %v", teamID, cleanupErr)
+	} else {
+		log.Printf("Team deleted successfully: %s", teamID)
+	}
+
 	return nil
 }
 
@@ -396,6 +413,25 @@ func (m *Manager) getTeamAPIKeys(teamID string) ([]string, error) {
 	return keys, nil
 }
 
+// helper: true if no other team-config secret references this policy
+func (m *Manager) isPolicyUnused(policy, thisTeam string) (bool, error) {
+	secs, err := m.clientset.CoreV1().Secrets(m.keyNamespace).List(
+		context.Background(), metav1.ListOptions{LabelSelector: "maas/resource-type=team-config"})
+	if err != nil {
+		return false, err
+	}
+	users := 0
+	for _, s := range secs.Items {
+		if s.Annotations["maas/policy"] == policy && s.Labels["maas/team-id"] != thisTeam {
+			users++
+			if users > 0 {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
+}
+
 func (m *Manager) getTeamMembersFromAPIKeys(teamID string) ([]TeamMember, error) {
 	labelSelector := fmt.Sprintf("kuadrant.io/apikeys-by=rhcl-keys,maas/team-id=%s", teamID)
 	secrets, err := m.clientset.CoreV1().Secrets(m.keyNamespace).List(
@@ -457,11 +493,13 @@ func (m *Manager) updateTeamKeysPolicy(teamID, newPolicy string) error {
 		if secret.Annotations == nil {
 			secret.Annotations = make(map[string]string)
 		}
-		secret.Annotations["kuadrant.io/groups"] = newPolicy
-		secret.Annotations["maas/policy"] = newPolicy
 
 		// Update policy-specific label
 		oldPolicy := secret.Annotations["maas/policy"]
+
+		secret.Annotations["kuadrant.io/groups"] = newPolicy
+		secret.Annotations["maas/policy"] = newPolicy
+
 		if oldPolicy != "" && oldPolicy != newPolicy {
 			delete(secret.Labels, fmt.Sprintf("maas/policy-%s", oldPolicy))
 		}
