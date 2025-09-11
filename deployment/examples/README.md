@@ -48,15 +48,18 @@ The install script enforces this critical sequence for reliable deployment:
    kubectl -n gateway-system delete deployment istiod --ignore-not-found
    ```
 
-4. **Deploy Kuadrant Operators** - Install core infrastructure operators
+4. **Apply Kuadrant Configuration** - Dependencies installed operators; now apply CRs
    ```bash
    kustomize build core-infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
    ```
 
-5. **Wait for Operators** - Ensure all operators are ready before proceeding
+5. **Verify Operators** - Ensure all operators are ready before proceeding
    ```bash
+   kubectl get deployments -n kuadrant-system
    kubectl wait --for=condition=available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s
    kubectl wait --for=condition=available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
+   # Authorino deployment name may vary by chart version
+   kubectl wait --for=condition=available deployment/authorino-operator-controller-manager -n kuadrant-system --timeout=300s || \
    kubectl wait --for=condition=available deployment/authorino-operator -n kuadrant-system --timeout=300s
    ```
 
@@ -205,7 +208,7 @@ kubectl exec -n kuadrant-system deployment/limitador-limitador -- curl -s localh
 
 ### Observability (`kustomize-templates/observability/`)
 - **service-monitors.yaml**: Kuadrant component monitoring
-- **token-metrics.yaml**: Token usage metrics from custom wasm-shim
+- **token-metrics.yaml**: Token usage metrics from Envoy metrics
 
 ## Customization
 
@@ -252,8 +255,8 @@ kubectl get authpolicy -n llm
 # Check TokenRateLimitPolicy
 kubectl get tokenratelimitpolicy -n llm
 
-# Check WasmPlugin configuration
-kubectl get wasmplugin -n llm -o yaml | grep url
+# Check Envoy metrics ServiceMonitor
+kubectl get servicemonitor -n llm inference-gateway-envoy-metrics -o yaml | head -n 20
 ```
 
 ### No Metrics Data
@@ -264,5 +267,6 @@ kubectl get servicemonitor -n kuadrant-system
 # or
 kubectl get servicemonitor -A | egrep '^(llm|kuadrant-system)\s'
 
-# Check if custom wasm-shim is loaded
-kubectl logs -n llm deployment/inference-gateway-istio | grep nerdalert
+# Check Envoy sidecar metrics are exposed
+kubectl port-forward -n llm svc/inference-gateway-envoy-metrics 15090:15090
+# Then visit http://localhost:15090/stats/prometheus

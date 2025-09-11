@@ -47,13 +47,14 @@ The `install-dependencies.sh` script provides a convenient way to install all re
 - **cert-manager**: Certificate management for TLS and webhooks  
 - **KServe**: Model serving platform
 - **Prometheus**: Observability and metrics collection (optional)
+- **Kuadrant**: API management and security for Kubernetes, extending Gateway API with policies. Using Authorino for auth(z) and Limitador for rate limiting.
 
 ## Components
 
 - **namespaces/**: Required Kubernetes namespaces (`llm`, `llm-observability`, `kuadrant-system`)
 - **istio/**: Service mesh and Gateway API configuration  
 - **kserve/**: Model serving platform with OpenShift integration
-- **kuadrant/**: API gateway policies and operators (via OLM)
+- **kuadrant/**: API gateway policies and operators (via Helm)
 - **gateway/**: Traffic routing and external access (parameterized domains)
 
 ## Prerequisites
@@ -69,7 +70,7 @@ The kustomization deploys components in the correct order:
 1. **namespaces** - Creates required namespaces
 2. **istio** - Gateway API Gateway configuration
 3. **kserve** - Model serving platform + OpenShift SecurityContextConstraints
-4. **kuadrant** - OLM operators (Kuadrant, Authorino, Limitador) + custom wasm-shim
+4. **kuadrant** - Operators (Kuadrant, Authorino, Limitador) installed via Helm
 5. **gateway** - Model routing and OpenShift Routes
 
 ## Configuration
@@ -86,9 +87,9 @@ export CLUSTER_DOMAIN="apps.my-cluster.example.com"
 export CLUSTER_DOMAIN="maas.local"
 ```
 
-### Custom Wasm-Shim
+### Kuadrant Installation
 
-The deployment automatically configures Kuadrant to use the custom wasm-shim (`ghcr.io/nerdalert/wasm-shim:latest`) required for token-based rate limiting metrics.
+Kuadrant operators are installed via Helm by the installer script, then configured via kustomize manifests under `kustomize-templates/kuadrant/kuadrant-configure`.
 
 ## Verification
 
@@ -99,7 +100,8 @@ After deployment, verify components are ready:
 kubectl get namespaces llm llm-observability kuadrant-system
 
 # Check Kuadrant operators
-kubectl get csv -n kuadrant-system
+kubectl get deployments -n kuadrant-system
+kubectl get pods -n kuadrant-system
 
 # Check Gateway
 kubectl get gateway inference-gateway -n llm
@@ -126,7 +128,7 @@ kubectl get gateway inference-gateway -n llm -o yaml | grep hostname
 ```bash
 # Check operator status
 kubectl get kuadrant kuadrant -n kuadrant-system
-kubectl get csv -n kuadrant-system
+kubectl get deployments -n kuadrant-system
 ```
 
 **KServe Configuration**

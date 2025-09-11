@@ -39,32 +39,4 @@ spec:
       path: /metrics
       interval: 30s
       scrapeTimeout: 10s
----
-apiVersion: grafana.integreatly.org/v1beta1
-kind: GrafanaDatasource
-metadata:
-  name: user-workload-prometheus
-  namespace: llm-observability
-spec:
-  datasource:
-    access: proxy
-    editable: true
-    isDefault: false
-    jsonData:
-      httpHeaderName1: Authorization
-      timeInterval: 5s
-      tlsSkipVerify: true
-    name: user-workload-prometheus
-    secureJsonData:
-      httpHeaderValue1: Bearer ${token}
-    type: prometheus
-    url: https://prometheus-user-workload.openshift-user-workload-monitoring.svc.cluster.local:9091
-  instanceSelector:
-    matchLabels:
-      app: grafana
-  valuesFrom:
-    - targetPath: secureJsonData.httpHeaderValue1
-      valueFrom:
-        secretKeyRef:
-          key: token
-          name: grafana-sa-token
+

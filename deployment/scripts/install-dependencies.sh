@@ -6,7 +6,7 @@ set -euo pipefail
 # Orchestrates installation of required platform components
 
 # Component definitions with installation order
-COMPONENTS=("istio" "cert-manager" "kserve" "prometheus")
+COMPONENTS=("istio" "cert-manager" "kserve" "prometheus" "kuadrant")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLERS_DIR="$SCRIPT_DIR/installers"
@@ -17,6 +17,7 @@ get_component_description() {
         cert-manager) echo "Certificate management for TLS and webhooks" ;;
         kserve) echo "Model serving platform" ;;
         prometheus) echo "Observability and metrics collection (optional)" ;;
+        kuadrant) echo "API gateway operators via Helm (Kuadrant, Authorino, Limitador)" ;;
         *) echo "Unknown component" ;;
     esac
 }
@@ -32,6 +33,7 @@ usage() {
     echo "  --cert-manager           Install cert-manager"
     echo "  --kserve                 Install KServe model serving platform"
     echo "  --prometheus             Install Prometheus operator"
+    echo "  --kuadrant               Install Kuadrant operators via Helm"
     echo "  -h, --help               Show this help message"
     echo ""
     echo "If no options are provided, interactive mode will prompt for component selection."
@@ -46,11 +48,49 @@ install_component() {
     local component="$1"
     local installer_script="$INSTALLERS_DIR/install-${component}.sh"
     
+    # Inline handler for Kuadrant (installed via Helm)
+    if [[ "$component" == "kuadrant" ]]; then
+        echo "🚀 Installing kuadrant (via Helm)..."
+        NAMESPACE=${NAMESPACE:-kuadrant-system}
+        KUADRANT_CHART_VERSION=${KUADRANT_CHART_VERSION:-1.3.0-alpha2}
+        AUTHORINO_CHART_VERSION=${AUTHORINO_CHART_VERSION:-0.21.0}
+        LIMITADOR_CHART_VERSION=${LIMITADOR_CHART_VERSION:-0.15.0}
+        HELM_REPO_NAME=${HELM_REPO_NAME:-kuadrant}
+        HELM_REPO_URL=${HELM_REPO_URL:-https://kuadrant.io/helm-charts/}
+
+        if ! command -v helm &> /dev/null; then
+            echo "❌ helm not found. Please install helm first."
+            return 1
+        fi
+
+        if helm repo list | awk '{print $1}' | grep -qx "$HELM_REPO_NAME"; then
+            echo "🔄 Updating Helm repo $HELM_REPO_NAME..."
+            helm repo update
+        else
+            echo "➕ Adding Helm repo $HELM_REPO_NAME -> $HELM_REPO_URL..."
+            helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL" --force-update
+        fi
+
+        echo "📦 Installing kuadrant-operator chart ($KUADRANT_CHART_VERSION)"
+        helm upgrade -i kuadrant-operator "$HELM_REPO_NAME/kuadrant-operator" \
+          --version "$KUADRANT_CHART_VERSION" -n "$NAMESPACE" --create-namespace --wait
+
+        echo "⏳ Waiting for operators to be ready..."
+        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n "$NAMESPACE" --timeout=300s
+        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n "$NAMESPACE" --timeout=300s
+        kubectl wait --for=condition=Available deployment/authorino-operator-controller-manager -n "$NAMESPACE" --timeout=300s || \
+          kubectl wait --for=condition=Available deployment/authorino-operator -n "$NAMESPACE" --timeout=60s || true
+
+        echo "✅ Successfully installed kuadrant"
+        echo ""
+        return 0
+    fi
+
     if [[ ! -f "$installer_script" ]]; then
         echo "❌ Installer not found: $installer_script"
         return 1
     fi
-    
+
     echo "🚀 Installing $component..."
     if ! "$installer_script"; then
         echo "❌ Failed to install $component"
@@ -117,6 +157,9 @@ while [[ $# -gt 0 ]]; do
         --prometheus)
             install_component "prometheus"
             ;;
+        --kuadrant)
+            install_component "kuadrant"
+            ;;
         -h|--help)
             usage
             exit 0
@@ -132,3 +175,4 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "🎉 Selected components installed successfully!"
+
