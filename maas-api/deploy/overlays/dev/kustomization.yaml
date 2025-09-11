@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: maas-api-dev
+
+resources:
+- ../../base/
+- ./infra/
+- ./resources/tier-mapping-configmap.yaml
+
+namespace: maas-api
+
+transformers:
+  - transformers/namespace.yaml
+
+# Overwrite the image to use the local image set through kustomize edit set image
+# This is needed because the image is set to ghcr.io/redhat-et/maas-key-manager in the base/deployment.yaml using params.env "injection"
+images:
+- name: ghcr.io/redhat-et/maas-key-manager
+  newName: maas-api
+  newTag: latest
+
+secretGenerator:
+- name: maas-api-admin-secret
+  behavior: replace
+  literals:
+  - admin-api-key=letmein
