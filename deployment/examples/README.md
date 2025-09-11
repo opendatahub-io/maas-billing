@@ -17,9 +17,6 @@ deployment/scripts/install.sh
 deployment/scripts/install.sh gpu
 ```
 
-> [!NOTE]
-> Observability of users is still in progress, it can be enabled following the instructions [here](https://gist.github.com/nerdalert/0df4874cdc74c8f676686ce77f352f7b)
-
 # Add a new deployment type
 
 Any subdirectory under `deployment/examples/` named as {name}-deployment will be picked up as a deployment type by `deployment/scripts/install.sh`

@@ -21,9 +21,8 @@ export CLUSTER_DOMAIN="apps.your-cluster.com"
 # 3. Deploy core infrastructure
 kustomize build deployment/infrastructure | envsubst | kubectl apply -f -
 
-# 4. Deploy custom wasm-shim (Change coming in limitador soon that will replace this)
-kubectl patch deployment kuadrant-operator-controller-manager -n kuadrant-system --type=json -p='[{"op": "replace", "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/1/value", "value": "oci://ghcr.io/nerdalert/wasm-shim:latest"}]'
-
+# 4. Deploy custom limitador image(this should be pushed into the main product soon so this can be removed)
+kubectl patch limitador limitador   -n kuadrant-system   --type merge -p '{"spec":{"image":"ghcr.io/redhat-et/limitador:metrics","version":""}}'
 ```
 
 Move to [next steps](../examples/) to deploy examples.
