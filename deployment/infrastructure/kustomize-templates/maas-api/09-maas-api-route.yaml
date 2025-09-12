@@ -9,7 +9,7 @@ metadata:
   labels:
     app: maas-gateway
 spec:
-  host: maas-api.apps.summit-gpu.octo-emerging.redhataicoe.com
+  host: "maas-api.${CLUSTER_DOMAIN}"
   port:
     targetPort: 80
   to:

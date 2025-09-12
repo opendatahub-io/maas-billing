@@ -1,17 +1,18 @@
 package auth
 
 import (
-	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"k8s.io/utils/env"
+
 	"net/http"
 )
 
 // AdminAuthMiddleware creates a middleware for admin authentication
 func AdminAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		adminKey := getEnvOrDefault("ADMIN_API_KEY", "")
+		adminKey := env.GetString("ADMIN_API_KEY", "")
 
 		// If no admin key is set, allow access (backward compatibility)
 		if adminKey == "" {
@@ -48,12 +49,4 @@ func AdminAuthMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
-}
-
-// getEnvOrDefault gets environment variable or returns default value
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }

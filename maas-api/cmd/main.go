@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/auth"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
@@ -26,7 +25,13 @@ func main() {
 	cfg := config.Load()
 	flag.Parse()
 
-	router := registerHandlers(cfg)
+	gin.SetMode(gin.ReleaseMode) // Explicitly set release mode
+	if cfg.DebugMode {
+		gin.SetMode(gin.DebugMode)
+	}
+
+	router := gin.Default()
+	registerHandlers(cfg, router)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -60,9 +65,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(cfg *config.Config) *gin.Engine {
-	router := gin.Default()
-
+func registerHandlers(cfg *config.Config, router *gin.Engine) *gin.Engine {
 	// Health check endpoint (no auth required)
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
