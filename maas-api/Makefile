@@ -7,7 +7,7 @@ ifeq (podman,$(CONTAINER_ENGINE))
 endif
 
 # Image settings
-REPO ?= ghcr.io/your-org/maas-maas-api
+REPO ?= ghcr.io/your-org/maas-api
 TAG ?= latest
 FULL_IMAGE ?= $(REPO):$(TAG)
 
