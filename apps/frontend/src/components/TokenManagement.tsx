@@ -69,6 +69,11 @@ const TokenManagement: React.FC = () => {
   const [selectedTeam, setSelectedTeam] = useState('');
   const [teamsLoading, setTeamsLoading] = useState(false);
 
+  useEffect(() => {
+    loadUserData();
+    loadAvailableTeams();
+  }, []);
+
   // Group tokens by team for display
   const getTokensByTeam = () => {
     const tokensByTeam: { [teamId: string]: UserToken[] } = {};
@@ -146,45 +151,6 @@ const TokenManagement: React.FC = () => {
     };
   };
 
-  const loadAvailableTeams = async () => {
-    try {
-      setTeamsLoading(true);
-      const teamsResponse = await apiService.getTeams();
-      console.log('Teams response:', teamsResponse);
-      
-      let teams = [];
-      if (Array.isArray(teamsResponse)) {
-        teams = teamsResponse;
-      } else if (teamsResponse && Array.isArray(teamsResponse.data)) {
-        teams = teamsResponse.data;
-      } else {
-        console.warn('Unexpected teams response format:', teamsResponse);
-        teams = [];
-      }
-      
-      // Filter out any null/undefined teams and ensure all teams have required properties
-      const validTeams = teams.filter((team: any) => 
-        team && 
-        typeof team === 'object' && 
-        team.team_id && 
-        team.team_name
-      );
-      
-      setAvailableTeams(validTeams);
-      
-      // Set default team as selected if available
-      const defaultTeam = validTeams.find((team: Team) => team.team_id === 'default');
-      if (defaultTeam && !selectedTeam) {
-        setSelectedTeam(defaultTeam.team_id);
-      }
-    } catch (error) {
-      console.error('Error loading teams:', error);
-      setAvailableTeams([]);
-    } finally {
-      setTeamsLoading(false);
-    }
-  };
-
   const loadUserData = async () => {
     try {
       setLoading(true);
@@ -227,6 +193,44 @@ const TokenManagement: React.FC = () => {
     }
   };
 
+  const loadAvailableTeams = async () => {
+    try {
+      setTeamsLoading(true);
+      const teamsResponse = await apiService.getTeams();
+      console.log('Teams response:', teamsResponse);
+      
+      let teams = [];
+      if (Array.isArray(teamsResponse)) {
+        teams = teamsResponse;
+      } else if (teamsResponse && Array.isArray(teamsResponse.data)) {
+        teams = teamsResponse.data;
+      } else {
+        console.warn('Unexpected teams response format:', teamsResponse);
+        teams = [];
+      }
+      
+      // Filter out any null/undefined teams and ensure all teams have required properties
+      const validTeams = teams.filter((team: any) => 
+        team && 
+        typeof team === 'object' && 
+        team.team_id && 
+        team.team_name
+      );
+      
+      setAvailableTeams(validTeams);
+      
+      // Set default team as selected if available
+      const defaultTeam = validTeams.find((team: Team) => team.team_id === 'default');
+      if (defaultTeam && !selectedTeam) {
+        setSelectedTeam(defaultTeam.team_id);
+      }
+    } catch (error) {
+      console.error('Error loading teams:', error);
+      setAvailableTeams([]);
+    } finally {
+      setTeamsLoading(false);
+    }
+  };
 
   const handleGenerateToken = async () => {
     if (!newTokenName.trim()) {
@@ -234,20 +238,24 @@ const TokenManagement: React.FC = () => {
       return;
     }
 
+    if (!selectedTeam) {
+      setError('Please select a team');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       
-      const response = await apiService.createToken({
-        name: newTokenName.trim(),
-        description: 'Generated via UI',
-        team_id: selectedTeam || 'default'
+      const response = await apiService.createTeamToken(selectedTeam, {
+        user_id: 'noyitz', // TODO: Get from auth context
+        alias: newTokenName.trim(),
       });
       
       console.log('Token creation response:', response);
       
       // Extract the API key from the response
-      const apiKey = response?.token || response?.data?.token || response?.actualApiKey;
+      const apiKey = response?.data?.api_key || response?.api_key || response?.actualApiKey;
       if (apiKey) {
         setGeneratedToken(apiKey);
       } else {
@@ -255,11 +263,6 @@ const TokenManagement: React.FC = () => {
         setGeneratedToken('Token created successfully, but API key not returned');
       }
       setNewTokenName('');
-      // Reset to default team after successful creation
-      const defaultTeam = availableTeams.find(team => team.team_id === 'default');
-      if (defaultTeam) {
-        setSelectedTeam(defaultTeam.team_id);
-      }
       
       // Refresh token list
       await loadUserData();
@@ -518,30 +521,18 @@ const TokenManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Token Creation */}
+      {/* Team-Based Token Creation */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <AddIcon />
-            Generate New Token
+            <TeamsIcon />
+            Create Token by Team
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Create a new API token for accessing the MaaS platform.
+            Create a new API token for accessing the MaaS platform with team-based policies.
           </Typography>
           
           <Stack spacing={3}>
-            {/* Token Name Input */}
-            <TextField
-              fullWidth
-              label="Token Name *"
-              value={newTokenName}
-              onChange={(e) => setNewTokenName(e.target.value)}
-              placeholder="e.g., my-project-token, dev-access-key"
-              disabled={loading || keyManagerUnavailable}
-              helperText={keyManagerUnavailable ? "Token creation is disabled when Key Manager is unavailable" : "Choose a descriptive name for your token"}
-              error={keyManagerUnavailable}
-            />
-
             {/* Team Selection */}
             <FormControl fullWidth disabled={loading || keyManagerUnavailable || teamsLoading}>
               <InputLabel id="team-select-label">Team *</InputLabel>
@@ -579,6 +570,17 @@ const TokenManagement: React.FC = () => {
               )}
             </FormControl>
 
+            {/* Token Name Input */}
+            <TextField
+              fullWidth
+              label="Token Name *"
+              value={newTokenName}
+              onChange={(e) => setNewTokenName(e.target.value)}
+              placeholder="e.g., my-project-token, dev-access-key"
+              disabled={loading || keyManagerUnavailable}
+              helperText={keyManagerUnavailable ? "Token creation is disabled when Key Manager is unavailable" : "Choose a descriptive name for your token"}
+              error={keyManagerUnavailable}
+            />
             {/* Create Button */}
             <Button
               variant="contained"

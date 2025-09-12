@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: maas-api-base
+
+resources:
+- ../rbac/
+- service.yaml
+- deployment.yaml
+
+namespace: maas-api
+
+labels:
+- pairs:
+    app.kubernetes.io/name: maas-api
+    app.kubernetes.io/component: api
+  includeSelectors: true
+
+# See https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kustomize/
+secretGenerator:
+- name: maas-api-admin-secret
+  envs:
+  - admin.secret.env # secret for the admin API key, e.g. `admin-api-key=letmein`
+
+# This approach is used across odh components to set the image through GitOps
+configMapGenerator:
+- name: maas-api-config
+  envs:
+  - params.env
+
+replacements:
+- source:
+    kind: ConfigMap
+    name: maas-api-config
+    fieldPath: data.maas-api-image
+  targets:
+  - select:
+      kind: Deployment
+      name: maas-api
+    fieldPaths:
+    - spec.template.spec.containers.[name=maas-api].image

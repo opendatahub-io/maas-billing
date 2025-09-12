@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: key-manager
+spec:
+  template:
+    spec:
+      containers:
+      - name: key-manager
+        env:
+        - name: DEBUG_MODE
+          value: "true"

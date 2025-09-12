@@ -1,0 +1,43 @@
+name: MaaS API
+
+on:
+  pull_request:
+    paths:
+      - 'maas-api/**'
+      - 'Makefile'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: maas-api
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: maas-api/go.mod
+          cache: true
+          cache-dependency-path: maas-api/go.sum
+
+      - name: Check code formatting
+        run: make fmt-check
+
+      - name: Run tests
+        run: make test
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-reports
+          path: |
+            maas-api/coverage.out
+            maas-api/coverage.html
+          retention-days: 30
+
+      - name: Build image
+        run: make build-image
+

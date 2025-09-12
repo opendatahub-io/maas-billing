@@ -211,7 +211,7 @@ main() {
     log_info "External Routes:"
     echo "  - Simulator: simulator-llm.$CLUSTER_DOMAIN"
     echo "  - Qwen3: qwen3-llm.$CLUSTER_DOMAIN"
-    echo "  - Key Manager: key-manager.$CLUSTER_DOMAIN"
+    echo "  - MaaS API: maas-api.$CLUSTER_DOMAIN"
     echo
     log_info "Check deployment status with:"
     echo "  kubectl get pods -n llm"
