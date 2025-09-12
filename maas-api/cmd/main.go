@@ -30,8 +30,9 @@ func main() {
 		gin.SetMode(gin.DebugMode)
 	}
 
-	router := gin.Default()
-	registerHandlers(cfg, router)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	router := registerHandlers(ctx, cfg)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -55,18 +56,20 @@ func main() {
 	<-quit
 	log.Println("Shutdown signal received, shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	defer cancel()
+	cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelShutdown()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(cfg *config.Config, router *gin.Engine) *gin.Engine {
-	// Health check endpoint (no auth required)
+func registerHandlers(ctx context.Context, cfg *config.Config) *gin.Engine {
+	router := gin.Default()
+
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -83,7 +86,19 @@ func registerHandlers(cfg *config.Config, router *gin.Engine) *gin.Engine {
 	router.GET("/models", modelsHandler.ListModels)
 	router.GET("/v1/models", modelsHandler.ListLLMs)
 
-	// Initialize managers
+	switch cfg.Provider {
+	case config.Secrets:
+		configureSecretsProvider(cfg, router, clusterConfig)
+	case config.SATokens:
+		log.Fatal("provider 'sa-tokens' is not implemented yet; use --provider=secrets")
+	default:
+		log.Fatalf("Invalid provider: %s. Available providers: [secrets, sa-tokens]", cfg.Provider)
+	}
+
+	return router
+}
+
+func configureSecretsProvider(cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {
 	policyMgr := teams.NewPolicyManager(
 		clusterConfig.DynClient,
 		clusterConfig.ClientSet,
@@ -95,12 +110,10 @@ func registerHandlers(cfg *config.Config, router *gin.Engine) *gin.Engine {
 	teamMgr := teams.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, policyMgr)
 	keyMgr := keys.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, teamMgr)
 
-	// Initialize handlers
 	usageHandler := handlers.NewUsageHandler(clusterConfig.ClientSet, clusterConfig.RestConfig, cfg.KeyNamespace)
 	teamsHandler := handlers.NewTeamsHandler(teamMgr)
 	keysHandler := handlers.NewKeysHandler(keyMgr, teamMgr)
 
-	// Create default team if enabled
 	if cfg.CreateDefaultTeam {
 		if err := teamMgr.CreateDefaultTeam(); err != nil {
 			log.Printf("Warning: Failed to create default team: %v", err)
@@ -128,6 +141,4 @@ func registerHandlers(cfg *config.Config, router *gin.Engine) *gin.Engine {
 	// Key management endpoints
 	keyRoutes := router.Group("/keys", auth.AdminAuthMiddleware())
 	keyRoutes.DELETE("/:key_name", keysHandler.DeleteTeamKey)
-
-	return router
 }
