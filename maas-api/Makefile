@@ -128,10 +128,11 @@ deploy-dev: ## Deploy to development
 		kustomize edit set image maas-api=$(FULL_IMAGE) && \
 		kustomize build . | kubectl apply -f -
 
+default_run_flags := --debug
+RUN_FLAGS ?= 
 .PHONY: run
 run: build ## Run the maas-api locally
-	@echo "Running $(BINARY_NAME)..."
-	@$(BUILD_DIR)/$(BINARY_NAME)
+	$(BUILD_DIR)/$(BINARY_NAME) $(default_run_flags) $(RUN_FLAGS) 
 
 .PHONY: version
 version: ## Show version information
