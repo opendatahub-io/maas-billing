@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -13,40 +14,7 @@ import (
 func TestMapper_GetTierForGroups(t *testing.T) {
 	ctx := t.Context()
 
-	configMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      tier.MappingConfigMap,
-			Namespace: "test-namespace",
-		},
-		Data: map[string]string{
-			"tiers": `
-- name: free
-  description: Free tier
-  level: 1
-  groups:
-  - system:authenticated
-  - free-users
-- name: premium
-  description: Premium tier
-  level: 10
-  groups:
-  - premium-users
-  - beta-testers
-- name: enterprise
-  description: Enterprise tier
-  level: 20
-  groups:
-  - enterprise-users
-  - admin-users
-- name: developer
-  description: Developer tier
-  level: 15
-  groups:
-  - developer-users
-  - beta-testers
-`,
-		},
-	}
+	configMap := fixtures.CreateTierConfigMap("test-namespace")
 
 	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
 	mapper := tier.NewMapper(clientset, "test-namespace")
