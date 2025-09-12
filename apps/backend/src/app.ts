@@ -54,6 +54,62 @@ app.use('/api/v1/policies', policiesRoutes);
 app.use('/api/v1/tokens', tokensRoutes);
 app.use('/api/v1/simulator', simulatorRoutes);
 
+// Teams route (for frontend compatibility - proxy to tokens/teams)
+app.get('/api/v1/teams', async (req, res) => {
+  try {
+    // This should now return the real error from the key manager
+    const axios = require('axios');
+    const response = await axios.get(`http://localhost:${PORT}/api/v1/tokens/teams`);
+    res.status(response.status).json(response.data);
+  } catch (error: any) {
+    if (error.response) {
+      res.status(error.response.status).json(error.response.data);
+    } else {
+      res.status(503).json({
+        success: false,
+        error: 'Teams service unavailable',
+        details: error.message
+      });
+    }
+  }
+});
+
+// Create team token route (for frontend compatibility - proxy to tokens/create)
+app.post('/api/v1/teams/:teamId/keys', async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const { user_id, alias } = req.body;
+    
+    // Transform the request to match our existing token creation endpoint
+    const tokenCreateRequest = {
+      name: alias || `${user_id}-${teamId}-token`,
+      description: `Token: ${alias || `${user_id}-${teamId}-token`}`,
+      team_id: teamId
+    };
+    
+    const axios = require('axios');
+    const response = await axios.post(`http://localhost:${PORT}/api/v1/tokens/create`, tokenCreateRequest);
+    
+    // Transform response to match frontend expectations
+    const responseData = response.data;
+    if (responseData.success && responseData.data && responseData.data.token) {
+      responseData.data.api_key = responseData.data.token; // Add api_key field for frontend compatibility
+    }
+    
+    res.status(response.status).json(responseData);
+  } catch (error: any) {
+    if (error.response) {
+      res.status(error.response.status).json(error.response.data);
+    } else {
+      res.status(503).json({
+        success: false,
+        error: 'Token creation service unavailable',
+        details: error.message
+      });
+    }
+  }
+});
+
 // QoS proxy endpoints
 app.get('/api/v1/qos/metrics', async (req, res) => {
   try {

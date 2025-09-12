@@ -2018,7 +2018,7 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                     gateway_url = 'http://inference-gateway-istio.llm.svc.cluster.local'
                 else:
                     # For localhost, use external gateway address but with proper Host headers
-                    gateway_url = f'http://a9d46b1f1217a4bde85f3fa7fbec35e0-1270706510.us-east-1.elb.amazonaws.com'
+                    gateway_url = f'http://gateway.{CLUSTER_DOMAIN}'
                 
                 endpoint_url = f'{gateway_url}/v1/chat/completions'
                 

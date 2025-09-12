@@ -9,8 +9,20 @@ const CLUSTER_DOMAIN = process.env.CLUSTER_DOMAIN || 'your-cluster.example.com';
 const KEY_MANAGER_BASE_URL = process.env.KEY_MANAGER_BASE_URL || `https://key-manager-route-platform-services.${CLUSTER_DOMAIN}`;
 const ADMIN_KEY = process.env.KEY_MANAGER_ADMIN_KEY || process.env.ADMIN_KEY;
 
+// Validate required environment variables
+if (!ADMIN_KEY) {
+  logger.warn('ADMIN_KEY not configured - key manager operations may fail');
+}
+
 // Helper function to make authenticated requests to key manager
-const makeKeyManagerRequest = async (endpoint: string, options: any = {}) => {
+interface KeyManagerRequestOptions {
+  method?: string;
+  headers?: Record<string, string>;
+  data?: any;
+  [key: string]: any;
+}
+
+const makeKeyManagerRequest = async (endpoint: string, options: KeyManagerRequestOptions = {}) => {
   const url = `${KEY_MANAGER_BASE_URL}${endpoint}`;
   const headers = {
     'Authorization': `ADMIN ${ADMIN_KEY}`,
@@ -35,7 +47,7 @@ const makeKeyManagerRequest = async (endpoint: string, options: any = {}) => {
 // In a real implementation, these would use the actual Kubernetes API
 
 // Get available teams
-router.get('/teams', async (req, res) => {
+router.get('/teams', async (_req, res) => {
   try {
     logger.info('Fetching available teams from key manager...');
     
@@ -50,7 +62,6 @@ router.get('/teams', async (req, res) => {
   } catch (error: any) {
     logger.error('Failed to fetch teams from key manager:', error);
     
-    // Return error instead of fallback data
     res.status(503).json({
       success: false,
       error: 'Key manager service is unavailable',
@@ -61,7 +72,7 @@ router.get('/teams', async (req, res) => {
 });
 
 // Get user tier/policy information
-router.get('/user/tier', async (req, res) => {
+router.get('/user/tier', async (_req, res) => {
   try {
     logger.info('Fetching user tier information from key manager...');
     
@@ -95,7 +106,6 @@ router.get('/user/tier', async (req, res) => {
   } catch (error: any) {
     logger.error('Failed to fetch user tier from key manager:', error);
     
-    // Return error instead of fallback data
     res.status(503).json({
       success: false,
       error: 'Key manager service is unavailable',
@@ -106,7 +116,7 @@ router.get('/user/tier', async (req, res) => {
 });
 
 // Get user's API tokens
-router.get('/', async (req, res) => {
+router.get('/', async (_req, res) => {
   try {
     logger.info('Fetching user tokens from key manager...');
     
@@ -195,7 +205,6 @@ router.get('/', async (req, res) => {
   } catch (error: any) {
     logger.error('Failed to fetch tokens from key manager:', error);
     
-    // Return error instead of fallback data
     res.status(503).json({
       success: false,
       error: 'Key manager service is unavailable',

@@ -36,3 +36,4 @@ pip-delete-this-directory.txt
 .pytest_cache/
 htmlcov/
 apps/frontend/.env.local
+apps/backend/.env
