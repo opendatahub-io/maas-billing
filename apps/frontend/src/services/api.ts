@@ -1,6 +1,8 @@
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://maas-backend-route-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/api/v1'
-  : 'http://localhost:3003/api/v1';
+const API_BASE_URL = process.env.REACT_APP_USE_CLUSTER_BACKEND === 'true'
+  ? `https://maas-backend-route-llm.${process.env.REACT_APP_CLUSTER_DOMAIN || 'your-cluster.example.com'}/api/v1`
+  : process.env.NODE_ENV === 'production' 
+    ? `https://maas-backend-route-llm.${process.env.REACT_APP_CLUSTER_DOMAIN || 'your-cluster.example.com'}/api/v1`
+    : 'http://localhost:3001/api/v1';
 
 class ApiService {
   private async fetch(endpoint: string, options: RequestInit = {}) {
@@ -124,11 +126,14 @@ class ApiService {
     max_tokens?: number;
     tier: string;
     apiKey: string;
+    authPrefix?: string;
   }) {
+    const authPrefix = params.authPrefix || 'Bearer';
     return this.fetch('/simulator/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${params.apiKey}`,
+        'Content-Type': 'application/json',
+        'Authorization': `${authPrefix} ${params.apiKey}`,
       },
       body: JSON.stringify({
         model: params.model,
@@ -140,6 +145,10 @@ class ApiService {
   }
 
   // Token Management APIs
+  async getTeams() {
+    return this.fetch('/tokens/teams');
+  }
+
   async getUserTier() {
     return this.fetch('/tokens/user/tier');
   }
@@ -151,6 +160,7 @@ class ApiService {
   async createToken(params: {
     name: string;
     description: string;
+    team_id?: string;
   }) {
     return this.fetch('/tokens/create', {
       method: 'POST',

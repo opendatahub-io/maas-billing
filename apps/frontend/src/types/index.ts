@@ -57,6 +57,8 @@ export interface Policy {
       duration: string;
       unit: string;
     };
+    rules?: any; // Full Kuadrant rules object
+    limits?: any[]; // Limitador limits array
   };
   isActive?: boolean;
   createdAt?: string;

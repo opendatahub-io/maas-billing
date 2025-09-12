@@ -49,7 +49,7 @@ MOCK_USER = {
 }
 
 # Configuration from environment variables
-CLUSTER_DOMAIN = os.getenv('CLUSTER_DOMAIN', 'apps.summit-gpu.octo-emerging.redhataicoe.com')
+CLUSTER_DOMAIN = os.getenv('CLUSTER_DOMAIN', 'your-cluster.example.com')
 KEY_MANAGER_BASE_URL = os.getenv('KEY_MANAGER_BASE_URL', f'https://key-manager-route-platform-services.{CLUSTER_DOMAIN}')
 KEY_MANAGER_ADMIN_KEY = os.getenv('KEY_MANAGER_ADMIN_KEY', 'admin-key-placeholder')
 OAUTH_BASE_URL = os.getenv('OAUTH_BASE_URL', f'https://oauth-openshift.{CLUSTER_DOMAIN}')
@@ -559,7 +559,7 @@ def fetch_policies_from_external_k8s_api(token):
         import ssl
         
         # External cluster API endpoints
-        k8s_host = 'api.summit-gpu.octo-emerging.redhataicoe.com'
+        k8s_host = f'api.{CLUSTER_DOMAIN}'
         k8s_port = '6443'
         
         # Create SSL context
@@ -745,8 +745,8 @@ def fetch_cluster_metrics():
         else:
             # For localhost, use external cluster routes
             prometheus_endpoints = [
-                "https://prometheus-user-workload-openshift-user-workload-monitoring.apps.summit-gpu.octo-emerging.redhataicoe.com",
-                "https://prometheus-k8s-openshift-monitoring.apps.summit-gpu.octo-emerging.redhataicoe.com"
+                f"https://prometheus-user-workload-openshift-user-workload-monitoring.{CLUSTER_DOMAIN}",
+                f"https://prometheus-k8s-openshift-monitoring.{CLUSTER_DOMAIN}"
             ]
         
         # Use CONSISTENT metrics queries - only response-based metrics for LLM traffic
@@ -1089,7 +1089,7 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                     "connected": False,
                     "user": None,
                     "cluster": None,
-                    "loginUrl": "https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com"
+                    "loginUrl": CONSOLE_BASE_URL
                 }
                 
                 try:
@@ -1139,7 +1139,7 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                         "connected": False,
                         "user": None,
                         "cluster": None,
-                        "loginUrl": "https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com",
+                        "loginUrl": CONSOLE_BASE_URL,
                         "error": str(e)
                     },
                     "timestamp": datetime.now().isoformat()

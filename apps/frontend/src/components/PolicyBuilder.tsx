@@ -204,6 +204,7 @@ const PolicyBuilder: React.FC<PolicyBuilderProps> = ({
       created: policy?.created || new Date().toISOString(),
       modified: new Date().toISOString(),
       type: policy?.type || 'auth', // Default to auth type
+      namespace: policy?.namespace || 'llm', // Default to llm namespace
       isActive: formData.isActive,
     };
 

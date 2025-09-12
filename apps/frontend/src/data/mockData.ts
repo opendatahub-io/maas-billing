@@ -61,6 +61,7 @@ export const initialPolicies: Policy[] = [
     modified: new Date().toISOString(),
     // Kuadrant mapping
     type: 'auth',
+    namespace: 'llm',
     isActive: true
   },
   {
@@ -93,7 +94,8 @@ export const initialPolicies: Policy[] = [
     created: new Date().toISOString(),
     modified: new Date().toISOString(),
     // Kuadrant mapping
-    type: 'rateLimit',
+    type: 'rate-limit',
+    namespace: 'llm',
     isActive: true
   }
 ];

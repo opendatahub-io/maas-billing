@@ -13,7 +13,7 @@ spec:
     - name: inference-gateway
       namespace: llm
   hostnames:
-    - "key-manager.apps.summit-gpu.octo-emerging.redhataicoe.com"
+    - "key-manager.${CLUSTER_DOMAIN}"
   rules:
     - matches:
         - path:

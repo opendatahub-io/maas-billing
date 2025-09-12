@@ -62,15 +62,35 @@ class KuadrantService {
     try {
       logger.info('Fetching RateLimitPolicies from Kuadrant...');
       
-      const output = execSync('kubectl get ratelimitpolicies -A -o json', { encoding: 'utf-8' });
-      const result = JSON.parse(output);
+      // First try to get regular RateLimitPolicies
+      let allPolicies: KuadrantPolicy[] = [];
       
-      // Flatten the array since each policy now returns multiple entries
-      const allPolicies: KuadrantPolicy[] = [];
-      result.items.forEach((item: any) => {
-        const policies = this.convertRateLimitPolicyToPolicy(item);
-        allPolicies.push(...policies);
-      });
+      try {
+        const output = execSync('kubectl get ratelimitpolicies -A -o json', { encoding: 'utf-8' });
+        const result = JSON.parse(output);
+        
+        result.items.forEach((item: any) => {
+          const policies = this.convertRateLimitPolicyToPolicy(item);
+          allPolicies.push(...policies);
+        });
+      } catch (error) {
+        logger.info('No regular RateLimitPolicies found');
+      }
+      
+      // Also fetch rate limits from Limitador configuration
+      try {
+        const limitadorOutput = execSync('kubectl get limitador -A -o json', { encoding: 'utf-8' });
+        const limitadorResult = JSON.parse(limitadorOutput);
+        
+        limitadorResult.items.forEach((limitador: any) => {
+          if (limitador.spec?.limits) {
+            const limitPolicies = this.convertLimitadorToRateLimitPolicies(limitador);
+            allPolicies.push(...limitPolicies);
+          }
+        });
+      } catch (error) {
+        logger.warn('Failed to fetch Limitador policies:', error);
+      }
       
       return allPolicies;
     } catch (error) {
@@ -156,11 +176,13 @@ class KuadrantService {
       Object.entries(spec.limits).forEach(([limitName, limitConfig]: [string, any], index: number) => {
         // Extract group from predicate if available
         let groupName = 'unknown';
+        let targetGroups: string[] = [];
         if (limitConfig.when && limitConfig.when[0]?.predicate) {
           const predicate = limitConfig.when[0].predicate;
           const groupMatch = predicate.match(/g == "([^"]+)"/);
           if (groupMatch) {
             groupName = groupMatch[1];
+            targetGroups = [groupName];
           }
         }
 
@@ -169,7 +191,7 @@ class KuadrantService {
         policies.push({
           id: `ratelimitpolicy-${metadata.name}-${groupName}`,
           name: `${limitName}`,
-          description: `Rate limiting for ${groupName} tier`,
+          description: `Rate limiting for ${groupName} tier (${targetGroups.length > 0 ? targetGroups.join(', ') : 'all'} users)`,
           type: 'rateLimit',
           namespace: metadata.namespace,
           targetRef: spec.targetRef,
@@ -233,6 +255,70 @@ class KuadrantService {
       }
     }
     return window;
+  }
+
+  private convertLimitadorToRateLimitPolicies(limitador: any): KuadrantPolicy[] {
+    const metadata = limitador.metadata;
+    const limits = limitador.spec?.limits || [];
+    const policies: KuadrantPolicy[] = [];
+    
+    // Group limits by name to create policies
+    const limitGroups = new Map<string, any[]>();
+    limits.forEach((limit: any) => {
+      const name = limit.name;
+      if (!limitGroups.has(name)) {
+        limitGroups.set(name, []);
+      }
+      limitGroups.get(name)?.push(limit);
+    });
+    
+    limitGroups.forEach((limitGroup, limitName) => {
+      const firstLimit = limitGroup[0];
+      
+      policies.push({
+        id: `limitador-${limitName}`,
+        name: limitName,
+        description: `Rate limit policy: ${firstLimit.max_value} requests per ${firstLimit.seconds} seconds`,
+        type: 'rateLimit' as const,
+        namespace: metadata.namespace,
+        targetRef: {
+          group: 'limitador.kuadrant.io',
+          kind: 'Limitador',
+          name: metadata.name
+        },
+        config: {
+          rateLimit: {
+            requests: firstLimit.max_value,
+            duration: `${firstLimit.seconds}s`,
+            unit: 'requests'
+          },
+          limits: limitGroup
+        },
+        status: {
+          conditions: limitador.status?.conditions || []
+        },
+        created: metadata.creationTimestamp,
+        modified: metadata.creationTimestamp,
+        isActive: true,
+        items: [{
+          id: `limit-item-${limitName}`,
+          type: 'tier',
+          value: limitName.replace(/[-_]/g, ' '),
+          isApprove: true
+        }],
+        requestLimits: {
+          tokenLimit: firstLimit.max_value,
+          timePeriod: firstLimit.seconds >= 3600 ? 'hour' : firstLimit.seconds >= 60 ? 'minute' : 'second'
+        },
+        timeRange: {
+          startTime: '00:00',
+          endTime: '23:59',
+          unlimited: false
+        }
+      });
+    });
+    
+    return policies;
   }
 
   async createAuthPolicy(policyData: any): Promise<any> {
