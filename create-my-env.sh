@@ -63,14 +63,16 @@ fi
 
 # Try to extract admin key
 echo -e "${YELLOW}🔍 Extracting admin key...${NC}"
-ADMIN_KEY=$(oc get secret key-manager-admin -n platform-services -o jsonpath='{.data.admin-key}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+ADMIN_KEY=$(oc get secret key-manager-admin -n platform-services -o jsonpath='{.data.admin-key}' 2>/dev/null | base64 -d 2>/dev/null)
 
 if [ -z "$ADMIN_KEY" ]; then
     echo -e "${YELLOW}⚠️  Warning: Could not extract admin key from secret key-manager-admin${NC}"
     echo "  You may need to manually set ADMIN_KEY in the .env files"
     ADMIN_KEY="admin-key-placeholder"
+    ADMIN_KEY_STATUS="⚠️  Not found - needs manual setup"
 else
     echo -e "${GREEN}  ✅ Admin key extracted successfully${NC}"
+    ADMIN_KEY_STATUS="✅ Extracted"
 fi
 
 # Generate backend .env file
@@ -184,7 +186,7 @@ echo ""
 echo -e "${BLUE}Cluster Information:${NC}"
 echo "  📍 Domain: $CLUSTER_DOMAIN"
 echo "  🔑 Key Manager: $KEY_MANAGER_BASE_URL"
-echo "  🔐 Admin Key: $([ "$ADMIN_KEY" = "admin-key-placeholder" ] && echo "⚠️  Not found - needs manual setup" || echo "✅ Extracted")"
+echo "  🔐 Admin Key: $ADMIN_KEY_STATUS"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Review the generated .env files"
