@@ -5,5 +5,4 @@ metadata:
   name: maas-kuadrant
 
 resources:
-- olm-install
-- olm-configure
+- kuadrant-configure

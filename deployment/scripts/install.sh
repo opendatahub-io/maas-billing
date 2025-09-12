@@ -11,6 +11,7 @@ DEPLOYMENT_TYPE=${DEPLOYMENT_TYPE:-simulator}
 TEARDOWN=false
 INSTALL_DEPS=false
 INSTALL_INFRA=false
+TEARDOWN_ONLY=false
 AVAILABLE_DEPLOYMENTS=()
 # Colors for output
 RED='\033[0;31m'
@@ -28,6 +29,132 @@ log_success() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+run_teardown() {
+    set -eu
+
+    current_cluster=$(oc whoami --show-server 2>/dev/null || echo "Unable to determine cluster")
+    current_user=$(oc whoami 2>/dev/null || echo "Unable to determine user")
+
+    echo "Current cluster: $current_cluster"
+    echo "Current user: $current_user"
+    echo ""
+    echo "This will delete the following namespaces and all their resources:"
+    echo "  - llm"
+    echo "  - llm-observability" 
+    echo "  - kuadrant-system"
+    echo ""
+    read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Teardown cancelled."
+        return 0
+    fi
+
+    echo "Commencing teardown of MaaS deployment"
+
+    echo "Uninstalling Helm releases..."
+    # Uninstall Kuadrant operator releases
+    helm uninstall kuadrant-operator -n kuadrant-system --ignore-not-found || true
+    helm uninstall authorino-operator -n kuadrant-system --ignore-not-found || true
+    helm uninstall limitador-operator -n kuadrant-system --ignore-not-found || true
+    
+    # Uninstall Istio releases
+    helm uninstall istiod -n istio-system --ignore-not-found || true
+    helm uninstall istio-base -n istio-system --ignore-not-found || true
+    
+    # Clean up any old Istio releases in gateway-system
+    helm uninstall default-istiod -n gateway-system --ignore-not-found || true
+    
+    # Remove stale Istio webhook configurations pointing to wrong namespaces
+    kubectl delete mutatingwebhookconfiguration istio-sidecar-injector-gateway-system --ignore-not-found || true
+    kubectl delete validatingwebhookconfiguration istio-validator-gateway-system --ignore-not-found || true
+    
+    # Uninstall cert-manager (if installed via Helm)
+    helm uninstall cert-manager -n cert-manager --ignore-not-found || true
+    
+    # Uninstall KServe (if installed via Helm)
+    helm uninstall kserve -n kserve --ignore-not-found || true
+    helm uninstall kserve-crd -n kserve --ignore-not-found || true
+
+    echo "Removing any remaining CRDs not handled by Helm uninstall..."
+    # Only remove CRDs that might not be handled by Helm uninstall
+    REMAINING_CRDS=(
+      authpolicies.kuadrant.io
+      dnspolicies.kuadrant.io
+      dnsrecords.kuadrant.io
+      tlspolicies.kuadrant.io
+    )
+
+    for crd in "${REMAINING_CRDS[@]}"; do
+      if kubectl get crd "$crd" >/dev/null 2>&1; then
+        echo "Deleting remaining CRD: $crd"
+        kubectl delete crd "$crd" --ignore-not-found --wait=true || true
+      fi
+    done
+
+    echo "Removing Kuadrant-related ClusterRoles and ClusterRoleBindings..."
+    CLUSTER_ROLES=(
+      authorino-authconfig-editor-role
+      authorino-authconfig-viewer-role
+      authorino-manager-k8s-auth-role
+      authorino-manager-role
+      key-manager-kuadrant-restart
+      kuadrant-operator-metrics-reader
+      limitador-operator-metrics-reader
+    )
+
+    for cr in "${CLUSTER_ROLES[@]}"; do
+      if kubectl get clusterrole "$cr" >/dev/null 2>&1; then
+        echo "Deleting ClusterRole: $cr"
+        kubectl delete clusterrole "$cr" --ignore-not-found || true
+      fi
+      # Also delete corresponding ClusterRoleBinding if it exists
+      if kubectl get clusterrolebinding "$cr" >/dev/null 2>&1; then
+        echo "Deleting ClusterRoleBinding: $cr"
+        kubectl delete clusterrolebinding "$cr" --ignore-not-found || true
+      fi
+    done
+
+    echo "Removing Kuadrant-related ServiceAccounts and RBAC resources..."
+    # Clean up ServiceAccounts in kuadrant-system namespace
+    kubectl delete serviceaccount -n kuadrant-system --all --ignore-not-found || true
+    
+    # Clean up Roles and RoleBindings in kuadrant-system namespace  
+    kubectl delete role -n kuadrant-system --all --ignore-not-found || true
+    kubectl delete rolebinding -n kuadrant-system --all --ignore-not-found || true
+
+    namespaces="llm llm-observability kuadrant-system"
+    for ns in $namespaces; do
+        echo "Deleting namespace: $ns"
+        if [ "$ns" = "kuadrant-system" ]; then
+            echo "Removing finalizers from kuadrant-system resources"
+            kubectl patch authorino authorino -n "$ns" -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+            kubectl patch kuadrant kuadrant -n "$ns" -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+            kubectl patch limitador limitador -n "$ns" -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true
+
+            kubectl get kuadrants.kuadrant.io -n "$ns" -o name 2>/dev/null | xargs -r -I {} kubectl patch {} -n "$ns" -p '{"metadata":{"finalizers":[]}}' --type=merge || true
+            kubectl get limitadors.limitador.kuadrant.io -n "$ns" -o name 2>/dev/null | xargs -r -I {} kubectl patch {} -n "$ns" -p '{"metadata":{"finalizers":[]}}' --type=merge || true
+            kubectl get authorinos.operator.authorino.kuadrant.io -n "$ns" -o name 2>/dev/null | xargs -r -I {} kubectl patch {} -n "$ns" -p '{"metadata":{"finalizers":[]}}' --type=merge || true
+
+            oc delete project "$ns" --force --grace-period=0 --timeout=60s || true
+
+            sleep 5
+            if oc get project "$ns" >/dev/null 2>&1; then
+                echo "Force removing finalizers from kuadrant-system namespace"
+                oc patch project "$ns" -p '{"metadata":{"finalizers":[]}}' --type=merge || true
+
+                sleep 5
+                if oc get project "$ns" >/dev/null 2>&1; then
+                    echo "Namespace still stuck, attempting direct deletion"
+                    oc delete namespace "$ns" --force --grace-period=0 --timeout=30s || true
+                fi
+            fi
+        else
+            oc delete project "$ns" || true
+        fi
+    done
 }
 
 show_usage() {
@@ -53,6 +180,9 @@ show_usage() {
     echo "  $0 gpu                             # Install gpu deployment only (no deps/infra)"
     echo "  $0 --install-infra basic           # Install infrastructure and basic deployment"
     echo "  $0 --teardown --install-deps --install-infra  # Complete teardown and reinstall"
+    echo "  $0                    # Install simulator deployment (default)"
+    echo "  $0 gpu                # Install gpu deployment"
+    echo "  $0 --teardown         # Teardown first, then install simulator deployment"
 }
 
 detect_available_deployments() {
@@ -118,6 +248,13 @@ set_cluster_domain() {
 }
 
 parse_arguments() {
+    local teardown_only=false
+    
+    # Check if only --teardown flag is provided
+    if [ $# -eq 1 ] && [ "$1" = "--teardown" ]; then
+        teardown_only=true
+    fi
+    
     while [[ $# -gt 0 ]]; do
         case $1 in
             --teardown)
@@ -148,17 +285,16 @@ parse_arguments() {
                 ;;
         esac
     done
+    
+    # If only teardown was requested, set flag to exit after teardown
+    if [ "$teardown_only" = true ]; then
+        TEARDOWN_ONLY=true
+    fi
 }
 
 main() {
     # Detect available deployments first
     detect_available_deployments
-    
-    # Show help if no arguments provided
-    if [ $# -eq 0 ]; then
-        show_usage
-        exit 0
-    fi
     
     log_info "Starting MaaS deployment installation"
     
@@ -178,12 +314,12 @@ main() {
     # Optional teardown
     if [ "$TEARDOWN" = true ]; then
         log_info "Running teardown..."
-        if [ -f "scripts/teardown.sh" ]; then
-            scripts/teardown.sh
-            log_success "Teardown completed"
-        else
-            log_error "Teardown script not found: scripts/teardown.sh"
-            exit 1
+        run_teardown
+        log_success "Teardown completed"
+        
+        # Exit if only teardown was requested
+        if [ "$TEARDOWN_ONLY" = true ]; then
+            exit 0
         fi
     fi
     
@@ -224,10 +360,22 @@ main() {
     else
         log_info "Skipping infrastructure installation (use --install-infra to install)"
         
-        # Deploy the example deployment only
-        log_info "Deploying $DEPLOYMENT_TYPE example..."
-        kustomize build "$DEPLOYMENT_PATH" | envsubst '${CLUSTER_DOMAIN}' | kubectl apply -f -
-        log_success "Example deployment completed successfully!"
+        # Clean up any conflicting operators
+        log_info "Cleaning up conflicting operators..."
+        kubectl -n gateway-system delete subscription sailoperator --ignore-not-found
+        kubectl -n gateway-system delete csv sailoperator.v0.1.0 --ignore-not-found
+        kubectl -n gateway-system delete deployment sail-operator --ignore-not-found
+        kubectl -n gateway-system delete deployment istiod --ignore-not-found
+        
+        # Apply Kuadrant configuration (CRs) after dependencies installed it via Helm
+        log_info "Configuring Kuadrant CRs..."
+        kustomize build infrastructure/kustomize-templates/kuadrant | envsubst '${CLUSTER_DOMAIN}' | kubectl apply -f -
+        log_success "Kuadrant configured"
+        
+        # Deploy using overlay (always use OpenShift overlay for external access)
+        log_info "Deploying $DEPLOYMENT_TYPE with external access..."
+        kustomize build overlays/openshift | envsubst '${CLUSTER_DOMAIN}' | kubectl apply -f -
+        log_success "Deployment completed successfully!"
     fi
     
     # Show access information
