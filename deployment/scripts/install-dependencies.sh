@@ -7,7 +7,7 @@ set -euo pipefail
 # Supports both vanilla Kubernetes and OpenShift deployments
 
 # Component definitions with installation order
-COMPONENTS=("istio" "cert-manager" "kserve" "prometheus" "kuadrant")
+COMPONENTS=("istio" "cert-manager" "kserve" "prometheus" "kuadrant"  "grafana")
 
 # OpenShift flag
 OCP=false
@@ -33,6 +33,13 @@ get_component_description() {
                 echo "Observability and metrics collection (optional)"
             fi
             ;;
+        grafana) 
+            if [[ "$OCP" == true ]]; then
+                echo "Dashboard visualization platform (OpenShift operator)"
+            else
+                echo "Dashboard visualization platform (not implemented for vanilla Kubernetes)"
+            fi
+            ;;
         kuadrant) echo "API gateway operators via Helm (Kuadrant, Authorino, Limitador)" ;;
         *) echo "Unknown component" ;;
     esac
@@ -49,6 +56,7 @@ usage() {
     echo "  --cert-manager           Install cert-manager"
     echo "  --kserve                 Install KServe model serving platform"
     echo "  --prometheus             Install Prometheus operator"
+    echo "  --grafana                Install Grafana dashboard platform"
     echo "  --kuadrant               Install Kuadrant operators via Helm"
     echo "  --ocp                    Use OpenShift-specific handling (validate instead of install)"
     echo "  -h, --help               Show this help message"
@@ -121,7 +129,7 @@ install_component() {
     
     # Pass --ocp flag to scripts that support it
     local script_args=()
-    if [[ "$OCP" == true ]] && [[ "$component" == "kserve" || "$component" == "prometheus" ]]; then
+    if [[ "$OCP" == true ]] && [[ "$component" == "kserve" || "$component" == "prometheus" || "$component" == "grafana" ]]; then
         script_args+=("--ocp")
     fi
     
