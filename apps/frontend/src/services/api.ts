@@ -145,9 +145,6 @@ class ApiService {
   }
 
   // Token Management APIs
-  async getTeams() {
-    return this.fetch('/tokens/teams');
-  }
 
   async getUserTier() {
     return this.fetch('/tokens/user/tier');
