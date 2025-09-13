@@ -20,15 +20,42 @@ const (
 	MappingConfigMap = "tier-to-group-mapping"
 )
 
+var defaultTier = Tier{
+	Name:  "free",
+	Level: 0,
+	Groups: []string{
+		"system:authenticated",
+	},
+}
+
 // Mapper handles tier-to-group mapping lookups
 type Mapper struct {
+	tenantName      string
 	configMapClient corev1typed.ConfigMapInterface
 }
 
-func NewMapper(clientset kubernetes.Interface, namespace string) *Mapper {
+func NewMapper(clientset kubernetes.Interface, tenantName, namespace string) *Mapper {
 	return &Mapper{
+		tenantName:      tenantName,
 		configMapClient: clientset.CoreV1().ConfigMaps(namespace),
 	}
+}
+
+func (m *Mapper) Namespaces(ctx context.Context) map[string]string {
+	tiers, err := m.loadTierConfig(ctx)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			tiers = []Tier{defaultTier}
+		}
+	}
+
+	namespaces := make(map[string]string, len(tiers))
+
+	for _, tier := range tiers {
+		namespaces[tier.Name] = fmt.Sprintf("%s-tier-%s", m.tenantName, tier.Name)
+	}
+
+	return namespaces
 }
 
 // GetTierForGroups returns the highest level tier for a user with multiple group memberships.

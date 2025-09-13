@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/tools/cache"
+
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/auth"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
@@ -19,6 +22,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/teams"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
 func main() {
@@ -77,10 +81,6 @@ func registerHandlers(ctx context.Context, cfg *config.Config) *gin.Engine {
 		log.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
 
-	tierMapper := tier.NewMapper(clusterConfig.ClientSet, cfg.Namespace)
-	tierHandler := tier.NewHandler(tierMapper)
-	router.POST("/tiers/lookup", tierHandler.TierLookup)
-
 	modelMgr := models.NewManager(clusterConfig.DynClient)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	router.GET("/models", modelsHandler.ListModels)
@@ -90,12 +90,48 @@ func registerHandlers(ctx context.Context, cfg *config.Config) *gin.Engine {
 	case config.Secrets:
 		configureSecretsProvider(cfg, router, clusterConfig)
 	case config.SATokens:
-		log.Fatal("provider 'sa-tokens' is not implemented yet; use --provider=secrets")
+		configureSATokenProvider(ctx, cfg, router, clusterConfig)
 	default:
 		log.Fatalf("Invalid provider: %s. Available providers: [secrets, sa-tokens]", cfg.Provider)
 	}
 
 	return router
+}
+
+func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {
+	tierMapper := tier.NewMapper(clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
+	tierHandler := tier.NewHandler(tierMapper)
+	router.POST("/tiers/lookup", tierHandler.TierLookup)
+
+	informerFactory := informers.NewSharedInformerFactory(clusterConfig.ClientSet, 30*time.Second)
+
+	namespaceInformer := informerFactory.Core().V1().Namespaces()
+	serviceAccountInformer := informerFactory.Core().V1().ServiceAccounts()
+	informersSynced := []cache.InformerSynced{
+		namespaceInformer.Informer().HasSynced,
+		serviceAccountInformer.Informer().HasSynced,
+	}
+
+	informerFactory.Start(ctx.Done())
+
+	if !cache.WaitForNamedCacheSync("maas-api", ctx.Done(), informersSynced...) {
+		log.Fatalf("Failed to sync informer caches")
+	}
+
+	manager := token.NewManager(
+		cfg.Name,
+		tierMapper,
+		clusterConfig.ClientSet,
+		namespaceInformer.Lister(),
+		serviceAccountInformer.Lister(),
+	)
+	tokenHandler := token.NewHandler(cfg.Name, manager)
+
+	v1Routes := router.Group("/v1")
+
+	tokenRoutes := v1Routes.Group("/tokens", token.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
+	tokenRoutes.POST("", tokenHandler.IssueToken)
+	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
 }
 
 func configureSecretsProvider(cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {

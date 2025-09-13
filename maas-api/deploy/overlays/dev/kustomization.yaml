@@ -8,11 +8,12 @@ resources:
 - ../../base/
 - ./infra/
 - ./resources/tier-mapping-configmap.yaml
+- ./policies
 
 namespace: maas-api
 
 transformers:
-  - transformers/namespace.yaml
+- transformers/namespace.yaml
 
 patches:
 - path: patches/debug-mode-patch.yaml

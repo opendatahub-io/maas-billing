@@ -119,13 +119,16 @@ push-image: ## Push container image (use REPO= and TAG= to specify image)
 .PHONY: build-push-image
 build-push-image: build-image push-image ## Build and push container image
 
+PRE_DEPLOY_STEP ?=
 .PHONY: deploy-dev
 deploy-dev: ## Deploy to development
 	kubectl create namespace maas-api || true
 	cd $(PROJECT_DIR)/deploy/overlays/dev && \
+		set -eu; \
 		cp kustomization.yaml kustomization.yaml.backup && \
-		trap 'mv kustomization.yaml.backup kustomization.yaml 2>/dev/null || true' EXIT && \
+		trap 'mv kustomization.yaml.backup kustomization.yaml 2>/dev/null || true' EXIT INT TERM && \
 		kustomize edit set image maas-api=$(FULL_IMAGE) && \
+		$(if $(PRE_DEPLOY_STEP),$(PRE_DEPLOY_STEP) &&) \
 		kustomize build . | kubectl apply -f -
 
 default_run_flags := --debug

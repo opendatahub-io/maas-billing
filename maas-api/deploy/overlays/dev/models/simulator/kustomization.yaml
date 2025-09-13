@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: vllm-simulator
+
+namespace: llm
+
+resources:
+# As it's a symlink, you need to run kustomize with --load-restrictor LoadRestrictionsNone flag
+- vllm-simulator.yaml
+- rbac.yaml
+- httproute.yaml
