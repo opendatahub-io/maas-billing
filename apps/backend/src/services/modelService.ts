@@ -64,21 +64,34 @@ export class ModelService {
   }
 
   private async fetchModelsFromCluster(): Promise<Model[]> {
-    const CLUSTER_DOMAIN = process.env.CLUSTER_DOMAIN || 'apps.your-cluster.example.com';
-    
     try {
-      // Get InferenceServices from all namespaces
-      const { stdout } = await execAsync(
-        `kubectl get inferenceservices -A -o jsonpath='{range .items[*]}{.metadata.name}{"\\t"}{.metadata.namespace}{"\\t"}{.spec.predictor.model.modelFormat.name}{"\\n"}{end}'`
-      );
+      // Get InferenceServices and their corresponding routes
+      const [inferenceResult, routeResult] = await Promise.all([
+        execAsync(`kubectl get inferenceservices -A -o jsonpath='{range .items[*]}{.metadata.name}{"\\t"}{.metadata.namespace}{"\\t"}{.spec.predictor.model.modelFormat.name}{"\\n"}{end}'`),
+        execAsync(`kubectl get routes -n llm -o jsonpath='{range .items[*]}{.metadata.name}{"\\t"}{.spec.host}{"\\n"}{end}'`)
+      ]);
       
-      if (!stdout.trim()) {
+      if (!inferenceResult.stdout.trim()) {
         logger.warn('No InferenceServices found in cluster');
         return [];
       }
 
+      // Build route mapping - purely data-driven
+      const routeMap = new Map<string, string>();
+      if (routeResult.stdout.trim()) {
+        const routeLines = routeResult.stdout.trim().split('\n');
+        for (const line of routeLines) {
+          const [routeName, host] = line.split('\t');
+          if (routeName && host) {
+            // Store route exactly as it appears in the cluster
+            routeMap.set(routeName, host);
+            logger.info(`Found route: ${routeName} -> ${host}`);
+          }
+        }
+      }
+
       const models: Model[] = [];
-      const lines = stdout.trim().split('\n');
+      const lines = inferenceResult.stdout.trim().split('\n');
       
       for (const line of lines) {
         const [name, namespace, modelFormat] = line.split('\t');
@@ -88,10 +101,32 @@ export class ModelService {
           continue;
         }
 
-        // Construct endpoint URL based on naming convention
-        const endpoint = `http://${name}-llm.${CLUSTER_DOMAIN}/v1/chat/completions`;
+        // Find matching route using generic pattern matching algorithms
+        let routeHost: string | undefined;
+        let bestMatch = '';
+        let bestScore = 0;
         
-        // Extract display name (remove -llm suffix if present)
+        for (const [routeName, host] of routeMap.entries()) {
+          const score = this.calculateRouteMatchScore(name, routeName);
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = routeName;
+            routeHost = host;
+          }
+        }
+        
+        if (!routeHost || bestScore < 0.3) { // Minimum threshold for matching
+          logger.warn(`No suitable route found for InferenceService ${name} (best match: ${bestMatch}, score: ${bestScore})`);
+          logger.warn(`Available routes: ${Array.from(routeMap.keys()).join(', ')}`);
+          continue;
+        }
+        
+        logger.info(`Matched InferenceService ${name} to route ${bestMatch} (score: ${bestScore})`);
+      
+
+        const endpoint = `http://${routeHost}/v1/chat/completions`;
+        
+        // Extract display name
         const displayName = name.replace(/-llm$/, '');
         
         models.push({
@@ -102,6 +137,8 @@ export class ModelService {
           endpoint,
           namespace
         });
+        
+        logger.info(`Found model: ${name} with endpoint: ${endpoint}`);
       }
 
       return models;
@@ -117,6 +154,65 @@ export class ModelService {
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
+  }
+
+  private calculateRouteMatchScore(inferenceServiceName: string, routeName: string): number {
+    // Normalize names for comparison
+    const normalizeString = (str: string) => str.toLowerCase().replace(/[-_]/g, '');
+    const normalizedService = normalizeString(inferenceServiceName);
+    const normalizedRoute = normalizeString(routeName);
+    
+    // Remove common suffixes/prefixes for better matching
+    const cleanService = normalizedService.replace(/^(inference|service|model)/, '').replace(/(service|model)$/, '');
+    const cleanRoute = normalizedRoute.replace(/route$/, '').replace(/^(api|service)/, '');
+    
+    // Calculate similarity scores using multiple algorithms
+    let score = 0;
+    
+    // 1. Exact match (highest score)
+    if (cleanService === cleanRoute) {
+      return 1.0;
+    }
+    
+    // 2. One contains the other
+    if (cleanService.includes(cleanRoute) || cleanRoute.includes(cleanService)) {
+      score += 0.8;
+    }
+    
+    // 3. Check for common word segments
+    const serviceWords = cleanService.split(/[^a-z0-9]+/).filter(w => w.length > 2);
+    const routeWords = cleanRoute.split(/[^a-z0-9]+/).filter(w => w.length > 2);
+    
+    let wordMatches = 0;
+    for (const serviceWord of serviceWords) {
+      for (const routeWord of routeWords) {
+        if (serviceWord === routeWord || serviceWord.includes(routeWord) || routeWord.includes(serviceWord)) {
+          wordMatches++;
+          break;
+        }
+      }
+    }
+    
+    if (serviceWords.length > 0) {
+      score += (wordMatches / serviceWords.length) * 0.6;
+    }
+    
+    // 4. Check for prefix matching
+    const maxPrefixLength = Math.min(cleanService.length, cleanRoute.length);
+    let prefixLength = 0;
+    for (let i = 0; i < maxPrefixLength; i++) {
+      if (cleanService[i] === cleanRoute[i]) {
+        prefixLength++;
+      } else {
+        break;
+      }
+    }
+    
+    if (prefixLength >= 3) { // At least 3 character prefix match
+      score += (prefixLength / maxPrefixLength) * 0.4;
+    }
+    
+    return Math.min(score, 1.0); // Cap at 1.0
   }
 
   // Clear cache (useful for testing)
