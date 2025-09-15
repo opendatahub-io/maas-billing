@@ -171,6 +171,9 @@ REACT_APP_CLUSTER_API_URL=$CLUSTER_API_URL
 # Key Manager / MaaS API Base URL
 # Extract from: kubectl get routes -n platform-services | grep key-manager
 REACT_APP_KEY_MANAGER_BASE_URL=$KEY_MANAGER_BASE_URL
+
+# Backend Service URL (for local development)
+REACT_APP_BACKEND_URL=http://localhost:3001
 EOF
 
 echo -e "${GREEN}  ✅ Created apps/frontend/.env.local${NC}"
