@@ -172,7 +172,7 @@ router.get('/', async (_req, res) => {
             const execAsync = promisify(exec);
             
             // Get the secret value using oc command
-            const { stdout } = await execAsync(`oc get secret ${key.secret_name} -o jsonpath='{.data.api_key}' 2>/dev/null`);
+            const { stdout } = await execAsync(`oc get secret ${key.secret_name} -n llm -o jsonpath='{.data.api_key}' 2>/dev/null`);
             if (stdout && stdout.trim()) {
               // Decode the base64 value
               actualApiKey = Buffer.from(stdout.trim(), 'base64').toString('utf-8');
