@@ -15,10 +15,18 @@ router.post('/chat/completions', async (req, res) => {
       model: req.body?.model,
       messageCount: req.body?.messages?.length,
       hasAuth: !!req.headers.authorization,
-      userAgent: req.get('User-Agent')
+      userAgent: req.get('User-Agent'),
+      qosMode: req.headers['x-enable-qos'],
+      customerTier: req.headers['x-customer-tier'],
+      demoMode: req.headers['x-demo-mode']
     });
 
     const { model, messages, max_tokens, tier } = req.body;
+    
+    // Check if QoS mode is enabled
+    const useQoS = req.headers['x-enable-qos'] === 'true';
+    const customerTier = req.headers['x-customer-tier'] as string || 'free';
+    const demoMode = req.headers['x-demo-mode'] as string;
     
     // Extract authorization from headers
     const authHeader = req.headers.authorization;
@@ -56,12 +64,30 @@ router.post('/chat/completions', async (req, res) => {
       tier,
       messageCount: messages.length,
       maxTokens: max_tokens,
-      apiKey: apiKey.substring(0, 8) + '...'
+      apiKey: apiKey.substring(0, 8) + '...',
+      useQoS,
+      customerTier,
+      demoMode
     });
 
     // Configuration constants
     const CLUSTER_DOMAIN = process.env.CLUSTER_DOMAIN || 'apps.your-cluster.example.com';
+    const QOS_SERVICE_URL = process.env.QOS_SERVICE_URL || 'http://localhost:3005';
     const REQUEST_TIMEOUT = 30000;
+
+    // Route through QoS service if enabled
+    if (useQoS) {
+      return await handleQoSRequest(req, res, {
+        model,
+        messages,
+        max_tokens,
+        customerTier,
+        demoMode,
+        apiKey,
+        authHeader,
+        startTime
+      });
+    }
     
     // Map model to endpoint URL (these go through Kuadrant gateway)
     const modelEndpoints: Record<string, string> = {
@@ -152,5 +178,141 @@ router.post('/chat/completions', async (req, res) => {
   }
 });
 
+// Handle QoS-enabled requests
+async function handleQoSRequest(req: express.Request, res: express.Response, params: {
+  model: string;
+  messages: any[];
+  max_tokens?: number;
+  customerTier: string;
+  demoMode?: string;
+  apiKey: string;
+  authHeader?: string;
+  startTime: number;
+}) {
+  const { model, messages, max_tokens, customerTier, demoMode, authHeader, startTime } = params;
+  const QOS_SERVICE_URL = process.env.QOS_SERVICE_URL || 'http://localhost:3005';
+  const REQUEST_TIMEOUT = 30000;
+
+  try {
+    // Generate x-auth-identity header for QoS service
+    const authIdentity = {
+      metadata: {
+        annotations: {
+          'kuadrant.io/groups': customerTier,
+          'secret.kuadrant.io/user-id': `${customerTier.toUpperCase()}-${Date.now()}`
+        },
+        sla: customerTier === 'enterprise' ? 'guaranteed' : 
+             customerTier === 'premium' ? 'standard' : 'best_effort'
+      }
+    };
+
+    // Prepare headers for QoS service
+    const qosHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-auth-identity': JSON.stringify(authIdentity)
+    };
+
+    // Add demo mode header if specified
+    if (demoMode) {
+      qosHeaders['x-demo-mode'] = demoMode;
+    }
+
+    // Forward authorization header if present
+    if (authHeader) {
+      qosHeaders['Authorization'] = authHeader;
+    }
+
+    logger.info('Routing request through QoS service:', {
+      qosUrl: `${QOS_SERVICE_URL}/v1/chat/completions`,
+      customerTier,
+      demoMode,
+      authIdentity: authIdentity.metadata.annotations
+    });
+
+    // Send request to QoS service
+    const qosResponse = await axios({
+      method: 'POST',
+      url: `${QOS_SERVICE_URL}/v1/chat/completions`,
+      headers: qosHeaders,
+      data: {
+        model,
+        messages,
+        max_tokens: max_tokens || 100,
+        temperature: 0.7
+      },
+      timeout: REQUEST_TIMEOUT,
+      validateStatus: () => true // Don't throw on HTTP error status codes
+    });
+
+    // Log the response for debugging
+    logger.info('QoS service response:', {
+      status: qosResponse.status,
+      statusText: qosResponse.statusText,
+      hasData: !!qosResponse.data,
+      queueMetrics: qosResponse.data?.queue_metrics
+    });
+
+    // Calculate total duration
+    const duration = Date.now() - startTime;
+
+    // Handle QoS service errors
+    if (qosResponse.status !== 200) {
+      logger.error('QoS service error:', {
+        status: qosResponse.status,
+        data: qosResponse.data,
+        duration: `${duration}ms`
+      });
+
+      return res.status(qosResponse.status).json({
+        success: false,
+        error: `QoS service returned ${qosResponse.status}: ${qosResponse.statusText}`,
+        details: qosResponse.data,
+        qos_status: qosResponse.status,
+        duration: `${duration}ms`,
+        customer_tier: customerTier
+      });
+    }
+
+    // Log successful QoS processing
+    logger.info('QoS request completed successfully:', {
+      model,
+      customerTier,
+      duration: `${duration}ms`,
+      status: qosResponse.status
+    });
+
+    // Return the QoS service response with additional metadata
+    const responseData = {
+      ...qosResponse.data,
+      qos_metadata: {
+        customer_tier: customerTier,
+        processing_mode: demoMode || 'auto',
+        duration_ms: duration,
+        processed_via: 'qos_service'
+      }
+    };
+
+    res.json(responseData);
+
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    logger.error('Error communicating with QoS service:', {
+      error: error.message,
+      customerTier,
+      duration: `${duration}ms`,
+      qosUrl: QOS_SERVICE_URL
+    });
+    
+    // Return error indicating QoS service unavailable
+    res.status(503).json({
+      success: false,
+      error: 'QoS service unavailable',
+      details: error.message,
+      customer_tier: customerTier,
+      duration_ms: duration,
+      fallback_available: false
+    });
+  }
+}
 
 export default router;

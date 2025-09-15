@@ -47,6 +47,7 @@ import TokenManagement from './components/TokenManagement';
 import AuthCallback from './components/AuthCallback';
 import QoSMonitor from './components/QoSMonitor';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { ExperimentalProvider } from './contexts/ExperimentalContext';
 import apiService from './services/api';
 
 const drawerWidth = 240;
@@ -381,7 +382,9 @@ function MainApp() {
           }}
         >
           <Toolbar />
-          {renderContent()}
+          <ExperimentalProvider experimentalMode={experimentalMode}>
+            {renderContent()}
+          </ExperimentalProvider>
         </Box>
       </Box>
 

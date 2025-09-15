@@ -12,23 +12,17 @@ import {
   TextField,
   Typography,
   Alert,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Paper,
   Chip,
   CircularProgress,
-  Collapse,
-  IconButton,
-  Divider,
   Stack,
   LinearProgress,
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Switch,
+  FormControlLabel,
+  Tooltip,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -36,11 +30,13 @@ import {
   ExpandMore as ExpandMoreIcon,
   CheckCircle as SuccessIcon,
   Error as ErrorIcon,
-  AccessTime as PendingIcon,
+  Speed as QoSIcon,
+  DirectionsRun as DirectIcon,
 } from '@mui/icons-material';
 
-import { Model, Policy } from '../types';
+import { Model } from '../types';
 import apiService from '../services/api';
+import { useExperimental } from '../contexts/ExperimentalContext';
 
 interface SimulationRequest {
   model: string;
@@ -49,6 +45,11 @@ interface SimulationRequest {
   maxTokens: number;
   authPrefix: 'Bearer' | 'APIKEY';
   selectedToken: string; // Token name/id to use for requests
+  // QoS-specific fields
+  enableQoS: boolean;
+  customerTier: 'enterprise' | 'premium' | 'free';
+  demoMode: 'simulation' | 'advanced' | 'auto';
+  loadTestMode: 'single-tier' | 'multi-tier-basic' | 'multi-tier-advanced';
 }
 
 interface SimulationResult {
@@ -74,6 +75,7 @@ interface SimulationResult {
 }
 
 const RequestSimulator: React.FC = () => {
+  const { experimentalMode } = useExperimental();
   // Form state
   const [simulationForm, setSimulationForm] = useState<SimulationRequest>({
     model: '',
@@ -82,7 +84,19 @@ const RequestSimulator: React.FC = () => {
     maxTokens: 100,
     authPrefix: 'APIKEY', // Default to APIKEY as per your cluster config
     selectedToken: '', // Will be auto-selected when tokens load
+    // QoS defaults
+    enableQoS: false,
+    customerTier: 'free',
+    demoMode: 'auto',
+    loadTestMode: 'single-tier'
   });
+
+  // Disable QoS when experimental mode is turned off
+  React.useEffect(() => {
+    if (!experimentalMode && simulationForm.enableQoS) {
+      setSimulationForm(prev => ({ ...prev, enableQoS: false }));
+    }
+  }, [experimentalMode, simulationForm.enableQoS]);
 
   // Data state
   const [models, setModels] = useState<Model[]>([]);
@@ -106,10 +120,9 @@ const RequestSimulator: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Load models, policies, and user tokens in parallel
-      const [modelsData, policiesData, tokensData] = await Promise.all([
+      // Load models and user tokens in parallel
+      const [modelsData, tokensData] = await Promise.all([
         apiService.getModels().catch(() => []),
-        apiService.getPolicies().catch(() => []),
         apiService.getUserTokens().catch(() => []),
       ]);
 
@@ -220,6 +233,10 @@ const RequestSimulator: React.FC = () => {
       tier: selectedTokenTier,
       apiKey: getApiKey(),
       authPrefix: simulationForm.authPrefix,
+      // QoS parameters
+      enableQoS: simulationForm.enableQoS,
+      customerTier: simulationForm.customerTier,
+      demoMode: simulationForm.demoMode,
     };
 
     // Kuadrant supports both APIKEY and Bearer prefixes
@@ -294,6 +311,95 @@ const RequestSimulator: React.FC = () => {
     }
   };
 
+  // Multi-tier request runner
+  const runMultiTierRequest = async (tier: string, requestIndex: number, tierRequestId: number): Promise<SimulationResult> => {
+    const startTime = Date.now();
+    const requestId = `req-${Date.now()}-${tier}-${tierRequestId}`;
+    
+    const requestData = {
+      model: simulationForm.model,
+      messages: [
+        { role: 'user', content: `Hello from ${tier} customer ${tierRequestId}. ${simulationForm.queryText}` }
+      ],
+      max_tokens: simulationForm.maxTokens,
+      tier: tier,
+      apiKey: getApiKey(),
+      authPrefix: simulationForm.authPrefix,
+      // QoS parameters
+      enableQoS: simulationForm.enableQoS,
+      customerTier: tier,
+      demoMode: simulationForm.demoMode,
+    };
+
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': `${simulationForm.authPrefix} ${requestData.apiKey}`,
+    };
+
+    try {
+      console.log(`🚀 Running multi-tier request ${requestIndex + 1} (${tier}-${tierRequestId}):`, requestData);
+      
+      const response = await apiService.simulateRequest(requestData);
+      const duration = Date.now() - startTime;
+
+      return {
+        id: requestId,
+        timestamp: new Date().toISOString(),
+        request: {
+          model: requestData.model,
+          tier: tier,
+          messages: requestData.messages,
+          maxTokens: requestData.max_tokens,
+          headers: requestHeaders,
+          body: {
+            model: requestData.model,
+            messages: requestData.messages,
+            max_tokens: requestData.max_tokens,
+            tier: tier,
+          },
+        },
+        response: {
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          body: response,
+        },
+        success: true,
+        duration,
+      };
+    } catch (err: any) {
+      const duration = Date.now() - startTime;
+      console.error(`❌ Multi-tier request ${requestIndex + 1} (${tier}-${tierRequestId}) failed:`, err);
+
+      return {
+        id: requestId,
+        timestamp: new Date().toISOString(),
+        request: {
+          model: requestData.model,
+          tier: tier,
+          messages: requestData.messages,
+          maxTokens: requestData.max_tokens,
+          headers: requestHeaders,
+          body: {
+            model: requestData.model,
+            messages: requestData.messages,
+            max_tokens: requestData.max_tokens,
+            tier: tier,
+          },
+        },
+        response: {
+          status: err.response?.status || 500,
+          statusText: err.response?.statusText || 'Internal Server Error',
+          headers: err.response?.headers || {},
+          body: err.response?.body || { error: err.message },
+          error: err.message,
+        },
+        success: false,
+        duration,
+      };
+    }
+  };
+
   const handleRunSimulation = async () => {
     if (!simulationForm.model || !simulationForm.queryText || !simulationForm.selectedToken) {
       setError('Please fill in all required fields (Model, Token, and Query Text)');
@@ -308,7 +414,7 @@ const RequestSimulator: React.FC = () => {
     }
 
     const tokenTier = getSelectedTokenTier();
-    if (tokenTier === 'unknown') {
+    if (tokenTier === 'unknown' && simulationForm.loadTestMode === 'single-tier') {
       setError('Selected token does not have a valid policy/tier.');
       return;
     }
@@ -319,16 +425,22 @@ const RequestSimulator: React.FC = () => {
     setError(null);
 
     try {
-      const requests = Array.from({ length: simulationForm.count }, (_, i) => i);
-      
-      for (let i = 0; i < requests.length; i++) {
-        setCurrentRequest(i + 1);
-        const result = await runSingleRequest(i);
-        setResults(prev => [...prev, result]);
+      if (simulationForm.enableQoS && simulationForm.loadTestMode !== 'single-tier') {
+        // Multi-tier load testing
+        await runMultiTierLoadTest();
+      } else {
+        // Single-tier testing (original behavior)
+        const requests = Array.from({ length: simulationForm.count }, (_, i) => i);
         
-        // Small delay between requests to avoid overwhelming the server
-        if (i < requests.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+        for (let i = 0; i < requests.length; i++) {
+          setCurrentRequest(i + 1);
+          const result = await runSingleRequest(i);
+          setResults(prev => [...prev, result]);
+          
+          // Small delay between requests to avoid overwhelming the server
+          if (i < requests.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
       }
     } catch (err) {
@@ -338,6 +450,66 @@ const RequestSimulator: React.FC = () => {
       setIsRunning(false);
       setCurrentRequest(0);
     }
+  };
+
+  const runMultiTierLoadTest = async () => {
+    let requests: { tier: string; tierRequestId: number; delay: number }[] = [];
+
+    if (simulationForm.loadTestMode === 'multi-tier-basic') {
+      // 5 requests: 2 Enterprise + 3 Free (like demo.sh basic mode)
+      requests = [
+        { tier: 'free', tierRequestId: 1, delay: 0 },
+        { tier: 'free', tierRequestId: 2, delay: 300 },
+        { tier: 'enterprise', tierRequestId: 1, delay: 300 },
+        { tier: 'free', tierRequestId: 3, delay: 300 },
+        { tier: 'enterprise', tierRequestId: 2, delay: 300 },
+      ];
+    } else if (simulationForm.loadTestMode === 'multi-tier-advanced') {
+      // 30 requests: 3 Enterprise + 9 Premium + 18 Free (like demo.sh advanced mode)
+      const advancedPattern = [
+        { tier: 'free', tierRequestId: 1 }, { tier: 'free', tierRequestId: 2 }, { tier: 'free', tierRequestId: 3 },
+        { tier: 'premium', tierRequestId: 1 }, { tier: 'free', tierRequestId: 4 }, { tier: 'free', tierRequestId: 5 },
+        { tier: 'enterprise', tierRequestId: 1 }, { tier: 'free', tierRequestId: 6 }, { tier: 'premium', tierRequestId: 2 },
+        { tier: 'free', tierRequestId: 7 }, { tier: 'free', tierRequestId: 8 }, { tier: 'premium', tierRequestId: 3 },
+        { tier: 'free', tierRequestId: 9 }, { tier: 'enterprise', tierRequestId: 2 }, { tier: 'free', tierRequestId: 10 },
+        { tier: 'premium', tierRequestId: 4 }, { tier: 'free', tierRequestId: 11 }, { tier: 'free', tierRequestId: 12 },
+        { tier: 'premium', tierRequestId: 5 }, { tier: 'free', tierRequestId: 13 }, { tier: 'enterprise', tierRequestId: 3 },
+        { tier: 'free', tierRequestId: 14 }, { tier: 'premium', tierRequestId: 6 }, { tier: 'free', tierRequestId: 15 },
+        { tier: 'premium', tierRequestId: 7 }, { tier: 'free', tierRequestId: 16 }, { tier: 'premium', tierRequestId: 8 },
+        { tier: 'free', tierRequestId: 17 }, { tier: 'premium', tierRequestId: 9 }, { tier: 'free', tierRequestId: 18 },
+      ];
+      requests = advancedPattern.map(item => ({ ...item, delay: 20 })); // Rapid fire with minimal delays
+    }
+
+    console.log(`🎯 Starting ${simulationForm.loadTestMode} with ${requests.length} requests`);
+    
+    // Launch all requests in rapid succession (like demo.sh)
+    const runningRequests: Promise<SimulationResult>[] = [];
+    
+    for (let i = 0; i < requests.length; i++) {
+      const { tier, tierRequestId, delay } = requests[i];
+      
+      if (i > 0 && delay > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+      setCurrentRequest(i + 1);
+      
+      // Start the request without waiting for completion
+      const requestPromise = runMultiTierRequest(tier, i, tierRequestId);
+      runningRequests.push(requestPromise);
+      
+      // Add result as soon as it completes
+      requestPromise.then(result => {
+        setResults(prev => [...prev, result].sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        ));
+      });
+    }
+    
+    // Wait for all requests to complete
+    await Promise.all(runningRequests);
+    console.log(`✅ All ${requests.length} requests completed`);
   };
 
   const handleStopSimulation = () => {
@@ -395,8 +567,12 @@ const RequestSimulator: React.FC = () => {
       </Typography>
       
       <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-        Test your Kuadrant policies by sending real requests to your models. 
-        Available tiers are extracted from your active policies.
+        Test your Kuadrant policies{experimentalMode ? ' with optional QoS prioritization' : ''} by sending real requests to your models. 
+        {experimentalMode ? (
+          <>Toggle between direct Kuadrant access and QoS-prioritized routing to compare performance.</>
+        ) : (
+          <>Enable experimental features to access QoS prioritization capabilities.</>
+        )}
       </Typography>
       
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -550,7 +726,180 @@ const RequestSimulator: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+          </Grid>
 
+          {/* QoS Configuration Section - Only show if experimental mode is enabled */}
+          {experimentalMode && (
+            <Box sx={{ mt: 3, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Tooltip title="Enable QoS prioritization for request processing">
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={simulationForm.enableQoS}
+                        onChange={(e) => handleInputChange('enableQoS', e.target.checked)}
+                        disabled={isRunning}
+                        color="primary"
+                      />
+                    }
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {simulationForm.enableQoS ? <QoSIcon color="primary" sx={{ mr: 1 }} /> : <DirectIcon color="disabled" sx={{ mr: 1 }} />}
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {simulationForm.enableQoS ? 'QoS Priority Mode' : 'Direct Mode'}
+                        </Typography>
+                        <Chip label="EXPERIMENTAL" size="small" color="warning" sx={{ ml: 1 }} />
+                      </Box>
+                    }
+                  />
+                </Tooltip>
+              </Box>
+
+              {simulationForm.enableQoS && (
+                <>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Load Test Mode</InputLabel>
+                        <Select
+                          value={simulationForm.loadTestMode}
+                          onChange={(e) => handleInputChange('loadTestMode', e.target.value)}
+                          label="Load Test Mode"
+                          disabled={isRunning}
+                        >
+                          <MenuItem value="single-tier">
+                            <Box>
+                              <Typography variant="body2">Single Tier</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Test one customer tier only
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                          <MenuItem value="multi-tier-basic">
+                            <Box>
+                              <Typography variant="body2">Multi-Tier Basic</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                5 requests: 2 Enterprise + 3 Free
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                          <MenuItem value="multi-tier-advanced">
+                            <Box>
+                              <Typography variant="body2">Multi-Tier Advanced</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                30 requests: 3 Enterprise + 9 Premium + 18 Free
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    {simulationForm.loadTestMode === 'single-tier' && (
+                      <Grid item xs={12} sm={6} md={3}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Customer Tier</InputLabel>
+                          <Select
+                            value={simulationForm.customerTier}
+                            onChange={(e) => handleInputChange('customerTier', e.target.value)}
+                            label="Customer Tier"
+                            disabled={isRunning}
+                          >
+                            <MenuItem value="enterprise">
+                              <Box>
+                                <Typography variant="body2" color="success.main">Enterprise</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Highest priority • 3x concurrency
+                                </Typography>
+                              </Box>
+                            </MenuItem>
+                            <MenuItem value="premium">
+                              <Box>
+                                <Typography variant="body2" color="warning.main">Premium</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Medium priority • 2x concurrency
+                                </Typography>
+                              </Box>
+                            </MenuItem>
+                            <MenuItem value="free">
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">Free</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Best effort • 1x concurrency
+                                </Typography>
+                              </Box>
+                            </MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                    )}
+
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Demo Mode</InputLabel>
+                        <Select
+                          value={simulationForm.demoMode}
+                          onChange={(e) => handleInputChange('demoMode', e.target.value)}
+                          label="Demo Mode"
+                          disabled={isRunning}
+                        >
+                          <MenuItem value="auto">
+                            <Box>
+                              <Typography variant="body2">Auto</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Service default mode
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                          <MenuItem value="simulation">
+                            <Box>
+                              <Typography variant="body2">Simulation</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Fast simulation (4s delay)
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                          <MenuItem value="advanced">
+                            <Box>
+                              <Typography variant="body2">Advanced</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Real LLM processing
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    <Grid item xs={12} md={3}>
+                      <Alert severity="info" sx={{ height: '100%', display: 'flex', alignItems: 'center' }}>
+                        <Typography variant="caption">
+                          {simulationForm.loadTestMode === 'single-tier' ? (
+                            simulationForm.customerTier === 'enterprise' ? 
+                              '💎 Premium queue with guaranteed processing' :
+                              simulationForm.customerTier === 'premium' ?
+                              '⚡ Priority queue with standard processing' :
+                              '⏳ Best-effort queue with aging protection'
+                          ) : simulationForm.loadTestMode === 'multi-tier-basic' ? 
+                            '🚦 Basic QoS demo: Enterprise vs Free' :
+                            '🎯 Advanced QoS demo: Full 3-tier prioritization'
+                          }
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                  </Grid>
+                </>
+              )}
+
+              {!simulationForm.enableQoS && (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  Direct mode bypasses QoS prioritization. Requests go directly to Kuadrant endpoints using first-come-first-serve processing.
+                </Alert>
+              )}
+            </Box>
+          )}
+
+          <Grid container spacing={3} sx={{ mt: 2 }}>
             <Grid item xs={12} md={2}>
               <Button
                 fullWidth
@@ -582,11 +931,23 @@ const RequestSimulator: React.FC = () => {
           {isRunning && (
             <Box sx={{ mt: 3 }}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Running request {currentRequest} of {simulationForm.count}...
+                {simulationForm.enableQoS && simulationForm.loadTestMode !== 'single-tier' ? (
+                  simulationForm.loadTestMode === 'multi-tier-basic' ? 
+                    `Running multi-tier test: ${currentRequest} of 5 requests...` :
+                    `Running advanced multi-tier test: ${currentRequest} of 30 requests...`
+                ) : (
+                  `Running request ${currentRequest} of ${simulationForm.count}...`
+                )}
               </Typography>
               <LinearProgress 
                 variant="determinate" 
-                value={(currentRequest / simulationForm.count) * 100} 
+                value={simulationForm.enableQoS && simulationForm.loadTestMode !== 'single-tier' ? (
+                  simulationForm.loadTestMode === 'multi-tier-basic' ? 
+                    (currentRequest / 5) * 100 :
+                    (currentRequest / 30) * 100
+                ) : (
+                  (currentRequest / simulationForm.count) * 100
+                )} 
               />
             </Box>
           )}
@@ -613,6 +974,14 @@ const RequestSimulator: React.FC = () => {
                       {getResultIcon(result)}
                       <Typography sx={{ ml: 2, flexGrow: 1 }}>
                         Request to {result.request.model} (policy: {result.request.tier})
+                        {result.response.body?.qos_metadata && (
+                          <Chip 
+                            label={`QoS: ${result.response.body.qos_metadata.customer_tier}`}
+                            size="small" 
+                            color="primary" 
+                            sx={{ ml: 1 }}
+                          />
+                        )}
                       </Typography>
                       <Chip
                         label={result.success ? `${result.response.status} ${result.response.statusText}` : 'Failed'}

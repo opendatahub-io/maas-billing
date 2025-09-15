@@ -14,7 +14,7 @@ const app: express.Application = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: true, // Allow all origins in development
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -24,7 +24,7 @@ const QOS_SERVICE_URL = process.env.QOS_SERVICE_URL || 'http://localhost:3005';
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: true, // Allow all origins in development
   credentials: true
 }));
 app.use(express.json());

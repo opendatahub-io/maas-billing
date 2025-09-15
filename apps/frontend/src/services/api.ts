@@ -127,14 +127,32 @@ class ApiService {
     tier: string;
     apiKey: string;
     authPrefix?: string;
+    // QoS-specific parameters
+    enableQoS?: boolean;
+    customerTier?: string;
+    demoMode?: string;
   }) {
     const authPrefix = params.authPrefix || 'Bearer';
+    
+    // Prepare headers - start with basic headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `${authPrefix} ${params.apiKey}`,
+    };
+
+    // Add QoS-specific headers if QoS is enabled
+    if (params.enableQoS) {
+      headers['x-enable-qos'] = 'true';
+      headers['x-customer-tier'] = params.customerTier || 'free';
+      
+      if (params.demoMode && params.demoMode !== 'auto') {
+        headers['x-demo-mode'] = params.demoMode;
+      }
+    }
+
     return this.fetch('/simulator/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `${authPrefix} ${params.apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: params.model,
         messages: params.messages,
