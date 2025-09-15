@@ -34,7 +34,7 @@ SUBPROCESS_TIMEOUT = int(os.getenv('SUBPROCESS_TIMEOUT', '8'))  # Increased from
 
 # Default team ID for single-user mode (can be overridden by environment variables)
 DEFAULT_TEAM_ID = os.getenv('DEFAULT_TEAM_ID', 'default')
-DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'noyitz')
+DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'default-user')
 
 # Removed mock tokens - all tokens come from real Key Manager API
 
@@ -1117,7 +1117,7 @@ def generate_simulator_request_entries():
         requests.append({
             "id": f"sim-success-{i}",
             "timestamp": request_time.isoformat(),
-            "team": "noyitz",
+            "team": DEFAULT_USER_ID,
             "model": "qwen3-0-6b-instruct",
             "endpoint": "/v1/chat/completions",
             "httpMethod": "POST",
@@ -1127,7 +1127,7 @@ def generate_simulator_request_entries():
             "finalReason": "Request approved by Kuadrant policies",
             "authentication": {
                 "method": "api-key",
-                "principal": "noyitz",
+                "principal": DEFAULT_USER_ID,
                 "groups": ["unlimited-policy"],
                 "isValid": True
             },
@@ -1169,7 +1169,7 @@ def generate_simulator_request_entries():
         requests.append({
             "id": f"sim-failed-{i}",
             "timestamp": request_time.isoformat(),
-            "team": "noyitz",
+            "team": DEFAULT_USER_ID,
             "model": "qwen3-0-6b-instruct", 
             "endpoint": "/v1/chat/completions",
             "httpMethod": "POST",

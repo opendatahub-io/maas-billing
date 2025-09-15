@@ -68,11 +68,26 @@ const TokenManagement: React.FC = () => {
   const [availableTeams, setAvailableTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState('');
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
 
   useEffect(() => {
     loadUserData();
     loadAvailableTeams();
+    loadCurrentUser();
   }, []);
+
+  const loadCurrentUser = async () => {
+    try {
+      const clusterStatus = await apiService.getClusterStatus();
+      if (clusterStatus?.user && clusterStatus.user !== 'system:anonymous') {
+        setCurrentUser(clusterStatus.user);
+      }
+    } catch (error) {
+      console.warn('Could not load current user from cluster status:', error);
+      // Fallback to a default user - this ensures functionality even if cluster status fails
+      setCurrentUser('default-user');
+    }
+  };
 
   // Group tokens by team for display
   const getTokensByTeam = () => {
@@ -248,7 +263,7 @@ const TokenManagement: React.FC = () => {
       setError(null);
       
       const response = await apiService.createTeamToken(selectedTeam, {
-        user_id: 'noyitz', // TODO: Get from auth context
+        user_id: currentUser || 'default-user', // Use authenticated user
         alias: newTokenName.trim(),
       });
       

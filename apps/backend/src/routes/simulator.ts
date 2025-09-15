@@ -91,8 +91,8 @@ router.post('/chat/completions', async (req, res) => {
     
     // Map model to endpoint URL (these go through Kuadrant gateway)
     const modelEndpoints: Record<string, string> = {
-      'qwen3-0-6b-instruct': `http://qwen3-llm.${CLUSTER_DOMAIN}/v1/chat/completions`,
-      'vllm-simulator': `http://simulator-llm.${CLUSTER_DOMAIN}/v1/chat/completions`,
+      'qwen3-0-6b-instruct': `http://qwen3-llm.apps.${CLUSTER_DOMAIN}/v1/chat/completions`,
+      'vllm-simulator': `http://simulator-llm.apps.${CLUSTER_DOMAIN}/v1/chat/completions`,
       // Add more models as needed
     };
 
