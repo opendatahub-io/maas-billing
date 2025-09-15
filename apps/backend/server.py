@@ -285,11 +285,9 @@ def get_real_model_endpoints():
     except Exception as e:
         print(f"❌ Failed to fetch real model endpoints: {e}")
     
-    # Fallback to known endpoints
-    return {
-        'vllm-simulator': f'http://vllm-simulator-llm.{CLUSTER_DOMAIN}/v1/chat/completions',
-        'qwen3-0-6b-instruct': f'http://qwen3-0-6b-instruct-llm.{CLUSTER_DOMAIN}/v1/chat/completions'
-    }
+    # No fallback endpoints - return empty dict if cluster query fails
+    print("⚠️  No model endpoints available from cluster")
+    return {}
 
 def get_real_models_from_cluster():
     """Get available models from real cluster deployment"""
@@ -331,11 +329,9 @@ def get_real_models_from_cluster():
     except Exception as e:
         print(f"❌ Failed to fetch real models: {e}")
     
-    # Fallback to known working models if cluster query fails
-    return [
-        {"name": "vllm-simulator", "description": "VLLM Simulator Model"},
-        {"name": "qwen3-0-6b-instruct", "description": "Qwen3 0.6B Instruct Model"}
-    ]
+    # No fallback models - if cluster query fails, return empty list
+    print("⚠️  No models available from cluster")
+    return []
 
 def get_user_tier_from_team():
     """Get user tier information from team configuration"""
@@ -1058,12 +1054,8 @@ def fetch_enriched_live_metrics():
             "rate_limits": SIMULATOR_METRICS.get('rate_limits', 0)
         }
         
-        # 4. Generate live request entries from all sources
+        # 4. Get live request entries from cluster sources only
         live_requests = []
-        
-        # Add simulator requests
-        if SIMULATOR_METRICS['total_requests'] > 0:
-            live_requests.extend(generate_simulator_request_entries())
         
         # Add cluster request entries (from Envoy access logs if available)
         try:
@@ -1105,100 +1097,6 @@ def fetch_enriched_live_metrics():
             "policy_enforcement": {}
         }
 
-def generate_simulator_request_entries():
-    """Generate detailed request entries from simulator activity"""
-    requests = []
-    global SIMULATOR_METRICS
-    base_time = datetime.now()
-    
-    # Generate successful requests
-    for i in range(min(SIMULATOR_METRICS['successful_requests'], 10)):
-        request_time = base_time - timedelta(minutes=i*2)
-        requests.append({
-            "id": f"sim-success-{i}",
-            "timestamp": request_time.isoformat(),
-            "team": DEFAULT_USER_ID,
-            "model": "qwen3-0-6b-instruct",
-            "endpoint": "/v1/chat/completions",
-            "httpMethod": "POST",
-            "userAgent": "MaaS-RequestSimulator/1.0",
-            "clientIp": "127.0.0.1",
-            "decision": "accept",
-            "finalReason": "Request approved by Kuadrant policies",
-            "authentication": {
-                "method": "api-key",
-                "principal": DEFAULT_USER_ID,
-                "groups": ["unlimited-policy"],
-                "isValid": True
-            },
-            "policyDecisions": [{
-                "policyId": "gateway-auth-policy",
-                "policyName": "gateway-auth-policy", 
-                "policyType": "AuthPolicy",
-                "decision": "allow",
-                "reason": "API key authentication successful",
-                "enforcementPoint": "authorino"
-            }],
-            "modelInference": {
-                "requestId": f"sim-success-{i}",
-                "modelName": "qwen3-0-6b-instruct",
-                "inputTokens": 10 + (i * 2),
-                "outputTokens": 50 + (i * 5),
-                "totalTokens": 60 + (i * 7),
-                "responseTime": 1200 + (i * 100),
-                "finishReason": "stop"
-            },
-            "rateLimitStatus": {
-                "limitName": "unlimited-policy",
-                "current": i + 1,
-                "limit": 100000,
-                "window": "1h",
-                "remaining": 100000 - (i + 1),
-                "resetTime": (datetime.now() + timedelta(hours=1)).isoformat(),
-                "tier": "unlimited-policy"
-            },
-            "queryText": f"Simulator request {i+1} - real Kuadrant authentication",
-            "totalResponseTime": 1200 + (i * 100),
-            "source": "kuadrant",
-            "traceId": f"kuadrant-sim-{i}"
-        })
-    
-    # Generate failed requests
-    for i in range(min(SIMULATOR_METRICS['failed_requests'], 5)):
-        request_time = base_time - timedelta(minutes=i*3 + 20)
-        requests.append({
-            "id": f"sim-failed-{i}",
-            "timestamp": request_time.isoformat(),
-            "team": DEFAULT_USER_ID,
-            "model": "qwen3-0-6b-instruct", 
-            "endpoint": "/v1/chat/completions",
-            "httpMethod": "POST",
-            "userAgent": "MaaS-RequestSimulator/1.0",
-            "clientIp": "127.0.0.1",
-            "decision": "reject",
-            "finalReason": "Authentication failed or model endpoint error",
-            "authentication": {
-                "method": "api-key",
-                "principal": "unknown",
-                "groups": [],
-                "isValid": False,
-                "validationErrors": ["Invalid API key or model endpoint error"]
-            },
-            "policyDecisions": [{
-                "policyId": "gateway-auth-policy",
-                "policyName": "gateway-auth-policy",
-                "policyType": "AuthPolicy", 
-                "decision": "deny",
-                "reason": "Authentication failed",
-                "enforcementPoint": "authorino"
-            }],
-            "queryText": f"Simulator request {i+1} - authentication failed",
-            "totalResponseTime": 400 + (i * 50),
-            "source": "kuadrant",
-            "traceId": f"kuadrant-failed-{i}"
-        })
-    
-    return requests
 
 def fetch_authorino_metrics():
     """Fetch Authorino authentication metrics"""
@@ -2023,10 +1921,9 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 endpoint_url = f'{gateway_url}/v1/chat/completions'
                 
                 # Set the correct Host header based on model to ensure proper routing
-                if model == 'qwen3-0-6b-instruct':
-                    host_header = f'qwen3-llm.{CLUSTER_DOMAIN}'
-                elif model == 'vllm-simulator':
-                    host_header = f'simulator-llm.{CLUSTER_DOMAIN}'
+                # Generate host header dynamically based on model name
+                if model:
+                    host_header = f'{model}-llm.{CLUSTER_DOMAIN}'
                 else:
                     host_header = f'inference-gateway.{CLUSTER_DOMAIN}'
                 
@@ -2274,7 +2171,7 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                 request_data = json.loads(post_data.decode('utf-8'))
                 
                 token = request_data.get('token', '')
-                model = request_data.get('model', 'vllm-simulator')
+                model = request_data.get('model', '')
                 message = request_data.get('message', 'Hello!')
                 
                 # Input validation
@@ -2288,6 +2185,20 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                     response = {
                         "success": False,
                         "data": {"error": "Token is required"}
+                    }
+                    self.wfile.write(json.dumps(response).encode('utf-8'))
+                    return
+                
+                if not model or not model.strip():
+                    self.send_response(400)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+                    self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                    self.end_headers()
+                    response = {
+                        "success": False,
+                        "data": {"error": "Model is required"}
                     }
                     self.wfile.write(json.dumps(response).encode('utf-8'))
                     return

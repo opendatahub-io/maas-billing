@@ -133,25 +133,24 @@ app.get('/api/v1/qos/health', async (req, res) => {
   }
 });
 
-// Models endpoint for compatibility
-app.get('/api/v1/models', (req, res) => {
-  res.json({
-    success: true,
-    data: [
-      {
-        id: 'vllm-simulator',
-        name: 'vLLM Simulator',
-        provider: 'KServe',
-        description: 'Test model for policy enforcement'
-      },
-      {
-        id: 'qwen3-0-6b-instruct',
-        name: 'Qwen3 0.6B Instruct',
-        provider: 'KServe',
-        description: 'Qwen3 model with vLLM runtime'
-      }
-    ]
-  });
+// Models endpoint - dynamically fetch from cluster
+app.get('/api/v1/models', async (req, res) => {
+  try {
+    const { modelService } = await import('./services/modelService');
+    const models = await modelService.getModels();
+    
+    res.json({
+      success: true,
+      data: models
+    });
+  } catch (error: any) {
+    logger.error('Failed to fetch models:', error);
+    res.status(503).json({
+      success: false,
+      error: 'Unable to fetch models from cluster',
+      details: error.message
+    });
+  }
 });
 
 // Cluster status endpoint for authentication dialog

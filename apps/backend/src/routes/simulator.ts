@@ -71,7 +71,6 @@ router.post('/chat/completions', async (req, res) => {
     });
 
     // Configuration constants
-    const CLUSTER_DOMAIN = process.env.CLUSTER_DOMAIN || 'apps.your-cluster.example.com';
     const QOS_SERVICE_URL = process.env.QOS_SERVICE_URL || 'http://localhost:3005';
     const REQUEST_TIMEOUT = 30000;
 
@@ -89,14 +88,23 @@ router.post('/chat/completions', async (req, res) => {
       });
     }
     
-    // Map model to endpoint URL (these go through Kuadrant gateway)
-    const modelEndpoints: Record<string, string> = {
-      'qwen3-0-6b-instruct': `http://qwen3-llm.apps.${CLUSTER_DOMAIN}/v1/chat/completions`,
-      'vllm-simulator': `http://simulator-llm.apps.${CLUSTER_DOMAIN}/v1/chat/completions`,
-      // Add more models as needed
-    };
-
-    const targetEndpoint = modelEndpoints[model] || modelEndpoints['qwen3-0-6b-instruct'];
+    // Get model endpoint dynamically from cluster
+    let targetEndpoint: string;
+    try {
+      const { modelService } = await import('../services/modelService');
+      targetEndpoint = await modelService.getModelEndpoint(model);
+    } catch (error) {
+      logger.error('Failed to get model endpoint:', {
+        model,
+        error: error.message
+      });
+      
+      return res.status(404).json({
+        success: false,
+        error: `Model '${model}' not found`,
+        details: error.message
+      });
+    }
     
     logger.info('Proxying request to Kuadrant endpoint:', {
       endpoint: targetEndpoint,

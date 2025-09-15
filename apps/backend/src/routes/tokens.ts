@@ -88,12 +88,23 @@ router.get('/user/tier', async (_req, res) => {
       throw new Error('No teams found for user');
     }
 
+    // Get available models from cluster
+    let availableModels: string[] = [];
+    try {
+      const { modelService } = await import('../services/modelService');
+      const models = await modelService.getModels();
+      availableModels = models.map(model => model.id);
+    } catch (error) {
+      logger.error('Failed to fetch models for user tier:', error);
+      // Don't fail the request, just return empty models array
+    }
+
     const userTier = {
       name: primaryTeam.team_name || 'Default User',
       policy: primaryTeam.policy || 'unlimited-policy',
       usage: 0, // Would need to get from usage endpoint
       limit: primaryTeam.token_limit || 100000,
-      models: ['vllm-simulator', 'qwen3-0-6b-instruct'], // Would need to get from models endpoint
+      models: availableModels,
       team_id: primaryTeam.team_id,
       team_name: primaryTeam.team_name
     };
@@ -345,12 +356,27 @@ router.post('/test', async (req, res) => {
       message: message.substring(0, 50) + '...' 
     });
     
-    // Get the actual model service URL from environment or use default
-    const modelServiceUrl = process.env.MODEL_SERVICE_URL || `https://qwen3-0-6b-instruct-llm.apps.${CLUSTER_DOMAIN}`;
+    // Get the model endpoint dynamically
+    let modelServiceUrl: string;
+    try {
+      const { modelService } = await import('../services/modelService');
+      modelServiceUrl = await modelService.getModelEndpoint(model);
+    } catch (error) {
+      logger.error('Failed to get model endpoint for token test:', {
+        model,
+        error: error.message
+      });
+      
+      return res.status(400).json({
+        success: false,
+        error: `Model '${model}' not available`,
+        details: error.message
+      });
+    }
     
     // Construct the request
     const testRequest = {
-      url: `${modelServiceUrl}/v1/chat/completions`,
+      url: modelServiceUrl,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,

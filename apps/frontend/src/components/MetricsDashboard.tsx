@@ -872,33 +872,18 @@ const MetricsDashboard: React.FC = () => {
               <TableCell />
               <TableCell>Timestamp</TableCell>
               <TableCell>
-                <Box>
-                  <Typography variant="body2" fontWeight="medium">Tier</Typography>
-                  <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem' }}>
-                    (mock data)
-                  </Typography>
-                </Box>
+                <Typography variant="body2" fontWeight="medium">Tier</Typography>
               </TableCell>
               <TableCell>
-                <Box>
-                  <Typography variant="body2" fontWeight="medium">Model</Typography>
-                  <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem' }}>
-                    (mock data)
-                  </Typography>
-                </Box>
+                <Typography variant="body2" fontWeight="medium">Model</Typography>
               </TableCell>
               <TableCell>Endpoint</TableCell>
               <TableCell>Decision</TableCell>
               <TableCell>Policies</TableCell>
               <TableCell align="right">Duration (ms)</TableCell>
               <TableCell align="right">
-                <Tooltip title="Token usage format: prompt + completion = total (mock data for now)">
-                  <Box>
-                    <Typography variant="body2" fontWeight="medium">Tokens</Typography>
-                    <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem' }}>
-                      (mock data)
-                    </Typography>
-                  </Box>
+                <Tooltip title="Token usage format: prompt + completion = total">
+                  <Typography variant="body2" fontWeight="medium">Tokens</Typography>
                 </Tooltip>
               </TableCell>
               <TableCell>Actions</TableCell>

@@ -158,13 +158,9 @@ const RequestSimulator: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to load initial data:', err);
-      setError('Failed to load models and tiers. Please check your connection.');
-      // Set fallback data
-      setModels([
-        { id: 'vllm-simulator', name: 'vLLM Simulator', provider: 'KServe', description: 'Test model' },
-        { id: 'qwen3-0.6b-instruct', name: 'Qwen3 0.6B Instruct', provider: 'KServe', description: 'Qwen3 model' }
-      ]);
-      // Fallback data set
+      setError('Failed to load models and tiers. No models available from cluster.');
+      // No fallback models - user must fix cluster connection
+      setModels([]);
       setUserTokens([]);
     } finally {
       setLoading(false);
@@ -557,7 +553,7 @@ const RequestSimulator: React.FC = () => {
     );
   }
 
-  const canRunSimulation = simulationForm.model && simulationForm.queryText && simulationForm.selectedToken && !isRunning;
+  const canRunSimulation = simulationForm.model && simulationForm.queryText && simulationForm.selectedToken && !isRunning && models.length > 0;
 
   return (
     <Box>

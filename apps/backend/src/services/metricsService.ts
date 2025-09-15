@@ -454,36 +454,23 @@ export class MetricsService {
   }
 
   // Helper methods for inferring data from log entries
-  private inferTeamFromPath(path: string): string {
-    if (path.includes('v1/')) return 'team-mock-data';
-    if (path.includes('health')) return 'system-mock';
-    return 'unknown-mock';
+  private inferTeamFromPath(_path: string): string {
+    return 'unknown';
   }
 
-  private extractModelFromPath(path: string, host?: string): string {
-    // Try to extract real model from host name first (most accurate)
+  private extractModelFromPath(_path: string, host?: string): string {
+    // Extract actual model name from host if available
     if (host) {
-      if (host.includes('qwen3')) return 'qwen3-0-6b-instruct';
-      if (host.includes('vllm-simulator')) return 'vllm-simulator';
-      if (host.includes('llama')) return 'LLaMA-2-70B';
-      if (host.includes('mistral')) return 'Mistral-7B';
+      // Extract the model name from the host subdomain
+      const parts = host.split('.');
+      if (parts.length > 0) {
+        const modelPart = parts[0];
+        // Remove common prefixes and return the actual model name
+        return modelPart.replace(/^(inference-|model-|service-)/, '');
+      }
     }
     
-    // Fallback to path-based detection
-    if (path.includes('v1/')) {
-      // Use popular model names for mock data when we can't determine real model
-      const popularModels = [
-        'GPT-4-turbo',
-        'Claude-3-Sonnet', 
-        'LLaMA-2-70B',
-        'Mistral-7B',
-        'Gemini-Pro',
-        'GPT-3.5-turbo',
-        'Claude-3-Haiku',
-        'Code-Llama-34B'
-      ];
-      return popularModels[Math.floor(Math.random() * popularModels.length)];
-    }
+    // Return unknown if no model can be determined from host
     return 'unknown';
   }
 
@@ -628,12 +615,9 @@ export class MetricsService {
     return Math.round((Math.random() * 0.01) * 100) / 100; // $0.00-$0.01
   }
 
-  private inferBillingTier(userAgent: string, host?: string, requestId?: string): string {
-    // MOCK DATA: Show all 3 tiers for demonstration since tier info is not in logs
-    const tiers = ['free', 'premium', 'enterprise'];
-    
-    // Simple random distribution for mock data
-    return tiers[Math.floor(Math.random() * 3)];
+  private inferBillingTier(_userAgent: string, _host?: string, _requestId?: string): string {
+    // Return default tier - no mock data generation
+    return 'unknown';
   }
 
   private inferPolicyType(responseCode: number): 'AuthPolicy' | 'RateLimitPolicy' | 'None' {
@@ -1151,17 +1135,7 @@ export class MetricsService {
         this.fetchIstioMetrics()
       ]);
 
-      // Use Istio metrics as secondary source if available
-      if (istioMetrics && istioMetrics.totalRequests > 0) {
-        logger.info('Using Istio Prometheus metrics as fallback');
-        return this.generateIndividualRequestsFromIstio(istioMetrics);
-      }
-
-      // Fallback to Limitador data to generate individual requests
-      if (limitadorMetrics && limitadorMetrics.totalRequests > 0) {
-        logger.info('Using Limitador Prometheus metrics as fallback');
-        return this.generateIndividualRequestsFromPrometheus(limitadorMetrics, authorinoMetrics);
-      }
+      // No fallback synthetic data generation - only use real Envoy logs
 
       // No fallback data - return empty array if no metrics available
       if (this.recentRequests.length === 0) {
@@ -1461,183 +1435,10 @@ export class MetricsService {
   }
 
   // Generate individual requests from Prometheus metrics (no log parsing)
-  private generateIndividualRequestsFromPrometheus(limitadorMetrics: any, authorinoMetrics: any): RealMetricsRequest[] {
-    // Include auth failures in hash to detect changes
-    const authFailures = authorinoMetrics ? authorinoMetrics.authFailures : 0;
-    const metricsHash = `${limitadorMetrics.totalRequests}-${limitadorMetrics.rateLimitedRequests}-${authFailures}`;
-    
-    // If metrics haven't changed, return cached requests
-    if (this.lastMetricsHash === metricsHash && this.cachedRequests.length > 0) {
-      logger.info(`Returning cached individual requests - no metrics change detected (${metricsHash})`);
-      return this.cachedRequests;
-    }
-    
-    // Metrics have changed, generate individual requests from counters
-    const currentTime = Date.now();
-    logger.info(`Metrics changed (${this.lastMetricsHash} -> ${metricsHash}), generating individual requests`);
-    this.lastMetricsHash = metricsHash;
-    this.lastMetricsUpdate = currentTime;
-    
-    const requests: RealMetricsRequest[] = [];
-    const metricsChangeTime = this.lastMetricsUpdate;
-    
-    // Define common arrays used in request generation
-    const userAgents = [
-      'curl/8.7.1',
-      'Python/3.9 aiohttp/3.8.1',
-      'MaaS-Client/1.0',
-      'PostmanRuntime/7.32.2',
-      'Mozilla/5.0 (compatible; APIClient/1.0)'
-    ];
-    
-    const suspiciousUserAgents = [
-      'Unknown-Client/1.0',
-      'curl/7.68.0',
-      'python-requests/2.28.0',
-      'HTTPClient/1.0',
-      'Generic-Bot/1.0'
-    ];
-    
-    // Limitador metrics (requests that reached rate limiting)
-    const totalRequests = limitadorMetrics.totalRequests; // 19 (reached Limitador)
-    const limitedRequests = limitadorMetrics.rateLimitedRequests; // 3 (rate limited)
-    const approvedRequests = totalRequests - limitedRequests; // 16 (approved)
-    
-    // Authorino metrics (authentication failures - never reached Limitador)
-    // Since Authorino deep metrics don't show request-level data in v0.21.0,
-    // we'll infer auth failures based on realistic traffic patterns
-    // From logs, we saw ~1 auth failure per ~20 successful requests
-    const authFailedRequests = Math.floor(totalRequests * 0.05); // ~5% auth failure rate
-    
-    const grandTotal = totalRequests + authFailedRequests;
-    logger.info(`Generating ${grandTotal} total individual requests: ${authFailedRequests} auth failures, ${limitedRequests} rate limited, ${approvedRequests} approved`);
-    
-    // Generate individual approved requests with realistic recent timestamps
-    for (let i = 0; i < approvedRequests; i++) {
-      // Use the time when metrics last changed, spread over a few seconds before that
-      const requestTime = metricsChangeTime - (i * 1000) - (Math.random() * 5000); // Recent requests around metrics change time
-      requests.push({
-        id: `prometheus-approved-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(userAgents[i % userAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: 'Python/3.9 aiohttp/3.8.1',
-        clientIp: `192.168.1.${100 + (i % 50)}`,
-        decision: 'accept',
-        finalReason: 'Request approved by rate limiter',
-        authentication: {
-          method: 'api-key',
-          principal: `user-${i % 5}`,
-          isValid: true
-        },
-        policyDecisions: [{
-          policyId: 'limitador-rate-limit',
-          policyName: 'Rate Limiting Policy',
-          policyType: 'RateLimitPolicy',
-          decision: 'allow',
-          reason: 'Within rate limits',
-          enforcementPoint: 'limitador',
-          processingTime: Math.floor(Math.random() * 20) + 5
-        }],
-        queryText: `POST /v1/chat/completions (request ${i + 1})`,
-        totalResponseTime: Math.floor(Math.random() * 1000) + 200,
-        source: 'limitador',
-        traceId: `prometheus-trace-approved-${i}`,
-        policyType: 'None',
-        reason: 'Request approved',
-        tokens: Math.floor(Math.random() * 150) + 50
-      });
-    }
-    
-    // Generate individual rate-limited requests with realistic recent timestamps
-    for (let i = 0; i < limitedRequests; i++) {
-      // Use time around when metrics changed for rate limited requests
-      const requestTime = metricsChangeTime - (i * 1000) - (Math.random() * 3000); // Near metrics change time
-      requests.push({
-        id: `prometheus-limited-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(userAgents[i % userAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: 'Python/3.9 aiohttp/3.8.1',
-        clientIp: `192.168.1.${200 + (i % 30)}`,
-        decision: 'reject',
-        finalReason: 'Rate limit exceeded',
-        authentication: {
-          method: 'api-key',
-          principal: `user-${i % 3}`,
-          isValid: true
-        },
-        policyDecisions: [{
-          policyId: 'limitador-rate-limit',
-          policyName: 'Rate Limiting Policy',
-          policyType: 'RateLimitPolicy',
-          decision: 'deny',
-          reason: 'Rate limit exceeded',
-          enforcementPoint: 'limitador',
-          processingTime: Math.floor(Math.random() * 10) + 2
-        }],
-        rateLimitStatus: undefined, // Not displayed in UI
-        queryText: `POST /v1/chat/completions (rate limited ${i + 1})`,
-        totalResponseTime: Math.floor(Math.random() * 50) + 10,
-        source: 'limitador',
-        traceId: `prometheus-trace-limited-${i}`,
-        policyType: 'RateLimitPolicy',
-        reason: 'Rate limit exceeded',
-        tokens: 0
-      });
-    }
-    
-    // Generate individual authentication failure requests with recent timestamps
-    for (let i = 0; i < authFailedRequests; i++) {
-      // Use time around when metrics changed for auth failures
-      const requestTime = metricsChangeTime - (i * 1000) - (Math.random() * 4000); // Near metrics change time
-      requests.push({
-        id: `prometheus-auth-failed-${metricsHash}-${i}`,
-        timestamp: new Date(requestTime).toISOString(),
-        team: this.inferBillingTier(suspiciousUserAgents[i % suspiciousUserAgents.length]),
-        model: this.extractModelFromPath('/v1/chat/completions'),
-        endpoint: '/v1/chat/completions',
-        httpMethod: 'POST',
-        userAgent: 'Unknown-Client/1.0',
-        clientIp: `192.168.1.${50 + (i % 20)}`,
-        decision: 'reject',
-        finalReason: 'Authentication failed',
-        authentication: {
-          method: 'api-key',
-          isValid: false,
-          validationErrors: ['Invalid or missing API key']
-        },
-        policyDecisions: [{
-          policyId: 'gateway-auth-policy',
-          policyName: 'Gateway Authentication',
-          policyType: 'AuthPolicy',
-          decision: 'deny',
-          reason: 'Authentication failed',
-          enforcementPoint: 'authorino',
-          processingTime: Math.floor(Math.random() * 15) + 5
-        }],
-        queryText: `POST /v1/chat/completions (auth failed ${i + 1})`,
-        totalResponseTime: Math.floor(Math.random() * 30) + 10,
-        source: 'authorino',
-        traceId: `prometheus-trace-auth-failed-${i}`,
-        policyType: 'AuthPolicy',
-        reason: 'Authentication failed',
-        tokens: 0
-      });
-    }
-    
-    // Sort by timestamp (newest first)
-    requests.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    
-    // Cache the generated requests
-    this.cachedRequests = requests;
-    
-    logger.info(`Generated ${requests.length} individual requests from Prometheus counters (${authFailedRequests} auth failures, ${limitedRequests} rate limited, ${approvedRequests} approved)`);
-    return requests;
+  private generateIndividualRequestsFromPrometheus(_limitadorMetrics: any, _authorinoMetrics: any): RealMetricsRequest[] {
+    // Return empty array - no synthetic request generation
+    logger.info('generateIndividualRequestsFromPrometheus: Returning empty array - no mock data generation');
+    return [];
   }
 
   async getMetricsStatus(): Promise<{
