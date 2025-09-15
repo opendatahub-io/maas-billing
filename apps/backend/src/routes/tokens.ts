@@ -138,7 +138,7 @@ router.get('/', async (_req, res) => {
         logger.info(`Using authenticated OpenShift user: ${currentUserId}`);
       } catch (error) {
         logger.warn('Could not get authenticated user, falling back to default:', error);
-        currentUserId = 'noyitz'; // Only fallback if oc command fails
+        currentUserId = 'default-user'; // Only fallback if oc command fails
       }
     }
     
@@ -255,7 +255,7 @@ router.post('/create', async (req, res) => {
         logger.info(`Creating token for authenticated OpenShift user: ${currentUserId}`);
       } catch (error) {
         logger.warn('Could not get authenticated user for token creation, falling back to default:', error);
-        currentUserId = 'noyitz'; // Only fallback if oc command fails
+        currentUserId = 'default-user'; // Only fallback if oc command fails
       }
     }
     
