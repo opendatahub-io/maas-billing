@@ -1,0 +1,11 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: simulator-route
+spec:
+  host: ${HOST}
+  to:
+    kind: Service
+    name: inference-gateway-istio
+  port:
+    targetPort: 80

@@ -1,0 +1,22 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: vllm-simulator
+spec:
+  predictor:
+    containers:
+    - name: user-container
+      image: python:3.11-slim
+      command: ["python","/app/sim.py"]
+      ports:
+      - containerPort: 8080
+      volumeMounts:
+      - name: code
+        mountPath: /app
+    volumes:
+    - name: code
+      configMap:
+        name: sim-app
+        items:
+        - key: sim.py
+          path: sim.py
