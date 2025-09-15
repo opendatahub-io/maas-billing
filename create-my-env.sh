@@ -36,11 +36,12 @@ echo -e "${YELLOW}🔍 Extracting cluster information...${NC}"
 
 # Get cluster server URL and extract domain
 CLUSTER_SERVER=$(oc whoami --show-server)
-CLUSTER_DOMAIN=$(echo "$CLUSTER_SERVER" | sed 's/https:\/\/api\.//' | sed 's/:6443//')
+BASE_DOMAIN=$(echo "$CLUSTER_SERVER" | sed 's/https:\/\/api\.//' | sed 's/:6443//')
+CLUSTER_DOMAIN="apps.${BASE_DOMAIN}"
 CLUSTER_API_URL="$CLUSTER_SERVER"
 
 # Build other URLs
-OAUTH_URL="https://oauth-openshift.${CLUSTER_DOMAIN}"
+OAUTH_URL="https://oauth-openshift.${BASE_DOMAIN}"
 CONSOLE_URL=$(oc whoami --show-console)
 
 echo "  📍 Cluster Domain: $CLUSTER_DOMAIN"
