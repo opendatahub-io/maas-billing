@@ -142,7 +142,7 @@ export class ModelService {
       }
 
       return models;
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error executing kubectl command:', error);
       throw new Error(`Failed to fetch models from cluster: ${error.message}`);
     }
