@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: maas-openshift-infrastructure
+
+# Deploy components in order, but with OpenShift-specific kuadrant
+resources:
+- ../../kustomize-templates/namespaces
+- ../../kustomize-templates/istio  
+- ../../kustomize-templates/kserve
+- kuadrant-openshift-filtered.yaml  # OpenShift-specific kuadrant with CRD conflicts removed
+- ../../kustomize-templates/maas-api
+- ../../kustomize-templates/grafana
+- ../../kustomize-templates/gateway

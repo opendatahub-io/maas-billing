@@ -321,7 +321,14 @@ main() {
     
     # Apply Kuadrant configuration (CRs) after dependencies installed it via Helm
     log_info "Configuring Kuadrant CRs..."
-    kustomize build core-infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+    # Use OpenShift overlay if on OpenShift, otherwise use base configuration
+    if kubectl get ingresses.config.openshift.io cluster &>/dev/null; then
+        log_info "OpenShift detected - using OpenShift-specific Kuadrant configuration"
+        envsubst '${CLUSTER_DOMAIN}' < infrastructure/overlays/openshift/kuadrant-openshift-filtered.yaml | kubectl apply -f -
+    else
+        log_info "Using standard Kuadrant configuration"
+        kustomize build core-infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+    fi
     log_success "Kuadrant configured"
     
     # Deploy using overlay (always use OpenShift overlay for external access)

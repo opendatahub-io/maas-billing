@@ -1,0 +1,65 @@
+# OpenShift-specific Kuadrant operator resources
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: sail
+  name: gateway-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: kuadrant-system
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: sail
+  namespace: gateway-system
+spec:
+  upgradeStrategy: Default
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: kuadrant
+  namespace: kuadrant-system
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: kuadrant-operator-catalog
+  namespace: kuadrant-system
+spec:
+  displayName: Kuadrant Operators
+  grpcPodConfig:
+    securityContextConfig: restricted
+  image: quay.io/kuadrant/kuadrant-operator-catalog:latest
+  publisher: grpc
+  sourceType: grpc
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: sailoperator
+  namespace: gateway-system
+spec:
+  channel: candidates
+  installPlanApproval: Automatic
+  name: sailoperator
+  source: community-operators
+  sourceNamespace: openshift-marketplace
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: kuadrant
+  namespace: kuadrant-system
+spec:
+  channel: preview
+  name: kuadrant-operator
+  source: kuadrant-operator-catalog
+  sourceNamespace: kuadrant-system
