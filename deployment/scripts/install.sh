@@ -166,6 +166,7 @@ show_usage() {
     echo "  --teardown      Run teardown before installation (optional)"
     echo "  --install-deps  Install platform dependencies (Istio, cert-manager, KServe, Prometheus)"
     echo "  --install-infra Install core infrastructure (Kuadrant operators, overlays)"
+    echo "  --all           Install everything: dependencies, infrastructure, and deployment"
     echo "  --help          Show this help message"
     echo
     echo "Deployment Types:"
@@ -176,6 +177,8 @@ show_usage() {
     echo "Default: $DEPLOYMENT_TYPE"
     echo
     echo "Examples:"
+    echo "  $0 --all                           # Complete installation with dependencies, infrastructure, and simulator deployment"
+    echo "  $0 --all gpu                       # Complete installation with GPU deployment"
     echo "  $0 --install-deps --install-infra  # Full installation with dependencies and infrastructure"
     echo "  $0 gpu                             # Install gpu deployment only (no deps/infra)"
     echo "  $0 --install-infra basic           # Install infrastructure and basic deployment"
@@ -266,6 +269,11 @@ parse_arguments() {
                 shift
                 ;;
             --install-infra)
+                INSTALL_INFRA=true
+                shift
+                ;;
+            --all)
+                INSTALL_DEPS=true
                 INSTALL_INFRA=true
                 shift
                 ;;
