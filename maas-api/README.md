@@ -19,7 +19,7 @@ export TEAM_ID="test-team"
 export USER_ID="test-user"
 
 # Dynamically detect routes instead of hardcoding them
-export MAAS_API_ROUTE=$(oc get routes maas-api-route -n llm | tail -1 | awk '{print $2}')
+export MAAS_API_ROUTE=$(oc get routes maas-api-route -n platform-services | tail -1 | awk '{print $2}')
 export QWEN3_ROUTE=$(oc get routes qwen3-route -n llm | tail -1 | awk '{print $2}')
 export SIMULATOR_ROUTE=$(oc get routes simulator-route -n llm | tail -1 | awk '{print $2}')
 ```
