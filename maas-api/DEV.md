@@ -80,17 +80,16 @@ kubectl patch --local -f deploy/overlays/dev/policies/auth-policy.yaml \
 #### Getting the token
 
 ```shell
-HOST=$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
+HOST="https://$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
 
 TOKEN=$(curl -sSk \
   -H "Authorization: Bearer $(oc whoami -t)" \
   -H "Content-Type: application/json" \
   -X POST \
   -d '{
-    "ttyl": "10m"
+    "ttl": "10m"
   }' \
-  ${HOST}/maas-api/v1/tokens | jq -r .token)
-```
+  "${HOST}/maas-api/v1/tokens" | jq -r .token)
 
 > [!NOTE]
 > This is a self-service endpoint that issues ephemeral tokens. Openshift Identity (`$(oc whoami -t)`) is used as a refresh token.
