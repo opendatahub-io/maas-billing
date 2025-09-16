@@ -24,10 +24,10 @@ kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/model
 ```
 
 > [!IMPORTANT]
-> `vllm-simulator.yaml` in `deploy/overlays/dev/models/simulator` is a symlink, therefore it needs to be built with --load-restrictor LoadRestrictionsNone.
-> For more details see this [issue](https://github.com/kubernetes-sigs/kustomize/issues/4420.
+> `vllm-simulator.yaml` in `deploy/overlays/dev/models/simulator` is a symlink, therefore, it needs to be built with --load-restrictor LoadRestrictionsNone.
+> For more details see this [issue](https://github.com/kubernetes-sigs/kustomize/issues/4420).
 
-Next, we need to patch Kuadrant to make it aware of the OCP gateway controller:
+Next, we need to patch Kuadrant to make it aware of the OCP gateway controller. See the [list of known issues](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html/release_notes_for_connectivity_link_1.1/prodname-relnotes_rhcl#connectivity_link_known_issues) for more details.
 
 ```shell
 kubectl -n kuadrant-system patch deployment kuadrant-operator-controller-manager \
