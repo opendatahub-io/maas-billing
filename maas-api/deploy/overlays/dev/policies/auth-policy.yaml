@@ -30,7 +30,9 @@ spec:
         when:
           - predicate: |
               request.path.startsWith("/maas-api")
-        kubernetesTokenReview: {}
+        kubernetesTokenReview:
+          audiences:
+            - https://kubernetes.default.svc
       service-accounts:
         kubernetesTokenReview:
           audiences:

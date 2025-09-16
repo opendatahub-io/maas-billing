@@ -57,9 +57,9 @@ EOF
 )"
 ```
 
-#### ROSA specific settings
+#### Ensure the correct audience is set for AuthPolicy
 
-Patch `AuthPolicy` with the correct audience for Openshift Identities in ROSA
+Patch `AuthPolicy` with the correct audience for Openshift Identities
 
 ```shell
 AUD="$(kubectl create token default --duration=10m \
