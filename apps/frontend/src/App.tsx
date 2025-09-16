@@ -124,7 +124,7 @@ function MainApp() {
         setClusterStatus(status);
         
         // Check authentication and show login dialog if needed
-        if (!status.connected || status.user === 'system:anonymous' || !status.user) {
+        if (!status.connected || status.user === 'system:anonymous' || !status.user || status.user === 'authenticated-user') {
           console.log('🔐 User not authenticated, showing login dialog...');
           setShowLoginDialog(true);
         } else {
