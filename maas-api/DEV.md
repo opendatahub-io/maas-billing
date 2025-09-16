@@ -6,6 +6,7 @@
 - jq
 - kustomize
 - OCP 4.19.9+ (for GW API)
+- [jwt](https://github.com/mike-engel/jwt-cli) CLI tool (for inspecting tokens)
 
 ### Setup
 
