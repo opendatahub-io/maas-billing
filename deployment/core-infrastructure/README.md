@@ -54,11 +54,14 @@ kustomize build deployment/infrastructure | envsubst | kubectl apply -f -
 
 **Note:** The base configuration may require additional operator installations or API compatibility adjustments for non-OpenShift platforms.
 
-# 4. Deploy custom limitador image (this should be pushed into the main product soon so this can be removed)
+## 4. Deploy custom limitador image (this should be pushed into the main product soon so this can be removed)
+
+```bash
 kubectl patch limitador limitador -n kuadrant-system --type merge -p '{"spec":{"image":"ghcr.io/redhat-et/limitador:metrics","version":""}}'
 ```
 
 Move to [next steps](../examples/) to deploy examples.
+
 ## Dependency Installation
 
 The `install-dependencies.sh` script provides a convenient way to install all required platform components:
@@ -80,6 +83,7 @@ The `install-dependencies.sh` script provides a convenient way to install all re
 ```
 
 **Components installed in order:**
+
 - **Istio**: Service mesh and Gateway API configuration
 - **cert-manager**: Certificate management for TLS and webhooks  
 - **KServe**: Model serving platform
@@ -91,7 +95,7 @@ The `install-dependencies.sh` script provides a convenient way to install all re
 ### Base Infrastructure
 
 - **namespaces/**: Required Kubernetes namespaces (`llm`, `llm-observability`, `platform-services`)
-- **istio/**: Service mesh and Gateway API configuration  
+- **istio/**: Service mesh and Gateway API configuration
 - **kserve/**: Model serving platform with OpenShift integration
 - **kuadrant/**: API gateway policies using standard Kuadrant configuration
 - **maas-api/**: MaaS API deployment with RBAC and routing
@@ -110,7 +114,7 @@ Located in `overlays/openshift/`, this overlay modifies the base configuration f
 ## Prerequisites
 
 - **OpenShift 4.14+** or Kubernetes 1.28+ with admin access
-- **kustomize v4.0+** 
+- **kustomize v4.0+**
 - **envsubst** (for domain parameterization)
 
 ## Deployment Order
@@ -178,20 +182,23 @@ After core infrastructure is deployed, proceed to the [examples](../examples/) d
 
 ### Common Issues
 
-**Domain Resolution**
+#### Domain Resolution
+
 ```bash
 # Check Gateway hostname
 kubectl get gateway inference-gateway -n llm -o yaml | grep hostname
 ```
 
-**Kuadrant Not Ready**
+#### Kuadrant Not Ready
+
 ```bash
 # Check operator status
 kubectl get kuadrant kuadrant -n kuadrant-system
 kubectl get deployments -n kuadrant-system
 ```
 
-**KServe Configuration**
+#### KServe Configuration
+
 ```bash
 # Verify domain in KServe config
 kubectl get configmap inferenceservice-config -n kserve -o yaml | grep ingressDomain
