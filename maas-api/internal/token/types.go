@@ -3,6 +3,7 @@ package token
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -28,6 +29,8 @@ func (d *Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
+var allowedUnits = regexp.MustCompile(`^(\d+(?:\.\d+)?[hms])+$`)
+
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var v interface{}
 	if err := json.Unmarshal(b, &v); err != nil {
@@ -36,8 +39,11 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 	switch value := v.(type) {
 	case string:
-		if value == "" {
+		if value == "" || value == "0" {
 			return nil
+		}
+		if !allowedUnits.MatchString(value) {
+			return fmt.Errorf("invalid duration %q: must be a positive number ending in s, m, or h (e.g. \"10s\", \"5m\", \"2h\")", value)
 		}
 		dur, err := time.ParseDuration(value)
 		if err != nil {
@@ -47,7 +53,6 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		return nil
 	case float64:
 		// JSON numbers are unmarshaled as float64.
-		// We can convert it to time.Duration (which is int64 nanoseconds).
 		*d = Duration{time.Duration(value)}
 		return nil
 	default:
