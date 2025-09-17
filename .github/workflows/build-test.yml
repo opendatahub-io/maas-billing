@@ -2,9 +2,6 @@ name: Build
 
 on:
   pull_request:
-    paths:
-      - 'deployment/**'
-      - 'maas-api/deploy/**'
   push:
     branches:
       - main
