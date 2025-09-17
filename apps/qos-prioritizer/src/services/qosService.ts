@@ -526,7 +526,7 @@ export class QoSService extends EventEmitter {
       request.resolve(response);
       this.onRequestCompleted(request.id, false);
     } catch (error) {
-      request.reject(error);
+      request.reject(error instanceof Error ? error : new Error(String(error)));
       this.onRequestCompleted(request.id, true);
     }
   }

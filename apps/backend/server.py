@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 # All data now comes from real Kuadrant cluster - no mock data
 
 # Configuration from environment variables
-CLUSTER_DOMAIN = os.getenv('CLUSTER_DOMAIN', 'apps.summit-gpu.octo-emerging.redhataicoe.com')
+CLUSTER_DOMAIN = os.getenv('CLUSTER_DOMAIN', 'your-cluster.example.com')
 KEY_MANAGER_BASE_URL = os.getenv('KEY_MANAGER_BASE_URL', f'https://key-manager-route-platform-services.{CLUSTER_DOMAIN}')
 KEY_MANAGER_ADMIN_KEY = os.getenv('KEY_MANAGER_ADMIN_KEY', 'admin-key-placeholder')
 OAUTH_BASE_URL = os.getenv('OAUTH_BASE_URL', f'https://oauth-openshift.{CLUSTER_DOMAIN}')
@@ -34,7 +34,7 @@ SUBPROCESS_TIMEOUT = int(os.getenv('SUBPROCESS_TIMEOUT', '8'))  # Increased from
 
 # Default team ID for single-user mode (can be overridden by environment variables)
 DEFAULT_TEAM_ID = os.getenv('DEFAULT_TEAM_ID', 'default')
-DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'noyitz')
+DEFAULT_USER_ID = os.getenv('DEFAULT_USER_ID', 'default-user')
 
 # Removed mock tokens - all tokens come from real Key Manager API
 
@@ -717,7 +717,7 @@ def fetch_policies_from_external_k8s_api(token):
         import ssl
         
         # External cluster API endpoints
-        k8s_host = 'api.summit-gpu.octo-emerging.redhataicoe.com'
+        k8s_host = f'api.{CLUSTER_DOMAIN}'
         k8s_port = '6443'
         
         # Create SSL context
@@ -903,8 +903,8 @@ def fetch_cluster_metrics():
         else:
             # For localhost, use external cluster routes
             prometheus_endpoints = [
-                "https://prometheus-user-workload-openshift-user-workload-monitoring.apps.summit-gpu.octo-emerging.redhataicoe.com",
-                "https://prometheus-k8s-openshift-monitoring.apps.summit-gpu.octo-emerging.redhataicoe.com"
+                f"https://prometheus-user-workload-openshift-user-workload-monitoring.{CLUSTER_DOMAIN}",
+                f"https://prometheus-k8s-openshift-monitoring.{CLUSTER_DOMAIN}"
             ]
         
         # Use CONSISTENT metrics queries - only response-based metrics for LLM traffic
@@ -1117,7 +1117,7 @@ def generate_simulator_request_entries():
         requests.append({
             "id": f"sim-success-{i}",
             "timestamp": request_time.isoformat(),
-            "team": "noyitz",
+            "team": DEFAULT_USER_ID,
             "model": "qwen3-0-6b-instruct",
             "endpoint": "/v1/chat/completions",
             "httpMethod": "POST",
@@ -1127,7 +1127,7 @@ def generate_simulator_request_entries():
             "finalReason": "Request approved by Kuadrant policies",
             "authentication": {
                 "method": "api-key",
-                "principal": "noyitz",
+                "principal": DEFAULT_USER_ID,
                 "groups": ["unlimited-policy"],
                 "isValid": True
             },
@@ -1169,7 +1169,7 @@ def generate_simulator_request_entries():
         requests.append({
             "id": f"sim-failed-{i}",
             "timestamp": request_time.isoformat(),
-            "team": "noyitz",
+            "team": DEFAULT_USER_ID,
             "model": "qwen3-0-6b-instruct", 
             "endpoint": "/v1/chat/completions",
             "httpMethod": "POST",
@@ -1754,7 +1754,7 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                     "connected": False,
                     "user": None,
                     "cluster": None,
-                    "loginUrl": "https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com"
+                    "loginUrl": CONSOLE_BASE_URL
                 }
                 
                 try:
@@ -1804,7 +1804,7 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                         "connected": False,
                         "user": None,
                         "cluster": None,
-                        "loginUrl": "https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com",
+                        "loginUrl": CONSOLE_BASE_URL,
                         "error": str(e)
                     },
                     "timestamp": datetime.now().isoformat()
@@ -2018,7 +2018,7 @@ class CORSRequestHandler(http.server.BaseHTTPRequestHandler):
                     gateway_url = 'http://inference-gateway-istio.llm.svc.cluster.local'
                 else:
                     # For localhost, use external gateway address but with proper Host headers
-                    gateway_url = f'http://a9d46b1f1217a4bde85f3fa7fbec35e0-1270706510.us-east-1.elb.amazonaws.com'
+                    gateway_url = f'http://gateway.{CLUSTER_DOMAIN}'
                 
                 endpoint_url = f'{gateway_url}/v1/chat/completions'
                 

@@ -4,9 +4,13 @@ set -euo pipefail
 
 # Install Dependencies Script for MaaS Deployment
 # Orchestrates installation of required platform components
+# Supports both vanilla Kubernetes and OpenShift deployments
 
 # Component definitions with installation order
-COMPONENTS=("istio" "cert-manager" "kserve" "prometheus" "kuadrant")
+COMPONENTS=("istio" "cert-manager" "kserve" "prometheus" "kuadrant"  "grafana")
+
+# OpenShift flag
+OCP=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLERS_DIR="$SCRIPT_DIR/installers"
@@ -15,8 +19,27 @@ get_component_description() {
     case "$1" in
         istio) echo "Service mesh and Gateway API configuration" ;;
         cert-manager) echo "Certificate management for TLS and webhooks" ;;
-        kserve) echo "Model serving platform" ;;
-        prometheus) echo "Observability and metrics collection (optional)" ;;
+        kserve) 
+            if [[ "$OCP" == true ]]; then
+                echo "Model serving platform (validates OpenShift Serverless)"
+            else
+                echo "Model serving platform"
+            fi
+            ;;
+        prometheus) 
+            if [[ "$OCP" == true ]]; then
+                echo "Observability and metrics collection (validates OpenShift monitoring)"
+            else
+                echo "Observability and metrics collection (optional)"
+            fi
+            ;;
+        grafana) 
+            if [[ "$OCP" == true ]]; then
+                echo "Dashboard visualization platform (OpenShift operator)"
+            else
+                echo "Dashboard visualization platform (not implemented for vanilla Kubernetes)"
+            fi
+            ;;
         kuadrant) echo "API gateway operators via Helm (Kuadrant, Authorino, Limitador)" ;;
         *) echo "Unknown component" ;;
     esac
@@ -33,8 +56,15 @@ usage() {
     echo "  --cert-manager           Install cert-manager"
     echo "  --kserve                 Install KServe model serving platform"
     echo "  --prometheus             Install Prometheus operator"
+    echo "  --grafana                Install Grafana dashboard platform"
     echo "  --kuadrant               Install Kuadrant operators via Helm"
+    echo "  --ocp                    Use OpenShift-specific handling (validate instead of install)"
     echo "  -h, --help               Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --all              # Install all components (vanilla Kubernetes)"
+    echo "  $0 --all --ocp         # Validate all components (OpenShift)"
+    echo "  $0 --kserve --ocp      # Validate OpenShift Serverless only"
     echo ""
     echo "If no options are provided, interactive mode will prompt for component selection."
     echo ""
@@ -90,55 +120,106 @@ install_component() {
         echo "❌ Installer not found: $installer_script"
         return 1
     fi
-
-    echo "🚀 Installing $component..."
-    if ! "$installer_script"; then
-        echo "❌ Failed to install $component"
+    
+    if [[ "$OCP" == true ]]; then
+        echo "🚀 Setting up $component for OpenShift..."
+    else
+        echo "🚀 Installing $component..."
+    fi
+    
+    # Pass --ocp flag to scripts that support it
+    local script_args=()
+    if [[ "$OCP" == true ]] && [[ "$component" == "kserve" || "$component" == "prometheus" || "$component" == "grafana" ]]; then
+        script_args+=("--ocp")
+    fi
+    
+    if ! "$installer_script" "${script_args[@]}"; then
+        if [[ "$OCP" == true ]]; then
+            echo "❌ Failed to set up $component for OpenShift"
+        else
+            echo "❌ Failed to install $component"
+        fi
         return 1
     fi
-    echo "✅ Successfully installed $component"
+    
+    if [[ "$OCP" == true ]]; then
+        echo "✅ Successfully set up $component for OpenShift"
+    else
+        echo "✅ Successfully installed $component"
+    fi
     echo ""
 }
 
 install_all() {
-    echo "🔧 Installing all MaaS dependencies..."
+    if [[ "$OCP" == true ]]; then
+        echo "🔧 Setting up all MaaS dependencies for OpenShift..."
+    else
+        echo "🔧 Installing all MaaS dependencies..."
+    fi
     echo ""
     
     for component in "${COMPONENTS[@]}"; do
         install_component "$component"
     done
     
-    echo "🎉 All components installed successfully!"
+    if [[ "$OCP" == true ]]; then
+        echo "🎉 All components set up successfully for OpenShift!"
+    else
+        echo "🎉 All components installed successfully!"
+    fi
 }
 
 interactive_install() {
     echo "MaaS Dependency Installer"
     echo "========================"
     echo ""
-    echo "The following components will be installed:"
+    if [[ "$OCP" == true ]]; then
+        echo "The following components will be set up for OpenShift:"
+    else
+        echo "The following components will be installed:"
+    fi
     for component in "${COMPONENTS[@]}"; do
         echo "  - $component: $(get_component_description "$component")"
     done
     echo ""
     
-    read -p "Install all components? (y/N): " -n 1 -r
+    if [[ "$OCP" == true ]]; then
+        read -p "Set up all components for OpenShift? (y/N): " -n 1 -r
+    else
+        read -p "Install all components? (y/N): " -n 1 -r
+    fi
     echo ""
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         install_all
     else
-        echo "Installation cancelled."
+        echo "Setup cancelled."
         exit 0
     fi
 }
 
 # Parse command line arguments
-if [[ $# -eq 0 ]]; then
+# Handle special case: only --ocp flag provided (should go to interactive mode)
+if [[ $# -eq 1 ]] && [[ "$1" == "--ocp" ]]; then
+    OCP=true
+    interactive_install
+    exit 0
+elif [[ $# -eq 0 ]]; then
     # No arguments - use interactive mode
     interactive_install
     exit 0
 fi
 
+# First pass: check for --ocp flag (scan without consuming arguments)
+for arg in "$@"; do
+    if [[ "$arg" == "--ocp" ]]; then
+        OCP=true
+        break
+    fi
+done
+
+# Second pass: process component and action flags
+COMPONENT_SELECTED=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --all)
@@ -147,15 +228,26 @@ while [[ $# -gt 0 ]]; do
             ;;
         --istio)
             install_component "istio"
+            COMPONENT_SELECTED=true
             ;;
         --cert-manager)
             install_component "cert-manager"
+            COMPONENT_SELECTED=true
             ;;
         --kserve)
             install_component "kserve"
+            COMPONENT_SELECTED=true
             ;;
         --prometheus)
             install_component "prometheus"
+            COMPONENT_SELECTED=true
+            ;;
+        --grafana)
+            install_component "grafana"
+            COMPONENT_SELECTED=true
+            ;;
+        --ocp)
+            # Already processed in first pass, skip
             ;;
         --kuadrant)
             install_component "kuadrant"
@@ -174,5 +266,11 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-echo "🎉 Selected components installed successfully!"
-
+# Show success message if components were installed
+if [[ "$COMPONENT_SELECTED" == true ]]; then
+    if [[ "$OCP" == true ]]; then
+        echo "🎉 Selected components set up successfully for OpenShift!"
+    else
+        echo "🎉 Selected components installed successfully!"
+    fi
+fi

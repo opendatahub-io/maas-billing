@@ -1,6 +1,8 @@
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://maas-backend-route-llm.apps.summit-gpu.octo-emerging.redhataicoe.com/api/v1'
-  : 'http://localhost:3003/api/v1';
+const API_BASE_URL = process.env.REACT_APP_USE_CLUSTER_BACKEND === 'true'
+  ? `https://maas-backend-route-llm.${process.env.REACT_APP_CLUSTER_DOMAIN || 'your-cluster.example.com'}/api/v1`
+  : process.env.NODE_ENV === 'production' 
+    ? `https://maas-backend-route-llm.${process.env.REACT_APP_CLUSTER_DOMAIN || 'your-cluster.example.com'}/api/v1`
+    : 'http://localhost:3001/api/v1';
 
 class ApiService {
   private async fetch(endpoint: string, options: RequestInit = {}) {
@@ -124,12 +126,33 @@ class ApiService {
     max_tokens?: number;
     tier: string;
     apiKey: string;
+    authPrefix?: string;
+    // QoS-specific parameters
+    enableQoS?: boolean;
+    customerTier?: string;
+    demoMode?: string;
   }) {
+    const authPrefix = params.authPrefix || 'Bearer';
+    
+    // Prepare headers - start with basic headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `${authPrefix} ${params.apiKey}`,
+    };
+
+    // Add QoS-specific headers if QoS is enabled
+    if (params.enableQoS) {
+      headers['x-enable-qos'] = 'true';
+      headers['x-customer-tier'] = params.customerTier || 'free';
+      
+      if (params.demoMode && params.demoMode !== 'auto') {
+        headers['x-demo-mode'] = params.demoMode;
+      }
+    }
+
     return this.fetch('/simulator/chat/completions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${params.apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: params.model,
         messages: params.messages,
@@ -140,6 +163,7 @@ class ApiService {
   }
 
   // Token Management APIs
+
   async getUserTier() {
     return this.fetch('/tokens/user/tier');
   }
@@ -151,6 +175,7 @@ class ApiService {
   async createToken(params: {
     name: string;
     description: string;
+    team_id?: string;
   }) {
     return this.fetch('/tokens/create', {
       method: 'POST',

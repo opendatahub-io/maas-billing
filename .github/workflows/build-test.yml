@@ -4,8 +4,6 @@ on:
   pull_request:
     paths:
       - 'deployment/**'
-      - 'core-infrastructure/**'
-      - 'examples/**'
   push:
     branches:
       - main

@@ -17,6 +17,9 @@ type Config struct {
 	// Server configuration
 	Port string
 
+	// Provider config
+	Provider ProviderType
+
 	// Kubernetes configuration
 	KeyNamespace        string
 	SecretSelectorLabel string
@@ -40,6 +43,7 @@ func Load() *Config {
 		Name:      env.GetString("INSTANCE_NAME", "openshift-ai-inference"),
 		Namespace: env.GetString("NAMESPACE", "maas-api"),
 		Port:      env.GetString("PORT", "8080"),
+		Provider:  ProviderType(env.GetString("PROVIDER", string(Secrets))),
 		DebugMode: debugMode,
 		// Secrets provider configuration
 		KeyNamespace:             env.GetString("KEY_NAMESPACE", "llm"),
@@ -62,4 +66,5 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.Namespace, "namespace", c.Namespace, "Namespace")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
+	fs.Var(&c.Provider, "provider", "Provider type to use for API keys")
 }

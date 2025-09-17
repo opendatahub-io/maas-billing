@@ -9,8 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -29,33 +28,7 @@ func createTestMapper(withConfigMap bool) *tier.Mapper {
 	var objects []runtime.Object
 
 	if withConfigMap {
-		configMap := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      tier.MappingConfigMap,
-				Namespace: "test-namespace",
-			},
-			Data: map[string]string{
-				"tiers": `
-- name: free
-  description: Free tier
-  level: 1
-  groups:
-  - system:authenticated
-- name: premium
-  description: Premium tier
-  level: 10
-  groups:
-  - premium-users
-  - beta-testers
-- name: enterprise
-  description: Enterprise tier
-  level: 20
-  groups:
-  - enterprise-users
-  - admin-users
-`,
-			},
-		}
+		configMap := fixtures.CreateTierConfigMap("test-namespace")
 		objects = append(objects, configMap)
 	}
 

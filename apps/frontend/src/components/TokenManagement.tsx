@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Button,
-  TextField, FormControl, Select, MenuItem,
+  TextField, FormControl, Select, MenuItem, InputLabel,
   Chip, Alert, Dialog, DialogContent, DialogTitle,
   DialogActions, IconButton, Tooltip, Stack,
   Table, TableBody, TableCell, TableContainer,
@@ -62,16 +62,32 @@ const TokenManagement: React.FC = () => {
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keyManagerUnavailable, setKeyManagerUnavailable] = useState(false);
   
   // Team-based token creation state
   const [availableTeams, setAvailableTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState('');
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
 
   useEffect(() => {
     loadUserData();
     loadAvailableTeams();
+    loadCurrentUser();
   }, []);
+
+  const loadCurrentUser = async () => {
+    try {
+      const clusterStatus = await apiService.getClusterStatus();
+      if (clusterStatus?.user && clusterStatus.user !== 'system:anonymous') {
+        setCurrentUser(clusterStatus.user);
+      }
+    } catch (error) {
+      console.warn('Could not load current user from cluster status:', error);
+      // Fallback to a default user - this ensures functionality even if cluster status fails
+      setCurrentUser('default-user');
+    }
+  };
 
   // Group tokens by team for display
   const getTokensByTeam = () => {
@@ -132,11 +148,16 @@ const TokenManagement: React.FC = () => {
 
   // Get team info for a team ID
   const getTeamInfo = (teamId: string) => {
-    return availableTeams.find(team => team.team_id === teamId) || {
+    const foundTeam = availableTeams.find(team => team.team_id === teamId);
+    if (foundTeam && foundTeam.rate_limit) {
+      return foundTeam;
+    }
+    
+    return {
       team_id: teamId,
       team_name: teamId === 'default' ? 'Default Team' : teamId.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()),
       policy: tokens.find(t => t.team_id === teamId)?.policy || 'unknown',
-      description: '',
+      description: teamId === 'default' ? 'Default team for all users' : `${teamId} team`,
       rate_limit: {
         limit: 'Unknown',
         window: 'N/A',
@@ -166,8 +187,18 @@ const TokenManagement: React.FC = () => {
         console.warn('Unexpected tokens response format:', tokensResponse);
         setTokens([]);
       }
-    } catch (error) {
-      setError('Failed to load user data');
+    } catch (error: any) {
+      // Handle key manager service errors specifically
+      if (error.status === 503) {
+        setError('Key Manager service is currently unavailable. Please try again later or contact your administrator.');
+        setKeyManagerUnavailable(true);
+      } else if (error.message?.includes('Key manager service is unavailable')) {
+        setError('Key Manager service is currently unavailable. Please try again later or contact your administrator.');
+        setKeyManagerUnavailable(true);
+      } else {
+        setError(`Failed to load user data: ${error.message || 'Unknown error'}`);
+        setKeyManagerUnavailable(false);
+      }
       console.error('Error loading user data:', error);
       // Set empty arrays on error to prevent map errors
       setTokens([]);
@@ -180,21 +211,37 @@ const TokenManagement: React.FC = () => {
   const loadAvailableTeams = async () => {
     try {
       setTeamsLoading(true);
-      const teams = await apiService.getTeams();
-      console.log('Loaded teams:', teams);
+      const teamsResponse = await apiService.getTeams();
+      console.log('Teams response:', teamsResponse);
       
-      // Create team data based on actual tokens and policies
-      const teamsData = teams && teams.length > 0 ? teams : await createTeamDataFromTokens();
+      let teams = [];
+      if (Array.isArray(teamsResponse)) {
+        teams = teamsResponse;
+      } else if (teamsResponse && Array.isArray(teamsResponse.data)) {
+        teams = teamsResponse.data;
+      } else {
+        console.warn('Unexpected teams response format:', teamsResponse);
+        teams = [];
+      }
       
-      setAvailableTeams(teamsData);
+      // Filter out any null/undefined teams and ensure all teams have required properties
+      const validTeams = teams.filter((team: any) => 
+        team && 
+        typeof team === 'object' && 
+        team.team_id && 
+        team.team_name
+      );
       
-      // Auto-select default team if none selected
-      if (!selectedTeam && teamsData.length > 0) {
-        setSelectedTeam(teamsData[0].team_id);
+      setAvailableTeams(validTeams);
+      
+      // Set default team as selected if available
+      const defaultTeam = validTeams.find((team: Team) => team.team_id === 'default');
+      if (defaultTeam && !selectedTeam) {
+        setSelectedTeam(defaultTeam.team_id);
       }
     } catch (error) {
       console.error('Error loading teams:', error);
-      setError('Failed to load teams');
+      setAvailableTeams([]);
     } finally {
       setTeamsLoading(false);
     }
@@ -216,7 +263,7 @@ const TokenManagement: React.FC = () => {
       setError(null);
       
       const response = await apiService.createTeamToken(selectedTeam, {
-        user_id: 'noyitz', // TODO: Get from auth context
+        user_id: currentUser || 'default-user', // Use authenticated user
         alias: newTokenName.trim(),
       });
       
@@ -235,7 +282,14 @@ const TokenManagement: React.FC = () => {
       // Refresh token list
       await loadUserData();
     } catch (error: any) {
-      setError(error.message || 'Failed to generate token');
+      // Handle key manager service errors specifically
+      if (error.status === 503) {
+        setError('Key Manager service is currently unavailable. Cannot create tokens at this time.');
+      } else if (error.message?.includes('Key manager service is unavailable')) {
+        setError('Key Manager service is currently unavailable. Cannot create tokens at this time.');
+      } else {
+        setError(error.message || 'Failed to generate token');
+      }
     } finally {
       setLoading(false);
     }
@@ -259,7 +313,14 @@ const TokenManagement: React.FC = () => {
       console.log('✅ Token list refreshed after deletion');
     } catch (error: any) {
       console.error('❌ Token deletion failed:', error);
-      setError(error.message || 'Failed to revoke token');
+      // Handle key manager service errors specifically
+      if (error.status === 503) {
+        setError('Key Manager service is currently unavailable. Cannot revoke tokens at this time.');
+      } else if (error.message?.includes('Key manager service is unavailable')) {
+        setError('Key Manager service is currently unavailable. Cannot revoke tokens at this time.');
+      } else {
+        setError(error.message || 'Failed to revoke token');
+      }
     } finally {
       setLoading(false);
     }
@@ -269,6 +330,11 @@ const TokenManagement: React.FC = () => {
     navigator.clipboard.writeText(text);
     // Could add a snackbar notification here
   };
+
+  useEffect(() => {
+    loadUserData();
+    loadAvailableTeams();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -297,8 +363,20 @@ const TokenManagement: React.FC = () => {
       </Typography>
       
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+        <Alert 
+          severity={error.includes('Key Manager service is currently unavailable') ? 'warning' : 'error'} 
+          sx={{ mb: 3 }} 
+          onClose={() => setError(null)}
+        >
+          <strong>
+            {error.includes('Key Manager service is currently unavailable') ? 'Service Unavailable: ' : 'Error: '}
+          </strong>
           {error}
+          {error.includes('Key Manager service is currently unavailable') && (
+            <div style={{ marginTop: '8px', fontSize: '0.875rem' }}>
+              The token management service is currently down. You can view this page but cannot create, modify, or delete tokens until the service is restored.
+            </div>
+          )}
         </Alert>
       )}
 
@@ -388,7 +466,7 @@ const TokenManagement: React.FC = () => {
                               />
                             </Box>
                             <Typography variant="caption" color="text.secondary">
-                              {teamInfo.rate_limit.description}
+                              {teamInfo.rate_limit?.description || 'Policy information not available'}
                             </Typography>
                           </Stack>
                         </TableCell>
@@ -466,60 +544,67 @@ const TokenManagement: React.FC = () => {
             Create Token by Team
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Select a team to create a token with the team's policy and rate limits.
+            Create a new API token for accessing the MaaS platform with team-based policies.
           </Typography>
           
           <Stack spacing={3}>
             {/* Team Selection */}
-            <FormControl fullWidth>
-              <Typography variant="body2" sx={{ mb: 1 }}>Select Team *</Typography>
+            <FormControl fullWidth disabled={loading || keyManagerUnavailable || teamsLoading}>
+              <InputLabel id="team-select-label">Team *</InputLabel>
               <Select
+                labelId="team-select-label"
                 value={selectedTeam}
+                label="Team *"
                 onChange={(e) => setSelectedTeam(e.target.value)}
-                disabled={teamsLoading}
               >
-                {teamsLoading ? (
-                  <MenuItem disabled>Loading teams...</MenuItem>
-                ) : availableTeams.length === 0 ? (
-                  <MenuItem disabled>No teams available</MenuItem>
-                ) : (
-                  availableTeams.map((team) => (
+                {availableTeams
+                  .filter(team => team && team.team_id && team.team_name)
+                  .map((team) => (
                     <MenuItem key={team.team_id} value={team.team_id}>
-                      <Box sx={{ width: '100%' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {team.team_name}
-                        </Typography>
+                      <Box>
+                        <Typography variant="body1">{team.team_name}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          Policy: {team.policy} • {team.rate_limit.description}
+                          {team.policy || 'No policy'} • {team.description || 'No description'}
                         </Typography>
                       </Box>
                     </MenuItem>
-                  ))
-                )}
+                  ))}
               </Select>
+              {teamsLoading ? (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                  Loading teams...
+                </Typography>
+              ) : keyManagerUnavailable ? (
+                <Typography variant="caption" color="error" sx={{ mt: 1 }}>
+                  Team selection is disabled when Key Manager is unavailable
+                </Typography>
+              ) : (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                  Select the team for this token. The token will inherit the team's policy and rate limits.
+                </Typography>
+              )}
             </FormControl>
-
 
             {/* Token Name Input */}
             <TextField
               fullWidth
-              label="Token Name/Alias *"
+              label="Token Name *"
               value={newTokenName}
               onChange={(e) => setNewTokenName(e.target.value)}
-              placeholder="e.g., my-test-token, premium-api-key"
-              disabled={loading}
-              helperText="Choose a descriptive name for your token"
+              placeholder="e.g., my-project-token, dev-access-key"
+              disabled={loading || keyManagerUnavailable}
+              helperText={keyManagerUnavailable ? "Token creation is disabled when Key Manager is unavailable" : "Choose a descriptive name for your token"}
+              error={keyManagerUnavailable}
             />
-
             {/* Create Button */}
             <Button
               variant="contained"
               onClick={handleGenerateToken}
-              disabled={loading || !selectedTeam || !newTokenName.trim()}
+              disabled={loading || !newTokenName.trim() || !selectedTeam || keyManagerUnavailable}
               startIcon={loading ? <CircularProgress size={16} /> : <AddIcon />}
               size="large"
             >
-              {loading ? 'Creating Token...' : 'Create Team Token'}
+              {keyManagerUnavailable ? 'Service Unavailable' : loading ? 'Creating Token...' : 'Generate Token'}
             </Button>
           </Stack>
         </CardContent>
@@ -669,11 +754,12 @@ const TokenManagement: React.FC = () => {
                               <CopyIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="Revoke token">
+                          <Tooltip title={keyManagerUnavailable ? "Cannot revoke tokens when Key Manager is unavailable" : "Revoke token"}>
                             <IconButton 
                               size="small" 
                               sx={{ color: 'text.secondary', '&:hover': { color: 'warning.main', bgcolor: 'warning.50' } }}
                               onClick={() => handleRevokeToken(token.secret_name || token.name)}
+                              disabled={keyManagerUnavailable}
                             >
                               <DeleteIcon fontSize="small" />
                             </IconButton>

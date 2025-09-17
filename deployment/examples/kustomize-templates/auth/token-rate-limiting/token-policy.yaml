@@ -15,7 +15,7 @@ spec:
   limits:
     free-user-tokens:
       rates:
-        - limit: 10000
+        - limit: 100
           window: 1m
       when:
         - predicate: |

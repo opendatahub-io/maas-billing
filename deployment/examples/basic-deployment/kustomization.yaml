@@ -6,6 +6,6 @@ metadata:
 
 # Deploy core infrastructure first
 resources:
-- ../../core-infrastructure
+- ../../infrastructure
 - ../kustomize-templates/models/simulator
 - ../kustomize-templates/auth/api-keys

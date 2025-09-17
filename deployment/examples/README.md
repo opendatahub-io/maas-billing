@@ -16,6 +16,7 @@ deployment/scripts/install.sh
 # Deploy specific deployment type
 deployment/scripts/install.sh gpu
 ```
+
 # Add a new deployment type
 
 Any subdirectory under `deployment/examples/` named as {name}-deployment will be picked up as a deployment type by `deployment/scripts/install.sh`
@@ -50,7 +51,7 @@ The install script enforces this critical sequence for reliable deployment:
 
 4. **Apply Kuadrant Configuration** - Dependencies installed operators; now apply CRs
    ```bash
-   kustomize build core-infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
+   kustomize build infrastructure/kustomize-templates/kuadrant | envsubst | kubectl apply -f -
    ```
 
 5. **Verify Operators** - Ensure all operators are ready before proceeding
@@ -153,7 +154,7 @@ curl -H 'Authorization: APIKEY freeuser1_key' \
 ### Rate Limiting
 ```bash
 # Test rate limiting (Free tier: expect 429 after 5 requests in 2min)
-for i in {1..10}; do
+for i in {1..50}; do
   printf "Request #%-2s -> " "$i"
   curl -s -o /dev/null -w "%{http_code}\n" \
        -H 'Authorization: APIKEY freeuser1_key' \
@@ -215,7 +216,7 @@ kubectl exec -n kuadrant-system deployment/limitador-limitador -- curl -s localh
 ### Adding New Models
 1. Create new directory under `kustomize-templates/models/`
 2. Add InferenceService manifest
-3. Update HTTPRoute in `core-infrastructure/kustomize-templates/gateway/`
+3. Update HTTPRoute in `infrastructure/kustomize-templates/gateway/`
 
 ### Custom Rate Limits
 Edit `kustomize-templates/auth/token-rate-limiting/token-policy.yaml`:

@@ -6,7 +6,7 @@ metadata:
 
 # GPU cluster with both models
 resources:
-- ../../core-infrastructure
+- ../../infrastructure
 - ../kustomize-templates/models/simulator
 - ../kustomize-templates/models/qwen3
 - ../kustomize-templates/auth/api-keys

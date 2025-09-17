@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
@@ -6,12 +7,14 @@ import { io as SocketIOClient } from 'socket.io-client';
 import { logger } from './utils/logger';
 import metricsRoutes from './routes/metrics';
 import policiesRoutes from './routes/policies';
+import tokensRoutes from './routes/tokens';
+import simulatorRoutes from './routes/simulator';
 
 const app: express.Application = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: true, // Allow all origins in development
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -21,7 +24,7 @@ const QOS_SERVICE_URL = process.env.QOS_SERVICE_URL || 'http://localhost:3005';
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: true, // Allow all origins in development
   credentials: true
 }));
 app.use(express.json());
@@ -48,6 +51,64 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/v1/metrics', metricsRoutes);
 app.use('/api/v1/policies', policiesRoutes);
+app.use('/api/v1/tokens', tokensRoutes);
+app.use('/api/v1/simulator', simulatorRoutes);
+
+// Teams route (for frontend compatibility - proxy to tokens/teams)
+app.get('/api/v1/teams', async (req, res) => {
+  try {
+    // This should now return the real error from the key manager
+    const axios = require('axios');
+    const response = await axios.get(`http://localhost:${PORT}/api/v1/tokens/teams`);
+    res.status(response.status).json(response.data);
+  } catch (error: any) {
+    if (error.response) {
+      res.status(error.response.status).json(error.response.data);
+    } else {
+      res.status(503).json({
+        success: false,
+        error: 'Teams service unavailable',
+        details: error.message
+      });
+    }
+  }
+});
+
+// Create team token route (for frontend compatibility - proxy to tokens/create)
+app.post('/api/v1/teams/:teamId/keys', async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const { user_id, alias } = req.body;
+    
+    // Transform the request to match our existing token creation endpoint
+    const tokenCreateRequest = {
+      name: alias || `${user_id}-${teamId}-token`,
+      description: `Token: ${alias || `${user_id}-${teamId}-token`}`,
+      team_id: teamId
+    };
+    
+    const axios = require('axios');
+    const response = await axios.post(`http://localhost:${PORT}/api/v1/tokens/create`, tokenCreateRequest);
+    
+    // Transform response to match frontend expectations
+    const responseData = response.data;
+    if (responseData.success && responseData.data && responseData.data.token) {
+      responseData.data.api_key = responseData.data.token; // Add api_key field for frontend compatibility
+    }
+    
+    res.status(response.status).json(responseData);
+  } catch (error: any) {
+    if (error.response) {
+      res.status(error.response.status).json(error.response.data);
+    } else {
+      res.status(503).json({
+        success: false,
+        error: 'Token creation service unavailable',
+        details: error.message
+      });
+    }
+  }
+});
 
 // QoS proxy endpoints
 app.get('/api/v1/qos/metrics', async (req, res) => {
@@ -91,6 +152,41 @@ app.get('/api/v1/models', (req, res) => {
       }
     ]
   });
+});
+
+// Cluster status endpoint for authentication dialog
+app.get('/api/v1/cluster/status', async (req, res) => {
+  try {
+    // Try to get the actual authenticated user
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+    
+    let user = 'authenticated-user';
+    try {
+      const { stdout } = await execAsync('oc whoami');
+      user = stdout.trim();
+    } catch (error) {
+      logger.warn('Could not get authenticated user via oc whoami');
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        connected: true,
+        user: user,
+        cluster: process.env.CLUSTER_DOMAIN || 'your-cluster.example.com',
+        loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.your-cluster.example.com'
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting cluster status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Could not get cluster status'
+    });
+  }
 });
 
 // Error handling
@@ -184,6 +280,7 @@ if (require.main === module) {
     logger.info('Available endpoints:');
     logger.info('  GET /health - Health check');
     logger.info('  GET /api/v1/models - Available models');
+    logger.info('  GET /api/v1/cluster/status - Cluster authentication status');
     logger.info('  GET /api/v1/metrics - General metrics');
     logger.info('  GET /api/v1/metrics/live-requests - Live request data with policy enforcement');
     logger.info('  GET /api/v1/metrics/dashboard - Dashboard statistics');
@@ -191,6 +288,11 @@ if (require.main === module) {
     logger.info('  POST /api/v1/policies - Create new policy');
     logger.info('  PUT /api/v1/policies/:id - Update policy');
     logger.info('  DELETE /api/v1/policies/:id - Delete policy');
+    logger.info('  GET /api/v1/tokens/user/tier - Get user tier information');
+    logger.info('  GET /api/v1/tokens - Get user tokens');
+    logger.info('  POST /api/v1/tokens/create - Create new token');
+    logger.info('  DELETE /api/v1/tokens/:name - Revoke token');
+    logger.info('  POST /api/v1/tokens/test - Test token authentication');
     logger.info('  GET /api/v1/qos/metrics - QoS metrics proxy');
     logger.info('  GET /api/v1/qos/health - QoS health proxy');
     logger.info('Socket.IO server enabled for real-time updates');

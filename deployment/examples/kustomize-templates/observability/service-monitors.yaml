@@ -18,7 +18,7 @@ spec:
       scrapeTimeout: 10s
     - port: http
       path: /server-metrics
-      interval: 30s
+      interval: 10s
       scrapeTimeout: 10s
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -37,6 +37,5 @@ spec:
   endpoints:
     - port: http
       path: /metrics
-      interval: 30s
+      interval: 10s
       scrapeTimeout: 10s
-

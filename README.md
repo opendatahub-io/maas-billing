@@ -1,6 +1,17 @@
 # MaaS Platform - Models as a Service with Policy Management
 
-A comprehensive platform for **Models as a Service** with real-time policy management, built with **Kuadrant**, Istio, Gateway API, and KServe. Features a modern React-based GUI for policy creation, live metrics monitoring, and request simulation.
+Our goal is to create a comprehensive platform for **Models as a Service** with real-time policy management.
+
+> [!IMPORTANT]
+> This project is a work in progress and is not yet ready for production.
+
+## 📦 Technology Stack
+
+- **Kuadrant/Authorino/Limitador**: API gateway and policy engine
+- **Istio**: Service mesh and traffic management
+- **Gateway API**: Traffic routing and management
+- **React**: Frontend framework
+- **Go**: Backend frameworks
 
 ## 🚀 Features
 
@@ -15,9 +26,11 @@ A comprehensive platform for **Models as a Service** with real-time policy manag
 ## 🏗️ Architecture
 
 ### Backend Components
-- **Model Serving**: KServe-based AI model deployment with vLLM runtime
 - **API Gateway**: Istio/Envoy with Gateway API support and Kuadrant integration
 - **Policy Engine**: Real-time policy enforcement through Kuadrant (Authorino + Limitador)
+- **Model Serving**: KServe-based AI model deployment with vLLM runtime
+- **Model Discovery**: Automatic model listing model resources
+- **Key Manager**: API key management and authentication
 - **Metrics Collection**: Live data from Kuadrant components
 
 ### Frontend Components  
@@ -35,8 +48,8 @@ A comprehensive platform for **Models as a Service** with real-time policy manag
 
 For deployment instructions, see the READMEs in the deployment directory:
 
-- **[Core Infrastructure](deployment/core-infrastructure/README.md)** - Base platform components (Istio, KServe, Kuadrant operators)
-- **[Examples](deployment/examples/README.md)** - Complete deployment examples with models, authentication, and observability
+- **[Infrastructure](deployment/infrastructure/README.md)** - Base platform components (Istio, KServe, Kuadrant operators)
+- **[Example Usage](deployment/examples/README.md)** - Complete deployment examples with models, authentication, and observability
 
 ## Development Setup
 

@@ -28,4 +28,3 @@ This repository implements the policy enforcement features we developed:
 The live metrics page now shows stable data with policy enforcement details, ready for integration with real Kuadrant traffic when available.
 
 🤖 Developed with Claude Code assistance
-

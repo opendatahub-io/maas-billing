@@ -6,24 +6,19 @@ Base platform components required for Models-as-a-Service (MaaS) deployment.
 
 ```bash
 # 1. Install required dependencies (recommended)
-./scripts/install-dependencies.sh --all
+./deployment/scripts/install-dependencies.sh --all
 
 # Alternative: Install dependencies individually
 # ./scripts/installers/install-istio.sh
 # ./scripts/installers/install-cert-manager.sh
 # ./scripts/installers/install-kserve.sh           # Add --ocp flag for OpenShift clusters
-# ./scripts/installers/install-prometheus.sh       # Optional: for observability
+# ./scripts/installers/install-prometheus.sh       # Optional: for observability (Add --ocp flag for OpenShift clusters)
+# ./scripts/installers/install-grafana.sh         # Optional: for observability requires Grafana operator to be pre-installed
 
 # 2. Set your cluster domain
 export CLUSTER_DOMAIN="apps.your-cluster.com"
 
 # 3. Deploy core infrastructure
-
-## Quick Deploy (from core-infrastructure directory)
-```bash
-cd core-infrastructure
-kustomize build . | envsubst | kubectl apply -f -
-```
 
 ## Platform-Specific Deployments
 
@@ -68,18 +63,18 @@ The `install-dependencies.sh` script provides a convenient way to install all re
 
 ```bash
 # Interactive mode - prompts for confirmation
-./scripts/install-dependencies.sh
+./deployment/scripts/install-dependencies.sh
 
 # Install all components without prompts
-./scripts/install-dependencies.sh --all
+./deployment/scripts/install-dependencies.sh --all
 
 # Install specific components
-./scripts/install-dependencies.sh --istio --cert-manager
-./scripts/install-dependencies.sh --kserve
-./scripts/install-dependencies.sh --prometheus
+./deployment/scripts/install-dependencies.sh --istio --cert-manager
+./deployment/scripts/install-dependencies.sh --kserve
+./deployment/scripts/install-dependencies.sh --prometheus
 
 # Show available options
-./scripts/install-dependencies.sh --help
+./deployment/scripts/install-dependencies.sh --help
 ```
 
 **Components installed in order:**

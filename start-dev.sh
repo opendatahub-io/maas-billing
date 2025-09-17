@@ -22,14 +22,24 @@ if ! kubectl get pods -n kuadrant-system >/dev/null 2>&1; then
     exit 1
 fi
 
-# Check ports (frontend must be 3000, backend can be flexible)
+# Check required ports
 if ! check_port 3000; then
     echo "   Port 3000 (frontend) is required. Please stop the process using port 3000."
     echo "   Run: lsof -ti:3000 | xargs kill -9"
     exit 1
 fi
 
-# Note: Backend port checking is removed since it can use any available port starting from 3002
+if ! check_port 3001; then
+    echo "   Port 3001 (backend) is required. Please stop the process using port 3001."
+    echo "   Run: lsof -ti:3001 | xargs kill -9"
+    exit 1
+fi
+
+if ! check_port 3005; then
+    echo "   Port 3005 (QoS service) is required. Please stop the process using port 3005."
+    echo "   Run: lsof -ti:3005 | xargs kill -9"
+    exit 1
+fi
 
 # Start QoS prioritizer service in background
 echo "⚡ Starting QoS prioritizer service..."
@@ -53,31 +63,8 @@ npm run dev > ../../backend.log 2>&1 &
 BACKEND_PID=$!
 cd ../..
 
-# Wait a moment for backend to start and detect the port
-sleep 3
-
-# Get the actual port using lsof - find any node process listening
-BACKEND_PORT=""
-echo "🔍 Detecting backend port..."
-for i in {1..15}; do
-    if kill -0 $BACKEND_PID 2>/dev/null; then
-        # Find any node process with tsx in command line that's listening
-        BACKEND_PORT=$(lsof -Pan -c node -i | grep LISTEN | grep -v grep | head -1 | sed -n 's/.*:\([0-9]*\) (LISTEN).*/\1/p')
-        if [ -n "$BACKEND_PORT" ]; then
-            echo "✅ Detected backend on port $BACKEND_PORT"
-            break
-        fi
-    else
-        echo "❌ Backend process $BACKEND_PID is not running"
-        break
-    fi
-    sleep 1
-done
-
-if [ -z "$BACKEND_PORT" ]; then
-    echo "⚠️  Could not detect backend port, assuming 3002"
-    BACKEND_PORT=3002
-fi
+# Backend will use port 3001 (configured in .env)
+BACKEND_PORT=3001
 
 # Start frontend in background
 echo "🎨 Starting frontend server..."

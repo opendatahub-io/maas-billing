@@ -47,6 +47,7 @@ import TokenManagement from './components/TokenManagement';
 import AuthCallback from './components/AuthCallback';
 import QoSMonitor from './components/QoSMonitor';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { ExperimentalProvider } from './contexts/ExperimentalContext';
 import apiService from './services/api';
 
 const drawerWidth = 240;
@@ -65,7 +66,7 @@ function MainApp() {
     connected: false,
     user: null,
     cluster: null,
-    loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
+    loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.your-cluster.example.com'
   });
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
@@ -83,7 +84,7 @@ function MainApp() {
     
     // Redirect to OpenShift OAuth login for fresh CLI session
     const returnUrl = encodeURIComponent(window.location.origin);
-    const oauthBaseUrl = process.env.REACT_APP_OAUTH_URL || 'https://oauth-openshift.apps.summit-gpu.octo-emerging.redhataicoe.com';
+    const oauthBaseUrl = process.env.REACT_APP_OAUTH_URL || 'https://oauth-openshift.your-cluster.example.com';
     const loginUrl = `${oauthBaseUrl}/oauth/token/request?then=${returnUrl}`;
     
     console.log('🔐 Logging out and redirecting to OpenShift OAuth login...');
@@ -137,7 +138,7 @@ function MainApp() {
           connected: false,
           user: null,
           cluster: null,
-          loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.apps.summit-gpu.octo-emerging.redhataicoe.com'
+          loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.your-cluster.example.com'
         });
         setShowLoginDialog(true);
       }
@@ -381,7 +382,9 @@ function MainApp() {
           }}
         >
           <Toolbar />
-          {renderContent()}
+          <ExperimentalProvider experimentalMode={experimentalMode}>
+            {renderContent()}
+          </ExperimentalProvider>
         </Box>
       </Box>
 
@@ -412,14 +415,14 @@ function MainApp() {
           
           <TextField
             fullWidth
-            value={`oc login --web --server=${process.env.REACT_APP_CLUSTER_API_URL || 'https://api.summit-gpu.octo-emerging.redhataicoe.com:6443'}`}
+            value={`oc login --web --server=${process.env.REACT_APP_CLUSTER_API_URL || 'https://api.your-cluster.example.com:6443'}`}
             InputProps={{ 
               readOnly: true,
               endAdornment: (
                 <Button 
                   size="small" 
                   startIcon={<CopyIcon />}
-                  onClick={() => copyToClipboard(`oc login --web --server=${process.env.REACT_APP_CLUSTER_API_URL || 'https://api.summit-gpu.octo-emerging.redhataicoe.com:6443'}`)}
+                  onClick={() => copyToClipboard(`oc login --web --server=${process.env.REACT_APP_CLUSTER_API_URL || 'https://api.your-cluster.example.com:6443'}`)}
                 >
                   Copy
                 </Button>

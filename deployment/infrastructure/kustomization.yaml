@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 metadata:
-  name: maas-core-infrastructure
+  name: maas-infrastructure
 
 # Deploy components in order
 resources:
@@ -11,4 +11,5 @@ resources:
 - kustomize-templates/kserve
 - kustomize-templates/kuadrant
 - kustomize-templates/maas-api
+- kustomize-templates/grafana # Requires Grafana operator to be pre-installed
 - kustomize-templates/gateway
