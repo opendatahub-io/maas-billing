@@ -8,6 +8,12 @@ on:
 
 jobs:
   validate-manifests:
+    name: Validate Kustomize manifests
+    timeout-minutes: 10
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-validate-manifests
+      cancel-in-progress: true
+
     runs-on: ubuntu-latest
     
     steps:
@@ -15,7 +21,8 @@ jobs:
 
     - name: Install kustomize
       run: |
-        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s 5.7.1
+        set -euo pipefail
+        curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s -- 5.7.1
         sudo mv kustomize /usr/local/bin/
 
     - name: Validate Kustomize manifests
