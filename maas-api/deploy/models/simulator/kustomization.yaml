@@ -7,7 +7,6 @@ metadata:
 namespace: llm
 
 resources:
-# As it's a symlink, you need to run kustomize with --load-restrictor LoadRestrictionsNone flag
-- vllm-simulator.yaml
+- simulated-model.yaml
 - rbac.yaml
-- httproute.yaml
+

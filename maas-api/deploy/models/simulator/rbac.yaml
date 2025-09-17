@@ -6,7 +6,7 @@ metadata:
   namespace: llm
 rules:
   - apiGroups: ["serving.kserve.io"]
-    resources: ["inferenceservices"]
+    resources: ["llminferenceservices"]
     verbs: ["post"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
