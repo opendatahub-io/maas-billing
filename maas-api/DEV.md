@@ -28,13 +28,32 @@ kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/model
 > `vllm-simulator.yaml` in `deploy/overlays/dev/models/simulator` is a symlink, therefore, it needs to be built with --load-restrictor LoadRestrictionsNone.
 > For more details see this [issue](https://github.com/kubernetes-sigs/kustomize/issues/4420).
 
-Next, we need to patch Kuadrant to make it aware of the OCP gateway controller. See the [list of known issues](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html/release_notes_for_connectivity_link_1.1/prodname-relnotes_rhcl#connectivity_link_known_issues) for more details.
+#### Patch Kuadrant deployment
+
+If you installed Kuadrant using Helm chats (i.e. by calling `./install-dependencies.sh --kuadrant` like in the example above), you need to patch the Kuadrant deployment to add the correct environment variable.
 
 ```shell
 kubectl -n kuadrant-system patch deployment kuadrant-operator-controller-manager \
   --type='json' \
   -p='[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"ISTIO_GATEWAY_CONTROLLER_NAMES","value":"openshift.io/gateway-controller/v1"}}]'
 ```
+
+If you installed Kuadrant using OLM, you have to patch `ClusterServiceVersion` instead, to add the correct environment variable.
+
+```shell
+kubectl patch csv kuadrant-operator.v0.0.0 -n kuadrant-system --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/-",
+    "value": {
+      "name": "ISTIO_GATEWAY_CONTROLLER_NAMES",
+      "value": "openshift.io/gateway-controller/v1"
+    }
+  }
+]'
+```
+
+#####
 #### Update KServe configmap with the actual ingress domain
 
 ```shell
