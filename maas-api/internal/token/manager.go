@@ -126,8 +126,11 @@ func (m *Manager) getUserTier(ctx context.Context, user *UserContext) (string, e
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
 // It takes a tier name, formats it as {instance}-tier-{tier}, and returns the namespace name.
-func (m *Manager) ensureTierNamespace(ctx context.Context, userTier string) (string, error) {
-	namespace := m.tierMapper.Namespaces(ctx)[userTier]
+func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string, error) {
+	namespace := m.tierMapper.Namespaces(ctx)[tier]
+	if namespace == "" {
+		return "", fmt.Errorf("no namespace mapping found for tier %q", tier)
+	}
 
 	_, err := m.namespaceLister.Get(namespace)
 	if err == nil {
@@ -141,7 +144,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, userTier string) (str
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   namespace,
-			Labels: commonLabels(m.tenantName, userTier),
+			Labels: commonLabels(m.tenantName, tier),
 		},
 	}
 
