@@ -40,38 +40,42 @@ func NewManager(
 	}
 }
 
-// GenerateSAToken creates a Service Account token in the namespace bound to the tier the user belong to
-func (m *Manager) GenerateSAToken(ctx context.Context, user *UserContext, ttl time.Duration) string {
+// GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to
+func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration) (*Token, error) {
 
 	userTier, err := m.getUserTier(ctx, user)
 	if err != nil {
-		log.Printf("Failed to determine user userTier for %s: %v", user.Username, err)
-		return ""
+		log.Printf("Failed to determine user tier for %s: %v", user.Username, err)
+		return nil, fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
 	namespace, errNs := m.ensureTierNamespace(ctx, userTier)
 	if errNs != nil {
-		log.Printf("Failed to ensure tier namespace for userTier %s: %v", userTier, err)
-		return ""
+		log.Printf("Failed to ensure tier namespace for user %s: %v", userTier, err)
+		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier, err)
 	}
 
 	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, "")
 	if errSA != nil {
 		log.Printf("Failed to ensure service account for user %s in namespace %s: %v", user.Username, namespace, err)
-		return ""
+		return nil, fmt.Errorf("failed to ensure service account for user %s in namespace %s: %w", user.Username, namespace, err)
 	}
 
-	token, errToken := m.createServiceAccountToken(ctx, namespace, saName, int(ttl.Seconds()))
+	token, errToken := m.createServiceAccountToken(ctx, namespace, saName, int(expiration.Seconds()))
 	if errToken != nil {
 		log.Printf("Failed to create token for service account %s in namespace %s: %v", saName, namespace, err)
-		return ""
+		return nil, fmt.Errorf("failed to create token for service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	return token
+	return &Token{
+		Token:      token.Status.Token,
+		Expiration: Duration{expiration},
+		ExpiresAt:  token.Status.ExpirationTimestamp.Unix(),
+	}, nil
 }
 
-// RevokeUserTokens revokes all tokens for a user by recreating their Service Account
-func (m *Manager) RevokeUserTokens(ctx context.Context, user *UserContext) error {
+// RevokeTokens revokes all tokens for a user by recreating their Service Account
+func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	userTier, err := m.getUserTier(ctx, user)
 	if err != nil {
 		return fmt.Errorf("failed to determine user userTier for %s: %w", user.Username, err)
@@ -187,7 +191,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 }
 
 // createServiceAccountToken creates a token for the service account using TokenRequest
-func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saName string, ttl int) (string, error) {
+func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saName string, ttl int) (*authv1.TokenRequest, error) {
 	expirationSeconds := int64(ttl)
 
 	tokenRequest := &authv1.TokenRequest{
@@ -200,10 +204,10 @@ func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saNa
 	result, err := m.clientset.CoreV1().ServiceAccounts(namespace).CreateToken(
 		ctx, saName, tokenRequest, metav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("failed to create token for service account %s: %w", saName, err)
+		return nil, fmt.Errorf("failed to create token for service account %s: %w", saName, err)
 	}
 
-	return result.Status.Token, nil
+	return result, nil
 }
 
 // deleteServiceAccount deletes a service account

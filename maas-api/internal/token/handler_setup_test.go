@@ -50,7 +50,7 @@ func stubTokenReview(clientset *fake.Clientset, scenarios map[string]tokenReview
 	})
 }
 
-func createTestComponents(t *testing.T, withTierConfig bool, tokenScenarios map[string]tokenReviewScenario) (*token.Manager, *token.Reviewer, *fake.Clientset) {
+func createTestComponents(_ *testing.T, withTierConfig bool, tokenScenarios map[string]tokenReviewScenario) (*token.Manager, *token.Reviewer, *fake.Clientset) {
 	var objects []runtime.Object
 
 	if withTierConfig {

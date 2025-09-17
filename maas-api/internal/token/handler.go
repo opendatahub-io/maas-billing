@@ -1,18 +1,12 @@
 package token
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-)
-
-const (
-	defaultTTL       = "4h"
-	validDurationMsg = "Valid time units are \"ns\", \"us\" (or \"µs\"), \"ms\", \"s\", \"m\", \"h\"."
 )
 
 type Handler struct {
@@ -72,8 +66,8 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
-	if req.TTL == "" || req.TTL == "0" {
-		req.TTL = defaultTTL
+	if req.Expiration == nil {
+		req.Expiration = &Duration{time.Hour * 4}
 	}
 
 	userCtx, exists := c.Get("user")
@@ -84,18 +78,18 @@ func (g *Handler) IssueToken(c *gin.Context) {
 
 	user := userCtx.(*UserContext)
 
-	duration, err := time.ParseDuration(req.TTL)
+	expiration := req.Expiration.Duration
+	if expiration.Abs() != expiration {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expiration format, must be positive", "expiration": req.Expiration})
+		return
+	}
+
+	token, err := g.manager.GenerateToken(c.Request.Context(), user, expiration)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid TTL format: %v. %s", err, validDurationMsg), "ttl": req.TTL})
+		log.Printf("Failed to generate token: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
-
-	if duration.Abs() != duration {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid TTL format, must be positive", "ttl": req.TTL})
-		return
-	}
-
-	token := g.manager.GenerateSAToken(c.Request.Context(), user, duration)
 
 	response := Response{
 		Token: token,
@@ -113,7 +107,7 @@ func (g *Handler) RevokeAllTokens(c *gin.Context) {
 	}
 
 	user := userCtx.(*UserContext)
-	err := g.manager.RevokeUserTokens(c.Request.Context(), user)
+	err := g.manager.RevokeTokens(c.Request.Context(), user)
 	if err != nil {
 		log.Printf("Failed to revoke tokens for user %s: %v", user.Username, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke tokens"})

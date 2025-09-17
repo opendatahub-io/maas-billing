@@ -3,12 +3,12 @@ package token_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 	authv1 "k8s.io/api/authentication/v1"
 )
 
@@ -17,7 +17,7 @@ const (
 	testTenant    = "test-tenant"
 )
 
-func TestIssueToken_TTLDurationScenarios(t *testing.T) {
+func TestIssueToken_ExpirationFormats(t *testing.T) {
 	tokenScenarios := map[string]tokenReviewScenario{
 		"duration-test-token": {
 			Authenticated: true,
@@ -30,95 +30,109 @@ func TestIssueToken_TTLDurationScenarios(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		ttl             string
-		expectedStatus  int
-		shouldHaveToken bool
-		description     string
+		name                   string
+		expiration             string
+		expirationInRawSeconds bool
+		expectedStatus         int
+		expectedError          string
+		shouldHaveToken        bool
+		description            string
 	}{
 		// Valid durations
 		{
 			name:            "seconds format",
-			ttl:             "30s",
+			expiration:      "30s",
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Standard seconds format should work",
 		},
 		{
 			name:            "minutes format",
-			ttl:             "15m",
+			expiration:      "15m",
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Standard minutes format should work",
 		},
 		{
 			name:            "hours format",
-			ttl:             "2h",
+			expiration:      "2h",
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Standard hours format should work",
 		},
 		{
 			name:            "complex duration",
-			ttl:             "1h30m45s",
+			expiration:      "1h30m45s",
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Complex multi-unit duration should work",
 		},
 		{
 			name:            "default TTL (empty)",
-			ttl:             "",
+			expiration:      "",
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Empty TTL should default to 4h",
 		},
 		{
 			name:            "zero TTL",
-			ttl:             "0",
+			expiration:      "0",
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Zero TTL should default to 4h",
 		},
+		{
+			name:                   "1 minute TTL",
+			expiration:             "60",
+			expirationInRawSeconds: true,
+			expectedStatus:         http.StatusCreated,
+			shouldHaveToken:        true,
+			description:            "Numbers should be treated as seconds",
+		},
 		// Invalid durations
 		{
 			name:            "negative duration",
-			ttl:             "-30h",
+			expiration:      "-30h",
 			expectedStatus:  http.StatusBadRequest,
+			expectedError:   "Invalid expiration format, must be positive",
 			shouldHaveToken: false,
 			description:     "Negative duration should be rejected",
 		},
 		{
 			name:            "invalid unit",
-			ttl:             "30x",
+			expiration:      "30x",
 			expectedStatus:  http.StatusBadRequest,
 			shouldHaveToken: false,
 			description:     "Invalid time unit should be rejected",
 		},
 		{
 			name:            "no unit",
-			ttl:             "30",
+			expiration:      "30",
 			expectedStatus:  http.StatusBadRequest,
+			expectedError:   "time: missing unit in duration \"30\"",
 			shouldHaveToken: false,
 			description:     "Number without unit should be rejected",
 		},
 		{
 			name:            "invalid format",
-			ttl:             "abc",
+			expiration:      "abc",
 			expectedStatus:  http.StatusBadRequest,
+			expectedError:   "time: invalid duration \"abc\"",
 			shouldHaveToken: false,
 			description:     "Non-numeric format should be rejected",
 		},
 		{
 			name:            "spaces in duration",
-			ttl:             "1 h",
+			expiration:      "1 h",
 			expectedStatus:  http.StatusBadRequest,
 			shouldHaveToken: false,
 			description:     "Spaces in duration should be rejected",
 		},
 		{
 			name:            "decimal without unit",
-			ttl:             "1.5",
+			expiration:      "1.5",
 			expectedStatus:  http.StatusBadRequest,
+			expectedError:   "time: missing unit in duration \"1.5\"",
 			shouldHaveToken: false,
 			description:     "Decimal without unit should be rejected",
 		},
@@ -129,11 +143,18 @@ func TestIssueToken_TTLDurationScenarios(t *testing.T) {
 			manager, reviewer, _ := createTestComponents(t, true, tokenScenarios)
 			router := setupTestRouter(manager, reviewer)
 
-			req := token.Request{TTL: tt.ttl}
-			jsonBody, _ := json.Marshal(req)
-
 			w := httptest.NewRecorder()
-			request, _ := http.NewRequest("POST", "/v1/tokens", bytes.NewBuffer(jsonBody))
+
+			expiration := tt.expiration
+			if !tt.expirationInRawSeconds {
+				expiration = fmt.Sprintf("\"%s\"", expiration)
+			}
+			jsonPayload := fmt.Sprintf(`
+{
+			"expiration": %s
+}`, expiration)
+
+			request, _ := http.NewRequest("POST", "/v1/tokens", bytes.NewBuffer([]byte(jsonPayload)))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer duration-test-token")
 			router.ServeHTTP(w, request)
@@ -154,10 +175,10 @@ func TestIssueToken_TTLDurationScenarios(t *testing.T) {
 				}
 			} else {
 				if response["error"] == nil {
-					t.Errorf("expected error for invalid TTL. Description: %s", tt.description)
+					t.Errorf("expected error for invalid Expiration. Description: %s", tt.description)
 				}
-				if !strings.Contains(response["error"].(string), "Invalid TTL format") {
-					t.Errorf("expected TTL format error, got '%v'. Description: %s", response["error"], tt.description)
+				if !strings.Contains(response["error"].(string), tt.expectedError) {
+					t.Errorf("expected error message: '%s'; got: '%v'\n", tt.expectedError, response["error"])
 				}
 			}
 		})
