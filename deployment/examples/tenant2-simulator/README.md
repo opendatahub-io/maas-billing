@@ -1,7 +1,9 @@
-# Tenant example: `llm-tenant2` — simulator model + tenant Gateway + API-key auth + rate limits
+# Tenant onboarding example — connect an existing model/serving runtime to the MaaS Gateway (API-key auth + rate limits)
 
-This example shows how to stand up a **second tenant** (`llm-tenant2`) on a cluster that already
-has the shared MaaS platform bits installed (**Istio/Gateway API, cert-manager, KServe, Kuadrant**).
+This walkthrough shows how to hook up an **existing** model/serving runtime (e.g., KServe) in a tenant namespace to the centralized MaaS platform: attach a tenant host to the **shared Gateway** via an `HTTPRoute`, then apply **AuthPolicy** and **TokenRateLimitPolicy**.
+
+> [!NOTE]
+> This flow will be automated in future releases based on annotations. The manual steps below are kept for clarity and troubleshooting.
 
 ## What’s shared (cluster-wide)
 - Istio (and `GatewayClass istio`)
@@ -12,26 +14,39 @@ has the shared MaaS platform bits installed (**Istio/Gateway API, cert-manager, 
 
 > These are installed once and reused by all tenants. You don’t reinstall them here.
 
-## What this example creates (tenant-owned)
-- Namespace `llm-tenant2`
-- A tiny **simulator** model via KServe (custom container)
-- A **Gateway + HTTPRoute** scoped to the tenant
-- A public **OpenShift Route** pointing to the tenant gateway service
-- **API-key** Secrets for `free` and `premium` users
+> **Prerequisite – existing Serving Runtime**
+> A model/serving runtime (e.g., KServe) is already running in `${TENANT_NS}` and exposes a
+> Service `${BACKEND_SVC}` (Service port 80). This example only wires that Service to the
+> shared MaaS Gateway and applies Auth/RateLimit policies.
 
-> AuthN / rate-limit **policies** are attached at the tenant Gateway. We reuse the repo’s policy
-manifests by retargeting them to `llm-tenant2` (see Step 4).
+## What this example creates (tenant-owned)
+- Namespace `${TENANT_NS}` (created if needed)
+- An **HTTPRoute** in `${TENANT_NS}` that attaches host `${HOST}` to the **shared Gateway**
+  `${GATEWAY_NAME}` in `${GATEWAY_NS}` and routes to `${BACKEND_SVC}`
+- A public **OpenShift Route** (`simulator-route`) in `${GATEWAY_NS}` publishing the shared gateway
+
+
+> **Policies**
+> AuthN and rate-limit policies are attached to the **shared Gateway** `${GATEWAY_NAME}` in
+> `${GATEWAY_NS}`. In **Step 3** we render the repo’s Kuadrant resources and retarget them to
+> that Gateway (namespace/name), then `oc apply -f -`.
 
 ---
 
 ## Step 0: Set environment variables (once per terminal)
 ```bash
+export GATEWAY_NS=${GATEWAY_NS:=llm-tenant}
+export GATEWAY_NAME=${GATEWAY_NAME:=inference-gateway}
 export TENANT_NS=${TENANT_NS:=llm-tenant2}
 export CLUSTER_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
 export HOST="simulator-${TENANT_NS}.${CLUSTER_DOMAIN}"
+export BACKEND_SVC=${BACKEND_SVC:=vllm-simulator-predictor}
 
 echo "TENANT_NS=$TENANT_NS"
 echo "HOST=$HOST"
+echo "GATEWAY_NS=$GATEWAY_NS"
+echo "GATEWAY_NAME=$GATEWAY_NAME"
+echo "BACKEND_SVC=$BACKEND_SVC"
 ```
 
 ## Step 1: Apply tenant resources (no envsubst; use sed on the fly)
@@ -41,60 +56,60 @@ cd deployment/examples/tenant2-simulator
 # Create the namespace
 oc create ns "$TENANT_NS" || true
 
-# App: tiny simulator (ConfigMap + KServe InferenceService)
-oc -n "$TENANT_NS" apply -f 1-sim-app-configmap.yaml
-oc -n "$TENANT_NS" apply -f 2-simulator-isvc.yaml
+# HTTPRoute: attach tenant host to the shared Gateway and route to an existing Service
+sed -e "s|\${HOST}|$HOST|g" \
+    -e "s|\${GATEWAY_NS}|$GATEWAY_NS|g" \
+    -e "s|\${GATEWAY_NAME}|$GATEWAY_NAME|g" \
+    -e "s|\${BACKEND_SVC}|$BACKEND_SVC|g" \
+    4-httproute.yaml | oc -n "$TENANT_NS" apply -f -
 
-# Tenant Gateway + HTTPRoute (replace ${HOST} while applying)
-sed -e "s|\${HOST}|$HOST|g" 3-gateway.yaml   | oc -n "$TENANT_NS" apply -f -
-sed -e "s|\${HOST}|$HOST|g" 4-httproute.yaml | oc -n "$TENANT_NS" apply -f -
-
-# Public exposure via OpenShift Route
-sed -e "s|\${HOST}|$HOST|g" 5-route.yaml     | oc -n "$TENANT_NS" apply -f -
+# Public exposure via OpenShift Route (apply in GATEWAY_NS)
+sed -e "s|\${HOST}|$HOST|g" 5-route.yaml | oc -n "$GATEWAY_NS" apply -f -
+```
+## Step 2: Check what got created
+```bash
+oc -n "$TENANT_NS"  get httproute simulator-domain-route -o wide
+oc -n "$GATEWAY_NS" get route      simulator-route       -o wide
+oc -n "$TENANT_NS"  get svc        "$BACKEND_SVC"        -o wide
 ```
 
-## Step 2: (Optional) Create sample API keys
+## Step 3: Attach AuthPolicy + TokenRateLimitPolicy (retargeted)
 ```bash
-oc -n "$TENANT_NS" apply -f 6-sample-keys.yaml
-```
-
-## Step 3: Check what got created
-```bash
-oc -n "$TENANT_NS" get pods,svc,isvc,gateway,httproute,route
-```
-
-## Step 4: Attach AuthPolicy + TokenRateLimitPolicy (retargeted)
-```bash
-# from repo root (where `deployment/` exists)
-cd ../../..
-
-TENANT_NS=${TENANT_NS:=llm-tenant2}
-GW_NAME=inference-gateway
+cd "$(git rev-parse --show-toplevel)"
 
 kustomize build deployment/overlays/openshift | yq '
   select(
     (.kind == "AuthPolicy" and .spec.targetRef.kind == "Gateway") or
     (.kind == "TokenRateLimitPolicy")
   )
-  | .metadata.namespace       = strenv(TENANT_NS)
-  | .spec.targetRef.namespace = strenv(TENANT_NS)
-  | .spec.targetRef.name      = strenv(GW_NAME)
+  | .metadata.namespace       = env(GATEWAY_NS)
+  | .spec.targetRef.namespace = env(GATEWAY_NS)
+  | .spec.targetRef.name      = env(GATEWAY_NAME)
 ' | oc apply -f -
 
-oc -n "$TENANT_NS" get authpolicy -o wide
-oc -n "$TENANT_NS" get tokenratelimitpolicy -o wide
+oc -n "$GATEWAY_NS" get authpolicy -o wide
+oc -n "$GATEWAY_NS" get tokenratelimitpolicy -o wide
+
 ```
 
-## Step 5: Call with API keys
+## Step 4: Call with API keys
 ```bash
-SIM_URL=$(oc -n "$TENANT_NS" get route simulator-route -o jsonpath='{.spec.host}')
-FREE=$(oc -n "$TENANT_NS" get secret freeuser1-apikey -o jsonpath='{.data.api_key}' | base64 -d)
+SIM_HOST=$(oc -n "$GATEWAY_NS" get route simulator-route -o jsonpath='{.spec.host}')
+
+# Tip: if you're not sure of the secret name, list available API-key secrets on the shared gateway:
+# oc -n "$GATEWAY_NS" get secret -l 'kuadrant.io/auth-secret=true' -o name
+# (Optional) auto-pick the first one:
+# KEY=$(oc -n "$GATEWAY_NS" get secret -l 'kuadrant.io/auth-secret=true' -o jsonpath='{.items[0].metadata.name}')
+# FREE=$(oc -n "$GATEWAY_NS" get secret "$KEY" -o jsonpath='{.data.api_key}' | base64 -d)
+
+# If you know the secret name:
+FREE=$(oc -n "$GATEWAY_NS" get secret freeuser1-apikey -o jsonpath='{.data.api_key}' | base64 -d)
 
 curl -i \
   -H "Authorization: APIKEY ${FREE}" \
   -H "Content-Type: application/json" \
   --data '{"model":"simulator-model","messages":[{"role":"user","content":"Hello!"}]}' \
-  "http://${SIM_URL}/v1/chat/completions"
+  "http://${SIM_HOST}/v1/chat/completions"
 
 # Burst to see rate limit (expect some 429 on free tier)
 for i in {1..15}; do
@@ -102,17 +117,18 @@ for i in {1..15}; do
     -H "Authorization: APIKEY ${FREE}" \
     -H "Content-Type: application/json" \
     --data '{"model":"simulator-model","messages":[{"role":"user","content":"Hello"}],"max_tokens":10}' \
-    "http://${SIM_URL}/v1/chat/completions"); echo "req #$i -> $code"
+    "http://${SIM_HOST}/v1/chat/completions"); echo "req #$i -> $code"
 done
 ```
 
-## Step 6: Clean up
+## Step 5: Clean up
 ```bash
-oc -n "$TENANT_NS" delete route simulator-route || true
+# Route lives in the shared gateway namespace
+oc -n "$GATEWAY_NS" delete route simulator-route || true
+
+# HTTPRoute lives in the tenant namespace
 oc -n "$TENANT_NS" delete httproute simulator-domain-route || true
-oc -n "$TENANT_NS" delete gateway inference-gateway || true
-oc -n "$TENANT_NS" delete isvc vllm-simulator || true
-oc -n "$TENANT_NS" delete cm sim-app || true
-oc -n "$TENANT_NS" delete secret freeuser1-apikey freeuser2-apikey premiumuser1-apikey premiumuser2-apikey || true
+
+# No tenant secrets/gateway to delete
 oc delete ns "$TENANT_NS" || true
 ```
