@@ -12,13 +12,13 @@ type UserContext struct {
 	Username        string   `json:"username"`
 	UID             string   `json:"uid"`
 	Groups          []string `json:"groups"`
-	IsAuthenticated bool     `json:"is_authenticated"`
+	IsAuthenticated bool     `json:"isAuthenticated"`
 }
 
 type Token struct {
 	Token      string   `json:"token"`
 	Expiration Duration `json:"expiration"`
-	ExpiresAt  int64    `json:"expires_at"`
+	ExpiresAt  int64    `json:"expiresAt"`
 }
 
 type Duration struct {
