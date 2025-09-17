@@ -1,15 +1,16 @@
-name: Build Test
+name: Build
 
 on:
   pull_request:
     paths:
       - 'deployment/**'
+      - 'maas-api/deploy/**'
   push:
     branches:
       - main
 
 jobs:
-  build-test:
+  validate-manifests:
     runs-on: ubuntu-latest
     
     steps:
@@ -17,10 +18,9 @@ jobs:
 
     - name: Install kustomize
       run: |
-        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s 5.7.1
         sudo mv kustomize /usr/local/bin/
 
-    - name: Run build tests
+    - name: Validate Kustomize manifests
       run: |
-        cd deployment/scripts
-        ./tests/test-builds.sh
+        ./scripts/validate-manifests.sh
