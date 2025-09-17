@@ -17,7 +17,7 @@ spec:
         - predicate: |
             auth.identity.tier == "free"
       counters:
-        - expression: auth.identity.user_id
+        - expression: auth.identity.userid
     premium:
       rates:
         - limit: 20
@@ -26,7 +26,7 @@ spec:
         - predicate: |
             auth.identity.tier == "premium"
       counters:
-        - expression: auth.identity.user_id
+        - expression: auth.identity.userid
     enterprise:
       rates:
         - limit: 50
@@ -35,4 +35,4 @@ spec:
         - predicate: |
             auth.identity.tiers == "enterprise"
       counters:
-        - expression: auth.identity.user_id
+        - expression: auth.identity.userid

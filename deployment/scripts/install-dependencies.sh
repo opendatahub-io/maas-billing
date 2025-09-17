@@ -108,8 +108,7 @@ install_component() {
         echo "⏳ Waiting for operators to be ready..."
         kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n "$NAMESPACE" --timeout=300s
         kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n "$NAMESPACE" --timeout=300s
-        kubectl wait --for=condition=Available deployment/authorino-operator-controller-manager -n "$NAMESPACE" --timeout=300s || \
-          kubectl wait --for=condition=Available deployment/authorino-operator -n "$NAMESPACE" --timeout=60s || true
+        kubectl wait --for=condition=Available deployment/authorino-operator -n "$NAMESPACE" --timeout=300s
 
         echo "✅ Successfully installed kuadrant"
         echo ""

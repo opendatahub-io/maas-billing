@@ -8,7 +8,7 @@ resources:
 - ../../base/
 - ./infra/
 - ./resources/tier-mapping-configmap.yaml
-- ./policies
+- ../../policies
 
 namespace: maas-api
 
