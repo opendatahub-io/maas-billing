@@ -61,7 +61,7 @@ func (m *Mapper) Namespaces(ctx context.Context) map[string]string {
 // GetTierForGroups returns the highest level tier for a user with multiple group memberships.
 //
 // Returns error if no groups provided or no groups found in any tier.
-// Returns "free" as default if ConfigMap is missing (fallback).
+// Returns "free" as default if mapping is missing (fallback).
 func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string, error) {
 	if len(groups) == 0 {
 		return "", fmt.Errorf("no groups provided")
@@ -70,7 +70,7 @@ func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string
 	tiers, err := m.loadTierConfig(ctx)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Printf("ConfigMap %s not found, defaulting to 'free' tier", MappingConfigMap)
+			log.Printf("tier mapping %s not found, defaulting to 'free' tier", MappingConfigMap)
 			return "free", nil
 		}
 		log.Printf("Failed to load tier configuration from ConfigMap %s: %v", MappingConfigMap, err)

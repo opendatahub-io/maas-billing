@@ -46,7 +46,7 @@ func NewManager(
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration) (*Token, error) {
 
-	userTier, err := m.getUserTier(ctx, user)
+	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
 		log.Printf("Failed to determine user tier for %s: %v", user.Username, err)
 		return nil, fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
@@ -79,9 +79,9 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
-	userTier, err := m.getUserTier(ctx, user)
+	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
-		return fmt.Errorf("failed to determine user userTier for %s: %w", user.Username, err)
+		return fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
 	namespace := m.tierMapper.Namespaces(ctx)[userTier]
@@ -109,19 +109,6 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	}
 
 	return nil
-}
-
-// getUserTier determines which tier a user belongs to based on their groups
-func (m *Manager) getUserTier(ctx context.Context, user *UserContext) (string, error) {
-	for _, group := range user.Groups {
-		t, err := m.tierMapper.GetTierForGroups(ctx, group)
-		if err == nil {
-			return t, nil
-		}
-	}
-
-	log.Printf("No tier found for user %s with groups %v, defaulting to 'free'", user.Username, user.Groups)
-	return "free", nil
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
