@@ -50,13 +50,16 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 			return err
 		}
 		*d = Duration{dur}
-		return nil
 	case float64:
 		// JSON numbers are unmarshaled as float64.
 		*d = Duration{time.Duration(value * float64(time.Second))}
-		return nil
 	default:
 		return fmt.Errorf("json: cannot unmarshal %T into Go value of type Duration", value)
 	}
 
+	if d.Duration < 10*time.Minute {
+		return fmt.Errorf("token expiration must be at least 10 minutes")
+	}
+
+	return nil
 }

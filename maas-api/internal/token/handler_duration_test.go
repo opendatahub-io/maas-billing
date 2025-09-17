@@ -41,7 +41,7 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 		// Valid durations
 		{
 			name:            "seconds format",
-			expiration:      "30s",
+			expiration:      "601s", // Minimal expiration is 10 minutes.
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Standard seconds format should work",
@@ -88,15 +88,16 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			shouldHaveToken: true,
 			description:     "Zero expiration should default to 4h",
 		},
+		// Invalid durations
 		{
 			name:                   "1 minute expiration",
 			expiration:             "60",
 			expirationInRawSeconds: true,
-			expectedStatus:         http.StatusCreated,
-			shouldHaveToken:        true,
-			description:            "Numbers should be treated as seconds",
+			expectedStatus:         http.StatusBadRequest,
+			expectedError:          "token expiration must be at least 10 minutes",
+			shouldHaveToken:        false,
+			description:            "Minimal expiration is 10 minutes.",
 		},
-		// Invalid durations
 		{
 			name:            "negative duration",
 			expiration:      "-30h",

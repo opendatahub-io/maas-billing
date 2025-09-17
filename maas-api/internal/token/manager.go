@@ -2,8 +2,11 @@ package token
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -168,13 +171,14 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 		return "", fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	labels := commonLabels(m.tenantName, userTier)
-	labels["maas.opendatahub.io/username"] = username
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      saName,
 			Namespace: namespace,
-			Labels:    labels,
+			Labels:    commonLabels(m.tenantName, userTier),
+			Annotations: map[string]string{
+				"maas.opendatahub.io/username": username,
+			},
 		},
 	}
 
@@ -228,20 +232,35 @@ func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName st
 // While ideally usernames should be pre-validated, Kubernetes TokenReview can return usernames
 // in various formats (OIDC emails, LDAP DNs, etc.) that need sanitization for use as SA names.
 func (m *Manager) sanitizeServiceAccountName(username string) string {
-	// Kubernetes service account names must be valid DNS subdomain names
+	// Kubernetes ServiceAccount names must be valid DNS-1123 labels:
+	// [a-z0-9-], 1-63 chars, start/end alphanumeric.
 	name := strings.ToLower(username)
-	name = strings.ReplaceAll(name, "@", "-at-")
-	name = strings.ReplaceAll(name, ".", "-")
-	name = strings.ReplaceAll(name, "_", "-")
 
+	// Replace any invalid runes with '-'
+	reInvalid := regexp.MustCompile(`[^a-z0-9-]+`)
+	name = reInvalid.ReplaceAllString(name, "-")
+
+	// Collapse consecutive dashes
+	reDash := regexp.MustCompile(`-+`)
+	name = reDash.ReplaceAllString(name, "-")
 	name = strings.Trim(name, "-")
-
-	if len(name) > 63 {
-		name = name[:63]
-		name = strings.TrimSuffix(name, "-")
+	if name == "" {
+		name = "user"
 	}
 
-	return name
+	// Append a stable short hash to reduce collisions
+	sum := sha1.Sum([]byte(username))
+	suffix := hex.EncodeToString(sum[:])[:8]
+
+	// Ensure total length <= 63 including hyphen and suffix
+	const maxLen = 63
+	baseMax := maxLen - 1 - len(suffix)
+	if len(name) > baseMax {
+		name = name[:baseMax]
+		name = strings.Trim(name, "-")
+	}
+
+	return name + "-" + suffix
 }
 
 func commonLabels(name string, t string) map[string]string {
