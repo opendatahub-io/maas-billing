@@ -53,7 +53,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		return nil
 	case float64:
 		// JSON numbers are unmarshaled as float64.
-		*d = Duration{time.Duration(value)}
+		*d = Duration{time.Duration(value * float64(time.Second))}
 		return nil
 	default:
 		return fmt.Errorf("json: cannot unmarshal %T into Go value of type Duration", value)
