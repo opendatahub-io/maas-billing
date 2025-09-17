@@ -88,6 +88,14 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			shouldHaveToken: true,
 			description:     "Zero expiration should default to 4h",
 		},
+		{
+			name:                   "zero expiration in raw seconds",
+			expiration:             "0",
+			expirationInRawSeconds: true,
+			expectedStatus:         http.StatusCreated,
+			shouldHaveToken:        true,
+			description:            "Zero expiration should default to 4h",
+		},
 		// Invalid durations
 		{
 			name:                   "1 minute expiration",

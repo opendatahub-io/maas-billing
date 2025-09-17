@@ -40,7 +40,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	switch value := v.(type) {
 	case string:
 		if value == "" || value == "0" {
-			return nil
+			return nil // Let the caller handle defaulting
 		}
 		if !allowedUnits.MatchString(value) {
 			return fmt.Errorf("invalid duration %q: must be a positive number ending in s, m, or h (e.g. \"10s\", \"5m\", \"2h\")", value)
@@ -51,6 +51,9 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		}
 		*d = Duration{dur}
 	case float64:
+		if value == 0 {
+			return nil // Let the caller handle defaulting
+		}
 		// JSON numbers are unmarshaled as float64.
 		*d = Duration{time.Duration(value * float64(time.Second))}
 	default:
