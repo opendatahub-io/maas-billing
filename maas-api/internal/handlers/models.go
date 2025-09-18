@@ -5,9 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/pagination"
-
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
 )
 
@@ -32,13 +30,13 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 		return
 	}
 
-	response := models.ModelsResponse{
-		Models: modelList,
-	}
-
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, pagination.Page[models.Model]{
+		Object: "list",
+		Data:   modelList,
+	})
 }
 
+// ListLLMs handles GET /v1/models
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 	modelList, err := h.modelMgr.ListAvailableLLMs(c.Request.Context())
 	if err != nil {
@@ -51,9 +49,8 @@ func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 		return
 	}
 
-	var response pagination.Page[openai.Model]
-	response.Object = "list"
-	response.Data = modelList
-
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, pagination.Page[models.Model]{
+		Object: "list",
+		Data:   modelList,
+	})
 }

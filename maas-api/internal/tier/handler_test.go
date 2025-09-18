@@ -7,38 +7,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
-func setupTestRouter(mapper *tier.Mapper) *gin.Engine {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-
-	handler := tier.NewHandler(mapper)
-	router.POST("/tiers/lookup", handler.TierLookup)
-
-	return router
-}
-
+// createTestMapper wraps the unified fixtures function for backward compatibility
 func createTestMapper(withConfigMap bool) *tier.Mapper {
-	var objects []runtime.Object
-
-	if withConfigMap {
-		configMap := fixtures.CreateTierConfigMap(testNamespace)
-		objects = append(objects, configMap)
-	}
-
-	clientset := fake.NewSimpleClientset(objects...)
-	return tier.NewMapper(clientset, testTenant, testNamespace)
+	return fixtures.CreateTestMapper(withConfigMap)
 }
 
 func TestHandler_PostTierLookup_Success(t *testing.T) {
 	mapper := createTestMapper(true)
-	router := setupTestRouter(mapper)
+	router := fixtures.SetupTierTestRouter(mapper)
 
 	tests := []struct {
 		name         string
@@ -112,7 +92,7 @@ func TestHandler_PostTierLookup_Success(t *testing.T) {
 
 func TestHandler_PostTierLookup_GroupNotFound(t *testing.T) {
 	mapper := createTestMapper(true)
-	router := setupTestRouter(mapper)
+	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"unknown-group"}}
 	jsonBody, _ := json.Marshal(reqBody)
@@ -138,7 +118,7 @@ func TestHandler_PostTierLookup_GroupNotFound(t *testing.T) {
 
 func TestHandler_PostTierLookup_BadRequest(t *testing.T) {
 	mapper := createTestMapper(true)
-	router := setupTestRouter(mapper)
+	router := fixtures.SetupTierTestRouter(mapper)
 
 	tests := []struct {
 		name        string
@@ -192,7 +172,7 @@ func TestHandler_PostTierLookup_BadRequest(t *testing.T) {
 
 func TestHandler_PostTierLookup_ConfigMapMissing_ShouldDefaultEveryUserToFreeTier(t *testing.T) {
 	mapper := createTestMapper(false) // No ConfigMap
-	router := setupTestRouter(mapper)
+	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"any-group"}}
 	jsonBody, _ := json.Marshal(reqBody)

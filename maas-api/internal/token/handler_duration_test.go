@@ -9,16 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	authv1 "k8s.io/api/authentication/v1"
 )
 
-const (
-	testNamespace = "test-namespace"
-	testTenant    = "test-tenant"
-)
-
 func TestIssueToken_ExpirationFormats(t *testing.T) {
-	tokenScenarios := map[string]tokenReviewScenario{
+	tokenScenarios := map[string]fixtures.TokenReviewScenario{
 		"duration-test-token": {
 			Authenticated: true,
 			UserInfo: authv1.UserInfo{
@@ -156,8 +152,8 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager, reviewer, _ := createTestComponents(t, true, tokenScenarios)
-			router := setupTestRouter(manager, reviewer)
+			manager, reviewer, _ := fixtures.StubTokenProviderAPIs(t, true, tokenScenarios)
+			router := fixtures.SetupTestRouter(manager, reviewer)
 
 			w := httptest.NewRecorder()
 
