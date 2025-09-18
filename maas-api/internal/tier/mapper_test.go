@@ -22,7 +22,7 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 
 	configMap := fixtures.CreateTierConfigMap(testNamespace)
 
-	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
+	clientset := fake.NewClientset([]runtime.Object{configMap}...)
 	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	tests := []struct {

@@ -95,7 +95,7 @@ func TestListingModels(t *testing.T) {
 				Model: openai.Model{
 					ID:      "model-without-url",
 					Object:  constant.Model("model"),
-					OwnedBy: "test-namespace",
+					OwnedBy: fixtures.TestNamespace,
 				},
 				URL:   nil,
 				Ready: false,

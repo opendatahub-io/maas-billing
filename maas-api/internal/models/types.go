@@ -2,7 +2,7 @@ package models
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -17,8 +17,8 @@ type Model struct {
 	Ready        bool      `json:"ready"`
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling to work around openai.Model's
-// custom unmarshaling that captures all unknown fields.
+// UnmarshalJSON implements custom JSON unmarshalling to work around openai.Model's
+// custom unmarshalling that captures all unknown fields.
 func (m *Model) UnmarshalJSON(data []byte) error {
 	if err := m.Model.UnmarshalJSON(data); err != nil {
 		return err
@@ -54,8 +54,7 @@ func (m *Model) extractFieldsFromExtraFields() error {
 
 		if extraField, exists := m.Model.JSON.ExtraFields[jsonFieldName]; exists {
 			if err := m.setFieldFromExtraField(fieldValue, field.Type, extraField); err != nil {
-				log.Printf("ERROR: Failed to set field %s: %v", field.Name, err)
-				continue
+				return fmt.Errorf("failed setting %s: %w", jsonFieldName, err)
 			}
 		}
 	}
@@ -67,14 +66,13 @@ func (m *Model) setFieldFromExtraField(fieldValue reflect.Value, fieldType refle
 	rawValue := ""
 	if rf, ok := extraField.(interface{ Raw() string }); ok {
 		rawValue = rf.Raw()
-	} else {
-		return nil
 	}
 
 	newValue := reflect.New(fieldType)
-	if err := json.Unmarshal([]byte(rawValue), newValue.Interface()); err == nil {
-		fieldValue.Set(newValue.Elem())
+	if err := json.Unmarshal([]byte(rawValue), newValue.Interface()); err != nil {
+		return err
 	}
+	fieldValue.Set(newValue.Elem())
 
 	return nil
 }

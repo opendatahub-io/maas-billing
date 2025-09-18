@@ -171,7 +171,7 @@ func CreateLLMTestObjects() []runtime.Object {
 		},
 		{
 			Name:      "model-without-url",
-			Namespace: "test-namespace",
+			Namespace: TestNamespace,
 			URL:       "",
 			Ready:     false,
 		},
