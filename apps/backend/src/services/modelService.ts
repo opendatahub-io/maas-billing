@@ -1,8 +1,21 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import axios from 'axios';
 import { logger } from '../utils/logger';
 
 const execAsync = promisify(exec);
+
+// MaaS API response interfaces
+interface MaasApiModel {
+  name: string;
+  namespace: string;
+  url: string;
+  ready: boolean;
+}
+
+interface MaasApiModelsResponse {
+  models: MaasApiModel[];
+}
 
 export interface Model {
   id: string;
@@ -27,26 +40,42 @@ export class ModelService {
     }
 
     try {
-      logger.info('Fetching models from cluster...');
-      this.models = await this.fetchModelsFromCluster();
+      // Try MaaS API first
+      logger.info('Fetching models from MaaS API...');
+      this.models = await this.fetchModelsFromMaasApi();
       this.lastFetch = now;
       
-      logger.info(`Retrieved ${this.models.length} models from cluster`, {
+      logger.info(`Retrieved ${this.models.length} models from MaaS API`, {
         models: this.models.map(m => ({ id: m.id, namespace: m.namespace }))
       });
       
       return this.models;
-    } catch (error) {
-      logger.error('Failed to fetch models from cluster:', error);
+    } catch (maasError) {
+      logger.warn('Failed to fetch models from MaaS API, falling back to direct cluster access:', maasError);
       
-      // If we have cached models, return them as fallback
-      if (this.models.length > 0) {
-        logger.warn('Using cached models due to fetch error');
+      try {
+        // Fallback to direct cluster access
+        logger.info('Fetching models from cluster directly...');
+        this.models = await this.fetchModelsFromCluster();
+        this.lastFetch = now;
+        
+        logger.info(`Retrieved ${this.models.length} models from cluster`, {
+          models: this.models.map(m => ({ id: m.id, namespace: m.namespace }))
+        });
+        
         return this.models;
+      } catch (clusterError) {
+        logger.error('Failed to fetch models from both MaaS API and direct cluster access:', clusterError);
+        
+        // If we have cached models, return them as fallback
+        if (this.models.length > 0) {
+          logger.warn('Using cached models due to all fetch methods failing');
+          return this.models;
+        }
+        
+        // No cache available, throw error
+        throw new Error(`No models available: MaaS API failed (${maasError instanceof Error ? maasError.message : maasError}), direct cluster access failed (${clusterError instanceof Error ? clusterError.message : clusterError})`);
       }
-      
-      // No cache available, throw error
-      throw new Error('No models available from cluster and no cached models');
     }
   }
 
@@ -61,6 +90,107 @@ export class ModelService {
       throw new Error(`Model '${modelId}' not found in cluster. Available models: ${(await this.getModels()).map(m => m.id).join(', ')}`);
     }
     return model.endpoint;
+  }
+
+  private async fetchModelsFromMaasApi(): Promise<Model[]> {
+    try {
+      const maasApiUrl = process.env.MAAS_API_URL || (() => { throw new Error('MAAS_API_URL environment variable is required'); })();
+      
+      logger.info('Fetching models from MaaS API...', { url: `${maasApiUrl}/models` });
+      
+      const response = await axios.get<MaasApiModelsResponse>(`${maasApiUrl}/models`, {
+        timeout: 30000,
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+
+      if (!response.data || !Array.isArray(response.data.models)) {
+        throw new Error('Invalid response format from MaaS API');
+      }
+
+      logger.info(`Retrieved ${response.data.models.length} models from MaaS API`, {
+        models: response.data.models.map(m => ({ name: m.name, namespace: m.namespace, ready: m.ready }))
+      });
+      
+      const maasModels = response.data.models;
+      
+      // TODO: Remove this route discovery workaround once MaaS API is fixed
+      // Issue: https://github.com/opendatahub-io/maas-billing/issues/90
+      // MaaS API currently returns unusable InferenceService URLs instead of accessible route URLs
+      // This workaround discovers OpenShift routes and maps them to InferenceServices
+      // Once MaaS API returns proper route URLs, this entire section can be removed
+      
+      // Get route mapping to convert InferenceService URLs to actual route URLs
+      let routeMap = new Map<string, string>();
+      try {
+        const routeResult = await execAsync(`kubectl get routes -n llm -o jsonpath='{range .items[*]}{.metadata.name}{"\\t"}{.spec.host}{"\\n"}{end}'`);
+        if (routeResult.stdout.trim()) {
+          const routeLines = routeResult.stdout.trim().split('\n');
+          for (const line of routeLines) {
+            const [routeName, host] = line.split('\t');
+            if (routeName && host) {
+              routeMap.set(routeName, host);
+              logger.info(`Found route: ${routeName} -> ${host}`);
+            }
+          }
+        }
+      } catch (routeError) {
+        logger.warn('Failed to get routes, using MaaS API URLs directly:', routeError);
+      }
+      
+      const models: Model[] = maasModels.map((maasModel: MaasApiModel) => {
+        let endpoint: string;
+        
+        // Try to find matching route for better external access
+        if (routeMap.size > 0) {
+          let routeHost: string | undefined;
+          let bestMatch = '';
+          let bestScore = 0;
+          
+          for (const [routeName, host] of routeMap.entries()) {
+            const score = this.calculateRouteMatchScore(maasModel.name, routeName);
+            if (score > bestScore) {
+              bestScore = score;
+              bestMatch = routeName;
+              routeHost = host;
+            }
+          }
+          
+          if (routeHost && bestScore >= 0.3) {
+            endpoint = `http://${routeHost}/v1/chat/completions`;
+            logger.info(`Matched MaaS model ${maasModel.name} to route ${bestMatch} (score: ${bestScore})`);
+          } else {
+            // Fallback to MaaS API URL if no good route match
+            endpoint = maasModel.url.replace(/\/$/, '') + '/v1/chat/completions';
+            logger.warn(`No suitable route found for ${maasModel.name}, using MaaS API URL: ${endpoint}`);
+          }
+        } else {
+          // No routes available, use MaaS API URL
+          endpoint = maasModel.url.replace(/\/$/, '') + '/v1/chat/completions';
+        }
+        
+        return {
+          id: maasModel.name,
+          name: this.formatModelName(maasModel.name),
+          provider: 'KServe',
+          description: `Model served via KServe (from MaaS API)`,
+          endpoint,
+          namespace: maasModel.namespace
+        };
+      });
+      // END TODO: Route discovery workaround - remove when MaaS API issue #90 is fixed
+
+      return models;
+    } catch (error: any) {
+      logger.error('Failed to fetch models from MaaS API:', error);
+      
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error(`MaaS API service is not available at ${process.env.MAAS_API_URL}. Please ensure the service is running.`);
+      }
+      
+      throw new Error(`Failed to fetch models from MaaS API: ${error.message}`);
+    }
   }
 
   private async fetchModelsFromCluster(): Promise<Model[]> {

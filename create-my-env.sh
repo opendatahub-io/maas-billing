@@ -49,31 +49,14 @@ echo "  🌐 API URL: $CLUSTER_API_URL"
 echo "  🔐 OAuth URL: $OAUTH_URL"
 echo "  🖥️  Console URL: $CONSOLE_URL"
 
-# Get Key Manager route
-echo -e "${YELLOW}🔍 Looking for Key Manager route...${NC}"
-KEY_MANAGER_ROUTE=$(oc get routes -n platform-services --no-headers 2>/dev/null | grep key-manager | awk '{print $2}' | head -1)
-
-if [ -z "$KEY_MANAGER_ROUTE" ]; then
-    echo -e "${YELLOW}⚠️  Warning: Key Manager route not found in platform-services namespace${NC}"
-    echo "  Using default pattern: key-manager-route-platform-services.${CLUSTER_DOMAIN}"
-    KEY_MANAGER_BASE_URL="https://key-manager-route-platform-services.${CLUSTER_DOMAIN}"
+# Check for ConfigMap for tier configuration
+echo -e "${YELLOW}🔍 Checking for tier configuration...${NC}"
+if oc get configmap tier-to-group-mapping -n maas-api &> /dev/null; then
+    echo -e "${GREEN}  ✅ Tier configuration ConfigMap found${NC}"
+    TIER_CONFIG_STATUS="✅ Available"
 else
-    KEY_MANAGER_BASE_URL="https://${KEY_MANAGER_ROUTE}"
-    echo "  🔑 Key Manager URL: $KEY_MANAGER_BASE_URL"
-fi
-
-# Try to extract admin key
-echo -e "${YELLOW}🔍 Extracting admin key...${NC}"
-ADMIN_KEY=$(oc get secret key-manager-admin -n platform-services -o jsonpath='{.data.admin-key}' 2>/dev/null | base64 -d 2>/dev/null)
-
-if [ -z "$ADMIN_KEY" ]; then
-    echo -e "${YELLOW}⚠️  Warning: Could not extract admin key from secret key-manager-admin${NC}"
-    echo "  You may need to manually set ADMIN_KEY in the .env files"
-    ADMIN_KEY="admin-key-placeholder"
-    ADMIN_KEY_STATUS="⚠️  Not found - needs manual setup"
-else
-    echo -e "${GREEN}  ✅ Admin key extracted successfully${NC}"
-    ADMIN_KEY_STATUS="✅ Extracted"
+    echo -e "${YELLOW}⚠️  Warning: tier-to-group-mapping ConfigMap not found in maas-api namespace${NC}"
+    TIER_CONFIG_STATUS="⚠️  Not found - may need setup"
 fi
 
 # Generate backend .env file
@@ -84,20 +67,18 @@ cat > apps/backend/.env << EOF
 # Cluster: $CLUSTER_DOMAIN
 
 # =============================================================================
-# HOW TO EXTRACT CLUSTER INFORMATION AND KEYS:
+# HOW TO EXTRACT CLUSTER INFORMATION:
 # =============================================================================
 # 1. Get cluster domain:
 #    oc whoami --show-server | sed 's/api\\.//' | sed 's/:6443//'
 #    Example: https://api.your-cluster.example.com:6443
 #    Result: apps.your-cluster.example.com
 #
-# 2. Find Key Manager route:
-#    kubectl get routes -n platform-services | grep key-manager
-#    oc get routes -n platform-services
+# 2. Get console URL:
+#    oc whoami --show-console
 #
-# 3. Extract admin key from secret:
-#    kubectl get secret key-manager-admin -n platform-services -o jsonpath='{.data.admin-key}' | base64 -d
-#    OR: oc get secret key-manager-admin -n platform-services -o yaml
+# 3. Get API URL:
+#    oc whoami --show-server
 # =============================================================================
 
 # Cluster Domain Configuration (Required for Prometheus metrics access)
@@ -110,17 +91,14 @@ OAUTH_URL=$OAUTH_URL
 
 # Extract from: oc whoami --show-console
 CONSOLE_URL=$CONSOLE_URL
+REACT_APP_CONSOLE_URL=$CONSOLE_URL
 
 # Extract from: oc whoami --show-server
 CLUSTER_API_URL=$CLUSTER_API_URL
 
-# Key Manager / MaaS API Base URL
-# Extract from: kubectl get routes -n platform-services | grep key-manager
-KEY_MANAGER_BASE_URL=$KEY_MANAGER_BASE_URL
-
-# Key Manager Authentication (Required for token management)
-# Extract from: kubectl get secret key-manager-admin -n platform-services -o jsonpath='{.data.admin-key}' | base64 -d
-ADMIN_KEY=$ADMIN_KEY
+# MaaS API Configuration - Required for token management
+# Local MaaS API URL - runs the Go-based Service Account token system
+MAAS_API_URL=http://localhost:8080
 
 # Development settings
 NODE_ENV=development
@@ -130,6 +108,11 @@ QOS_SERVICE_URL=http://localhost:3005
 
 # Frontend Configuration (for CORS and redirects)
 FRONTEND_URL=http://localhost:3000
+
+# Tier-Group ConfigMap Configuration (Required for dynamic user tier assignment)
+# Extract from: oc get configmaps -n maas-api | grep tier
+TIER_GROUP_CONFIGMAP_NAME=tier-to-group-mapping
+TIER_GROUP_CONFIGMAP_NAMESPACE=maas-api
 EOF
 
 echo -e "${GREEN}  ✅ Created apps/backend/.env${NC}"
@@ -145,14 +128,12 @@ cat > apps/frontend/.env.local << EOF
 # HOW TO EXTRACT CLUSTER INFORMATION:
 # =============================================================================
 # 1. Get your cluster domain:
-#    kubectl get ingresses -A | grep console
-#    OR: oc whoami --show-server (then extract domain from URL)
+#    oc whoami --show-server (then extract domain from URL)
 #    Example: https://api.your-cluster.example.com:6443
 #    Result: apps.your-cluster.example.com
 #
-# 2. Find Key Manager route:
-#    kubectl get routes -n platform-services | grep key-manager
-#    OR: oc get routes -n platform-services
+# 2. Get console URL:
+#    oc whoami --show-console
 # =============================================================================
 
 # Cluster Domain Configuration
@@ -168,10 +149,6 @@ REACT_APP_CONSOLE_URL=$CONSOLE_URL
 
 # Extract from: oc whoami --show-server
 REACT_APP_CLUSTER_API_URL=$CLUSTER_API_URL
-
-# Key Manager / MaaS API Base URL
-# Extract from: kubectl get routes -n platform-services | grep key-manager
-REACT_APP_KEY_MANAGER_BASE_URL=$KEY_MANAGER_BASE_URL
 
 # Backend Service URL (for local development)
 REACT_APP_BACKEND_URL=http://localhost:3001
@@ -189,13 +166,11 @@ echo "  📁 apps/frontend/.env.local"
 echo ""
 echo -e "${BLUE}Cluster Information:${NC}"
 echo "  📍 Domain: $CLUSTER_DOMAIN"
-echo "  🔑 Key Manager: $KEY_MANAGER_BASE_URL"
-echo "  🔐 Admin Key: $ADMIN_KEY_STATUS"
+echo "  🔧 Tier Config: $TIER_CONFIG_STATUS"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Review the generated .env files"
-echo "  2. If admin key is missing, extract it manually:"
-echo "     oc get secret key-manager-admin -n platform-services -o jsonpath='{.data.admin-key}' | base64 -d"
+echo "  2. Ensure MaaS API is running on localhost:8080"
 echo "  3. Start the services:"
 echo "     cd apps/backend && npm run dev"
 echo "     cd apps/frontend && npm start"

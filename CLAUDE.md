@@ -71,10 +71,12 @@ npm run typecheck # TypeScript checking
 **MaaS API:**
 ```bash
 cd maas-api
-make build       # Build binary
+make deps        # Download Go dependencies
+make build       # Build binary (includes deps, fmt, and test)
 make test        # Run Go tests with coverage
-make lint        # Run formatting and vet checks
-make run         # Run locally
+make lint        # Run formatting and vet checks (fmt-check + vet)
+make fmt         # Format Go code using gofmt
+make run         # Run locally with debug flags
 make build-image REPO=your-repo TAG=your-tag  # Build container
 ```
 
@@ -82,12 +84,23 @@ make build-image REPO=your-repo TAG=your-tag  # Build container
 
 ### Prerequisites
 - Kubernetes cluster (1.25+) with kubectl access
+- OpenShift CLI (`oc`) for cluster authentication
 - Node.js 18+ and npm
 - Docker (for local development)
 
+### Quick Environment Setup
+```bash
+# Auto-generate environment files from cluster (recommended)
+./create-my-env.sh
+
+# This extracts cluster info and creates:
+# - apps/backend/.env (backend configuration)
+# - apps/frontend/.env.local (frontend React config)
+```
+
 ### Core Infrastructure
 ```bash
-cd deployment/core-infrastructure
+cd deployment/infrastructure
 kubectl apply -k .
 ```
 
@@ -123,10 +136,27 @@ kubectl apply -k simulator-deployment/ # Simulator for testing
 - kubectl integration for Kubernetes policy management
 
 ### Service Communication
-- Frontend (port 3000) → Backend (auto-detected port, usually 3002+)
-- Backend → QoS Service (port 3005)
-- Backend → Kubernetes via kubectl commands for policy management
+- Frontend (port 3000) → Backend (configured via FRONTEND_URL)
+- Backend → QoS Service (configured via QOS_SERVICE_URL)
+- Backend → MaaS API (Go service for token management)
+- Backend → Kubernetes via kubectl/oc commands for policy management
 - Real-time updates via Socket.io between all services
+
+### Environment Configuration
+**Critical**: All URLs, ports, and cluster-specific values must be configured via environment variables. No hardcoded fallbacks are allowed.
+
+**Required Backend Environment Variables:**
+- `PORT` - Backend server port (default: 3001)
+- `FRONTEND_URL` - Frontend origin for CORS (default: http://localhost:3000)
+- `QOS_SERVICE_URL` - QoS prioritizer service URL (default: http://localhost:3005)
+- `CLUSTER_DOMAIN` - OpenShift cluster domain
+- `OAUTH_URL` - OAuth service URL for authentication
+- `CONSOLE_URL` - OpenShift console URL for login redirects
+- `CLUSTER_API_URL` - Kubernetes API server URL
+- `KEY_MANAGER_BASE_URL` - MaaS API service URL for token management
+- `ADMIN_KEY` - Admin API key for MaaS API authentication
+- `TIER_GROUP_CONFIGMAP_NAME` - ConfigMap containing tier-to-group mappings
+- `TIER_GROUP_CONFIGMAP_NAMESPACE` - Namespace of the tier-group ConfigMap
 
 ### Kubernetes Integration
 - Gateway API for traffic routing
@@ -137,25 +167,27 @@ kubectl apply -k simulator-deployment/ # Simulator for testing
 
 ## Important File Locations
 
-- `apps/frontend/src/components/` - React components (PolicyManager, MetricsDashboard, QoSMonitor, PolicyBuilder, RequestSimulator, TokenManagement)
+- `apps/frontend/src/components/` - React components (PolicyManager, MetricsDashboard, QoSMonitor, PolicyBuilder, RequestSimulator, AuthCallback)
 - `apps/frontend/src/hooks/` - Custom React hooks for API integration
+- `apps/frontend/src/services/api.ts` - API client for backend communication
 - `apps/backend/src/routes/` - Express API route handlers (policies, metrics, tokens, simulator)
-- `apps/backend/src/services/` - Kuadrant integration services (KuadrantService, MetricsService)
+- `apps/backend/src/services/` - Integration services (KuadrantService, MetricsService, ModelService, MaasApiService)
 - `apps/backend/src/app.ts` - Main Express application with Socket.io setup
 - `apps/qos-prioritizer/src/` - QoS service implementation with p-queue
 - `maas-api/internal/` - Go service internal packages for API key management
 - `maas-api/cmd/` - Go service main entry point
-- `deployment/core-infrastructure/` - Base Kubernetes infrastructure
+- `deployment/infrastructure/` - Base Kubernetes infrastructure
 - `deployment/examples/` - Example deployments and configurations
 - `start-dev.sh` / `stop-dev.sh` - Development environment management scripts
+- `create-my-env.sh` - Auto-generate environment files from cluster
 
 ## Monitoring and Troubleshooting
 
 ### Service URLs (when running locally)
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:3002+ (auto-detected port)
-- QoS Service: http://localhost:3005
-- Health Check: http://localhost:[backend-port]/health
+- Backend API: http://localhost:3001 (default port)
+- QoS Service: http://localhost:3005 (default port)
+- Health Check: http://localhost:3001/health
 
 ### Log Files
 ```bash
@@ -166,10 +198,15 @@ tail -f qos-prioritizer.log # QoS service logs
 
 ### Common Port Issues
 ```bash
-# Kill processes on development ports
-lsof -ti:3000 | xargs kill -9  # Frontend
-lsof -ti:3001 | xargs kill -9  # Backend
-lsof -ti:3005 | xargs kill -9  # QoS service
+# Kill processes on development ports (adjust ports based on your environment)
+lsof -ti:3000 | xargs kill -9  # Frontend (typically always 3000)
+lsof -ti:3001 | xargs kill -9  # Backend (default port)
+lsof -ti:3005 | xargs kill -9  # QoS Service (default port)
+pkill -f "maas-backend"         # Kill backend by process name
+pkill -f "qos-prioritizer"      # Kill QoS service by process name
+
+# Or use the cleanup script
+./stop-dev.sh                   # Stop all development services
 ```
 
 ### Kubernetes Debugging

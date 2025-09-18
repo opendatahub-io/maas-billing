@@ -29,7 +29,6 @@ import {
   Policy as PolicyIcon,
   BarChart as MetricsIcon,
   PlayArrow as SimulatorIcon,
-  Key as TokenIcon,
   Speed as QoSIcon,
   AccountCircle,
   Settings,
@@ -43,11 +42,9 @@ import {
 import PolicyManager from './components/PolicyManager';
 import MetricsDashboard from './components/MetricsDashboard';
 import RequestSimulator from './components/RequestSimulator';
-import TokenManagement from './components/TokenManagement';
 import AuthCallback from './components/AuthCallback';
 import QoSMonitor from './components/QoSMonitor';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
-import { ExperimentalProvider } from './contexts/ExperimentalContext';
 import apiService from './services/api';
 
 const drawerWidth = 240;
@@ -124,7 +121,7 @@ function MainApp() {
         setClusterStatus(status);
         
         // Check authentication and show login dialog if needed
-        if (!status.connected || status.user === 'system:anonymous' || !status.user || status.user === 'authenticated-user') {
+        if (!status.connected || status.user === 'system:anonymous' || !status.user) {
           console.log('🔐 User not authenticated, showing login dialog...');
           setShowLoginDialog(true);
         } else {
@@ -156,8 +153,6 @@ function MainApp() {
         return <QoSMonitor />;
       case 'simulator':
         return <RequestSimulator />;
-      case 'tokens':
-        return <TokenManagement />;
       default:
         return <PolicyManager />;
     }
@@ -167,8 +162,7 @@ function MainApp() {
     { id: 'policies', label: 'Policy Manager', icon: <PolicyIcon /> },
     { id: 'metrics', label: 'Live Metrics', icon: <MetricsIcon /> },
     ...(experimentalMode ? [{ id: 'qos', label: 'QoS Monitor', icon: <QoSIcon /> }] : []),
-    { id: 'simulator', label: 'Request Simulator', icon: <SimulatorIcon /> },
-    { id: 'tokens', label: 'API Tokens', icon: <TokenIcon /> },
+    { id: 'simulator', label: 'Playground', icon: <SimulatorIcon /> },
   ];
 
   return (
@@ -382,9 +376,7 @@ function MainApp() {
           }}
         >
           <Toolbar />
-          <ExperimentalProvider experimentalMode={experimentalMode}>
-            {renderContent()}
-          </ExperimentalProvider>
+          {renderContent()}
         </Box>
       </Box>
 

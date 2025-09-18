@@ -1,12 +1,18 @@
 package token
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	defaultTTL       = "4h"
+	validDurationMsg = "Valid time units are \"ns\", \"us\" (or \"µs\"), \"ms\", \"s\", \"m\", \"h\"."
 )
 
 type Handler struct {

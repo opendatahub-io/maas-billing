@@ -10,21 +10,127 @@ import policiesRoutes from './routes/policies';
 import tokensRoutes from './routes/tokens';
 import simulatorRoutes from './routes/simulator';
 
+// Function to get groups from configmap
+async function getGroupsFromConfigMap(): Promise<string[]> {
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+    
+    const configMapName = process.env.TIER_GROUP_CONFIGMAP_NAME || (() => { throw new Error('TIER_GROUP_CONFIGMAP_NAME environment variable is required'); })();
+    const configMapNamespace = process.env.TIER_GROUP_CONFIGMAP_NAMESPACE || (() => { throw new Error('TIER_GROUP_CONFIGMAP_NAMESPACE environment variable is required'); })();
+    
+    const { stdout } = await execAsync(`oc get configmap ${configMapName} -n ${configMapNamespace} -o jsonpath='{.data.tiers}' 2>/dev/null`);
+    
+    if (stdout) {
+      // Parse YAML format from the ConfigMap
+      const yaml = require('js-yaml');
+      const tiers = yaml.load(stdout);
+      const groups: string[] = [];
+      
+      if (Array.isArray(tiers)) {
+        tiers.forEach((tier: any) => {
+          if (tier.groups && Array.isArray(tier.groups)) {
+            groups.push(...tier.groups);
+          }
+        });
+      }
+      
+      return [...new Set(groups)]; // Remove duplicates
+    }
+    
+    logger.warn(`ConfigMap ${configMapName} not found or empty, falling back to default groups`);
+    return ['system:authenticated']; // Minimal fallback
+  } catch (error) {
+    logger.error('Failed to get groups from configmap:', error);
+    return ['system:authenticated']; // Minimal fallback
+  }
+}
+
+// Function to get tier-to-group mapping from configmap
+async function getTierGroupMapping(): Promise<{ tierGroupMapping: Record<string, string[]>, tierLevels: Record<string, number> }> {
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+    
+    const configMapName = process.env.TIER_GROUP_CONFIGMAP_NAME || (() => { throw new Error('TIER_GROUP_CONFIGMAP_NAME environment variable is required'); })();
+    const configMapNamespace = process.env.TIER_GROUP_CONFIGMAP_NAMESPACE || (() => { throw new Error('TIER_GROUP_CONFIGMAP_NAMESPACE environment variable is required'); })();
+    
+    const { stdout } = await execAsync(`oc get configmap ${configMapName} -n ${configMapNamespace} -o jsonpath='{.data.tiers}' 2>/dev/null`);
+    
+    if (stdout) {
+      // Parse YAML format from the ConfigMap
+      const yaml = require('js-yaml');
+      const tiers = yaml.load(stdout);
+      const tierGroupMapping: Record<string, string[]> = {};
+      const tierLevels: Record<string, number> = {};
+      
+      if (Array.isArray(tiers)) {
+        tiers.forEach((tier: any) => {
+          if (tier.name && tier.groups && Array.isArray(tier.groups)) {
+            tierGroupMapping[tier.name] = tier.groups;
+            tierLevels[tier.name] = tier.level || 0;
+          }
+        });
+      }
+      
+      logger.info(`Loaded tier mappings from ConfigMap: ${Object.keys(tierGroupMapping).join(', ')}`);
+      return { tierGroupMapping, tierLevels };
+    }
+    
+    logger.warn(`ConfigMap ${configMapName} not found or empty, using default tier mapping`);
+    return { 
+      tierGroupMapping: { 'free': ['system:authenticated'] }, 
+      tierLevels: { 'free': 1 } 
+    }; // Minimal fallback
+  } catch (error) {
+    logger.error('Failed to get tier-group mapping from configmap:', error);
+    return { 
+      tierGroupMapping: { 'free': ['system:authenticated'] }, 
+      tierLevels: { 'free': 1 } 
+    }; // Minimal fallback
+  }
+}
+
+// Function to determine user tier based on groups and configmap mapping with levels
+function determineTierFromGroups(userGroups: string[], tierGroupMapping: Record<string, string[]>, tierLevels: Record<string, number>): string {
+  // Get available tiers sorted by level (highest first for priority)
+  const availableTiers = Object.keys(tierGroupMapping);
+  const tierPriority = availableTiers.sort((a, b) => {
+    const levelA = tierLevels[a] || 0;
+    const levelB = tierLevels[b] || 0;
+    return levelB - levelA; // Higher level = higher priority
+  });
+  
+  // Check tiers in priority order (highest level first)
+  for (const tier of tierPriority) {
+    const tierGroups = tierGroupMapping[tier] || [];
+    if (tierGroups.some(group => userGroups.includes(group))) {
+      return tier;
+    }
+  }
+  
+  // Fallback to lowest level tier from configmap
+  const lowestTier = tierPriority.length > 0 ? tierPriority[tierPriority.length - 1] : 'unknown';
+  return lowestTier;
+}
+
 const app: express.Application = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
-    origin: true, // Allow all origins in development
+    origin: process.env.FRONTEND_URL || (() => { throw new Error('FRONTEND_URL environment variable is required'); })(),
     methods: ['GET', 'POST'],
     credentials: true
   }
 });
-const PORT = process.env.PORT || 3001;
-const QOS_SERVICE_URL = process.env.QOS_SERVICE_URL || 'http://localhost:3005';
+const PORT = process.env.PORT || (() => { throw new Error('PORT environment variable is required'); })();
+const QOS_SERVICE_URL = process.env.QOS_SERVICE_URL || (() => { throw new Error('QOS_SERVICE_URL environment variable is required'); })();
 
 // Middleware
 app.use(cors({
-  origin: true, // Allow all origins in development
+  origin: process.env.FRONTEND_URL || (() => { throw new Error('FRONTEND_URL environment variable is required'); })(),
   credentials: true
 }));
 app.use(express.json());
@@ -53,62 +159,6 @@ app.use('/api/v1/metrics', metricsRoutes);
 app.use('/api/v1/policies', policiesRoutes);
 app.use('/api/v1/tokens', tokensRoutes);
 app.use('/api/v1/simulator', simulatorRoutes);
-
-// Teams route (for frontend compatibility - proxy to tokens/teams)
-app.get('/api/v1/teams', async (req, res) => {
-  try {
-    // This should now return the real error from the key manager
-    const axios = require('axios');
-    const response = await axios.get(`http://localhost:${PORT}/api/v1/tokens/teams`);
-    res.status(response.status).json(response.data);
-  } catch (error: any) {
-    if (error.response) {
-      res.status(error.response.status).json(error.response.data);
-    } else {
-      res.status(503).json({
-        success: false,
-        error: 'Teams service unavailable',
-        details: error.message
-      });
-    }
-  }
-});
-
-// Create team token route (for frontend compatibility - proxy to tokens/create)
-app.post('/api/v1/teams/:teamId/keys', async (req, res) => {
-  try {
-    const { teamId } = req.params;
-    const { user_id, alias } = req.body;
-    
-    // Transform the request to match our existing token creation endpoint
-    const tokenCreateRequest = {
-      name: alias || `${user_id}-${teamId}-token`,
-      description: `Token: ${alias || `${user_id}-${teamId}-token`}`,
-      team_id: teamId
-    };
-    
-    const axios = require('axios');
-    const response = await axios.post(`http://localhost:${PORT}/api/v1/tokens/create`, tokenCreateRequest);
-    
-    // Transform response to match frontend expectations
-    const responseData = response.data;
-    if (responseData.success && responseData.data && responseData.data.token) {
-      responseData.data.api_key = responseData.data.token; // Add api_key field for frontend compatibility
-    }
-    
-    res.status(response.status).json(responseData);
-  } catch (error: any) {
-    if (error.response) {
-      res.status(error.response.status).json(error.response.data);
-    } else {
-      res.status(503).json({
-        success: false,
-        error: 'Token creation service unavailable',
-        details: error.message
-      });
-    }
-  }
-});
 
 // QoS proxy endpoints
 app.get('/api/v1/qos/metrics', async (req, res) => {
@@ -161,21 +211,31 @@ app.get('/api/v1/cluster/status', async (req, res) => {
     const { promisify } = require('util');
     const execAsync = promisify(exec);
     
-    let user = 'authenticated-user';
+    let user = 'system:anonymous';
+    let connected = true;
     try {
       const { stdout } = await execAsync('oc whoami');
       user = stdout.trim();
-    } catch (error) {
-      logger.warn('Could not get authenticated user via oc whoami');
+      // If oc whoami succeeds, user is authenticated
+    } catch (error: any) {
+      logger.warn('Could not get authenticated user via oc whoami:', error.message);
+      // Check if it's an authentication error
+      if (error.message && (error.message.includes('Unauthorized') || error.message.includes('must be logged in'))) {
+        connected = false;
+        user = 'system:anonymous';
+      } else {
+        // Other errors (network, etc.) - still set fallback
+        user = 'authenticated-user';
+      }
     }
     
     res.json({
       success: true,
       data: {
-        connected: true,
+        connected: connected,
         user: user,
-        cluster: process.env.CLUSTER_DOMAIN || 'your-cluster.example.com',
-        loginUrl: process.env.REACT_APP_CONSOLE_URL || 'https://console-openshift-console.your-cluster.example.com'
+        cluster: process.env.CLUSTER_DOMAIN || (() => { throw new Error('CLUSTER_DOMAIN environment variable is required'); })(),
+        loginUrl: process.env.REACT_APP_CONSOLE_URL || (() => { throw new Error('REACT_APP_CONSOLE_URL environment variable is required'); })()
       },
       timestamp: new Date().toISOString()
     });
@@ -184,6 +244,73 @@ app.get('/api/v1/cluster/status', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Could not get cluster status'
+    });
+  }
+});
+
+// User information endpoint for Service Account tokens
+app.get('/api/v1/user', async (req, res) => {
+  try {
+    // For Service Account tokens, we extract user info from the OpenShift context
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+    
+    let username = 'default-user';
+    let email = 'default@example.com';
+    let tier = 'unknown'; // Will be determined dynamically from ConfigMap
+    let groups: string[] = [];
+    let cluster = process.env.CLUSTER_DOMAIN || (() => { throw new Error('CLUSTER_DOMAIN environment variable is required'); })();
+    
+    try {
+      // Get the current user
+      const { stdout: whoamiOutput } = await execAsync('oc whoami');
+      username = whoamiOutput.trim();
+      email = `${username}@${cluster}`;
+      
+      // Get user groups by checking group membership directly from configmap
+      const checkGroups = await getGroupsFromConfigMap();
+      for (const groupName of checkGroups) {
+        try {
+          const { stdout } = await execAsync(`oc get group ${groupName} -o jsonpath='{.users[*]}' 2>/dev/null`);
+          if (stdout && stdout.includes(username)) {
+            groups.push(groupName);
+            logger.info(`User ${username} is member of group: ${groupName}`);
+          }
+        } catch (e) {
+          // Group doesn't exist or no access - this is normal
+        }
+      }
+      
+      // Also check system:authenticated as it's typically included
+      groups.push('system:authenticated');
+      logger.info(`Found user groups for ${username}: ${groups.join(', ')}`);
+      
+      // Dynamic tier determination based on ConfigMap mapping
+      const { tierGroupMapping, tierLevels } = await getTierGroupMapping();
+      tier = determineTierFromGroups(groups, tierGroupMapping, tierLevels);
+      logger.info(`Final tier determination for ${username}: ${tier} (groups: ${groups.join(', ')})`);
+      
+    } catch (error) {
+      logger.warn('Could not get authenticated user info:', error);
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        name: username,
+        email: email,
+        tier: tier,
+        groups: groups,
+        cluster: cluster,
+        isAuthenticated: true
+      }
+    });
+  } catch (error) {
+    logger.error('Error getting user info:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Could not get user information'
     });
   }
 });
@@ -280,6 +407,7 @@ if (require.main === module) {
     logger.info('  GET /health - Health check');
     logger.info('  GET /api/v1/models - Available models');
     logger.info('  GET /api/v1/cluster/status - Cluster authentication status');
+    logger.info('  GET /api/v1/user - Current user information');
     logger.info('  GET /api/v1/metrics - General metrics');
     logger.info('  GET /api/v1/metrics/live-requests - Live request data with policy enforcement');
     logger.info('  GET /api/v1/metrics/dashboard - Dashboard statistics');
@@ -287,11 +415,9 @@ if (require.main === module) {
     logger.info('  POST /api/v1/policies - Create new policy');
     logger.info('  PUT /api/v1/policies/:id - Update policy');
     logger.info('  DELETE /api/v1/policies/:id - Delete policy');
-    logger.info('  GET /api/v1/tokens/user/tier - Get user tier information');
-    logger.info('  GET /api/v1/tokens - Get user tokens');
     logger.info('  POST /api/v1/tokens/create - Create new token');
-    logger.info('  DELETE /api/v1/tokens/:name - Revoke token');
-    logger.info('  POST /api/v1/tokens/test - Test token authentication');
+    logger.info('  DELETE /api/v1/tokens/delete - Delete all tokens');
+    logger.info('  POST /api/v1/simulator/chat/completions - Simulate requests');
     logger.info('  GET /api/v1/qos/metrics - QoS metrics proxy');
     logger.info('  GET /api/v1/qos/health - QoS health proxy');
     logger.info('Socket.IO server enabled for real-time updates');
