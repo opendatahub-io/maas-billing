@@ -96,13 +96,13 @@ router.post('/chat/completions', async (req, res) => {
     } catch (error) {
       logger.error('Failed to get model endpoint:', {
         model,
-        error: error.message
+        error: (error as any).message
       });
       
       return res.status(404).json({
         success: false,
         error: `Model '${model}' not found`,
-        details: error.message
+        details: (error as any).message
       });
     }
     
@@ -189,8 +189,18 @@ router.post('/chat/completions', async (req, res) => {
         status: kuadrantResponse.status
       });
 
-      // Forward the successful response from Kuadrant
-      res.json(kuadrantResponse.data);
+      // Forward the successful response from Kuadrant with additional metadata
+      const responseData = {
+        ...kuadrantResponse.data,
+        _simulator_metadata: {
+          route_endpoint: targetEndpoint,
+          duration_ms: duration,
+          kuadrant_status: kuadrantResponse.status,
+          processed_via: 'kuadrant'
+        }
+      };
+      
+      res.json(responseData);
 
     } catch (error: any) {
       logger.error('Error proxying to Kuadrant:', error);
