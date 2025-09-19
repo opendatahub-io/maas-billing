@@ -5,6 +5,5 @@ type Request struct {
 }
 
 type Response struct {
-	Token      string `json:"token"`
-	Expiration string `json:"expiration"` // e.g. "4h"
+	*Token `json:",inline"`
 }
