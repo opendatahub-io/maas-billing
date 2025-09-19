@@ -9,6 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	defaultTTL       = "4h"
+	validDurationMsg = "Valid time units are \"ns\", \"us\" (or \"µs\"), \"ms\", \"s\", \"m\", \"h\"."
+)
+
 type Handler struct {
 	name    string
 	manager *Manager
@@ -66,6 +71,7 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
+	// Set default expiration if not provided
 	if req.Expiration == nil {
 		req.Expiration = &Duration{time.Hour * 4}
 	}

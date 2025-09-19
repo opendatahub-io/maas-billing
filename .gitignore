@@ -37,3 +37,4 @@ pip-delete-this-directory.txt
 htmlcov/
 apps/frontend/.env.local
 apps/backend/.env
+CLAUDE.md

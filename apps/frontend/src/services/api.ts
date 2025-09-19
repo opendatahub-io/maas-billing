@@ -124,58 +124,28 @@ class ApiService {
     model: string;
     messages: Array<{role: string, content: string}>;
     max_tokens?: number;
-    tier: string;
     apiKey: string;
     authPrefix?: string;
-    // QoS-specific parameters
-    enableQoS?: boolean;
-    customerTier?: string;
-    demoMode?: string;
   }) {
     const authPrefix = params.authPrefix || 'Bearer';
-    
-    // Prepare headers - start with basic headers
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Authorization': `${authPrefix} ${params.apiKey}`,
-    };
-
-    // Add QoS-specific headers if QoS is enabled
-    if (params.enableQoS) {
-      headers['x-enable-qos'] = 'true';
-      headers['x-customer-tier'] = params.customerTier || 'free';
-      
-      if (params.demoMode && params.demoMode !== 'auto') {
-        headers['x-demo-mode'] = params.demoMode;
-      }
-    }
-
     return this.fetch('/simulator/chat/completions', {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `${authPrefix} ${params.apiKey}`,
+      },
       body: JSON.stringify({
         model: params.model,
         messages: params.messages,
-        max_tokens: params.max_tokens || 100,
-        tier: params.tier
+        max_tokens: params.max_tokens || 100
       }),
     });
   }
 
   // Token Management APIs
 
-  async getUserTier() {
-    return this.fetch('/tokens/user/tier');
-  }
-
-  async getUserTokens() {
-    return this.fetch('/tokens');
-  }
-
   async createToken(params: {
-    name: string;
-    description: string;
-    team_id?: string;
+    expiration?: string; // Optional expiration, e.g. '1h', '4h', '24h'. If not provided, uses MaaS API default (4h)
   }) {
     return this.fetch('/tokens/create', {
       method: 'POST',
@@ -183,22 +153,12 @@ class ApiService {
     });
   }
 
-  async revokeToken(tokenName: string) {
-    return this.fetch(`/tokens/${tokenName}`, {
+  async deleteTokens() {
+    return this.fetch('/tokens/delete', {
       method: 'DELETE',
     });
   }
 
-  async testToken(params: {
-    token: string;
-    model: string;
-    message: string;
-  }) {
-    return this.fetch('/tokens/test', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  }
 
   // OAuth APIs
   async exchangeOAuthCode(code: string, redirectUri?: string) {
@@ -215,24 +175,10 @@ class ApiService {
     return this.fetch('/cluster/status');
   }
 
-  // Team Management APIs
-  async getTeams() {
-    return this.fetch('/teams');
+  async getUserInfo() {
+    return this.fetch('/user');
   }
 
-  async getTeam(teamId: string) {
-    return this.fetch(`/teams/${teamId}`);
-  }
-
-  async createTeamToken(teamId: string, params: {
-    user_id: string;
-    alias: string;
-  }) {
-    return this.fetch(`/teams/${teamId}/keys`, {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  }
 }
 
 const apiService = new ApiService();

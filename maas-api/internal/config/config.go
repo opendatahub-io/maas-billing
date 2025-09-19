@@ -43,7 +43,7 @@ func Load() *Config {
 		Name:      env.GetString("INSTANCE_NAME", "openshift-ai-inference"),
 		Namespace: env.GetString("NAMESPACE", "maas-api"),
 		Port:      env.GetString("PORT", "8080"),
-		Provider:  ProviderType(env.GetString("PROVIDER", string(Secrets))),
+		Provider:  ProviderType(env.GetString("PROVIDER", string(SATokens))),
 		DebugMode: debugMode,
 		// Secrets provider configuration
 		KeyNamespace:             env.GetString("KEY_NAMESPACE", "llm"),
