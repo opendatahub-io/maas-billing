@@ -1,7 +1,6 @@
 package token
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -72,6 +71,7 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
+	// Set default expiration if not provided
 	if req.Expiration == nil {
 		req.Expiration = &Duration{time.Hour * 4}
 	}
@@ -98,7 +98,8 @@ func (g *Handler) IssueToken(c *gin.Context) {
 	}
 
 	response := Response{
-		Token: token,
+		Token:      token.Token,
+		Expiration: token.Expiration.String(),
 	}
 
 	c.JSON(http.StatusCreated, response)

@@ -76,6 +76,41 @@ interface SimulationResult {
   duration: number;
 }
 
+// Helper function to calculate expiration time from duration string
+const calculateExpirationTime = (durationStr: string): string => {
+  try {
+    // Parse duration string like "4h", "30m", "1h30m", etc.
+    const now = new Date();
+    let totalMs = 0;
+    
+    // Match patterns like "1h", "30m", "45s", "1h30m45s"
+    const matches = durationStr.match(/(\d+(?:\.\d+)?[hms])/g);
+    if (!matches) return 'Unknown';
+    
+    for (const match of matches) {
+      const value = parseFloat(match.slice(0, -1));
+      const unit = match.slice(-1);
+      
+      switch (unit) {
+        case 'h':
+          totalMs += value * 60 * 60 * 1000;
+          break;
+        case 'm':
+          totalMs += value * 60 * 1000;
+          break;
+        case 's':
+          totalMs += value * 1000;
+          break;
+      }
+    }
+    
+    const expirationTime = new Date(now.getTime() + totalMs);
+    return expirationTime.toLocaleString();
+  } catch (error) {
+    return 'Unknown';
+  }
+};
+
 const RequestSimulator: React.FC = () => {
   // Form state
   const [simulationForm, setSimulationForm] = useState<SimulationRequest>({
@@ -103,7 +138,7 @@ const RequestSimulator: React.FC = () => {
   const [selectedTTL, setSelectedTTL] = useState('default'); // 'default', '1h', '4h', '24h', 'custom'
   const [customTTL, setCustomTTL] = useState('');
   const [createdToken, setCreatedToken] = useState<string | null>(null);
-  const [createdTokenInfo, setCreatedTokenInfo] = useState<{token: string, ttl: string, expires_at: string} | null>(null);
+  const [createdTokenInfo, setCreatedTokenInfo] = useState<{token: string, expiration: string} | null>(null);
   const [tokenCreating, setTokenCreating] = useState(false);
   const [tokenDeleting, setTokenDeleting] = useState(false);
 
@@ -357,23 +392,23 @@ const RequestSimulator: React.FC = () => {
       setTokenCreating(true);
       setError(null);
       
-      // Determine TTL to send
-      let ttlToSend: string | undefined;
+      // Determine expiration to send
+      let expirationToSend: string | undefined;
       if (selectedTTL === 'default') {
-        ttlToSend = undefined; // Let MaaS API use default
+        expirationToSend = undefined; // Let MaaS API use default
       } else if (selectedTTL === 'custom') {
-        ttlToSend = customTTL.trim();
-        if (!ttlToSend) {
-          setError('Custom TTL is required when custom option is selected');
+        expirationToSend = customTTL.trim();
+        if (!expirationToSend) {
+          setError('Custom expiration is required when custom option is selected');
           setTokenCreating(false);
           return;
         }
       } else {
-        ttlToSend = selectedTTL;
+        expirationToSend = selectedTTL;
       }
       
       const response = await apiService.createToken({
-        ttl: ttlToSend,
+        expiration: expirationToSend,
       });
       
       console.log('Token creation response:', response);
@@ -386,8 +421,7 @@ const RequestSimulator: React.FC = () => {
         setCreatedToken(apiKey);
         setCreatedTokenInfo({
           token: apiKey,
-          ttl: response?.ttl || 'Unknown',
-          expires_at: response?.expires_at || 'Unknown'
+          expiration: response?.expiration || 'Unknown'
         });
         
         
@@ -566,11 +600,11 @@ const RequestSimulator: React.FC = () => {
           
           <Box display="flex" gap={2} alignItems="end" sx={{ mb: 2 }}>
             <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Token TTL</InputLabel>
+              <InputLabel>Token Expiration</InputLabel>
               <Select
                 value={selectedTTL}
                 onChange={(e) => setSelectedTTL(e.target.value)}
-                label="Token TTL"
+                label="Token Expiration"
                 disabled={tokenCreating}
               >
                 <MenuItem value="default">Default (4h)</MenuItem>
@@ -583,7 +617,7 @@ const RequestSimulator: React.FC = () => {
             
             {selectedTTL === 'custom' && (
               <TextField
-                label="Custom TTL"
+                label="Custom Expiration"
                 value={customTTL}
                 onChange={(e) => setCustomTTL(e.target.value)}
                 placeholder="e.g., 2h, 30m, 3d"
@@ -639,7 +673,7 @@ const RequestSimulator: React.FC = () => {
           {createdTokenInfo && (
             <Box sx={{ mt: 1, mb: 1 }}>
               <Typography variant="body2" color="success.dark">
-                <strong>TTL:</strong> {createdTokenInfo.ttl} • <strong>Expires:</strong> {new Date(createdTokenInfo.expires_at).toLocaleString()}
+                <strong>Expiration:</strong> {createdTokenInfo.expiration} • <strong>Expires:</strong> {calculateExpirationTime(createdTokenInfo.expiration)}
               </Typography>
             </Box>
           )}
