@@ -98,8 +98,7 @@ func (g *Handler) IssueToken(c *gin.Context) {
 	}
 
 	response := Response{
-		Token:      token.Token,
-		Expiration: token.Expiration.String(),
+		Token: token,
 	}
 
 	c.JSON(http.StatusCreated, response)
