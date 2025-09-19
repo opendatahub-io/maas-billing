@@ -40,11 +40,15 @@ spec:
         defaults:
           # token normalization - https://docs.kuadrant.io/1.2.x/authorino/docs/user-guides/token-normalization/
           # full username: system:serviceaccount:<ns>:<name>
-          user_id:
+          userid:
             expression: |
               auth.identity.user.username.split(":")[3]
     authorization:
       tier-access:
+        when:
+          # Target models only (TODO: find a better way to do this)
+          - predicate: |
+              !request.path.startsWith("/maas-api")
         kubernetesSubjectAccessReview:
           user:
             expression: auth.identity.user.username
@@ -54,15 +58,13 @@ spec:
             group:
               value: serving.kserve.io
             resource:
-              # For RHOAI this needs different target 
-              # value: llminferenceservices
-              value: inferenceservices
-            # ns/name an be inferred from path /{ns}/{model-name}
-            # expression: request.path.split('/')[1]
+              value: llminferenceservices
             namespace:
-              value: llm
+              expression: |
+                request.path.split("/")[1]
             name:
-              value: vllm-simulator
+              expression: |
+                request.path.split("/")[2]
             verb:
               value: post
     response:
@@ -71,7 +73,7 @@ spec:
           identity:
             json:
               properties:
-                user_id:
-                  expression: auth.identity.user_id
+                userid:
+                  expression: auth.identity.userid
                 tier:
                   expression: auth.metadata.matchedTier["tier"]

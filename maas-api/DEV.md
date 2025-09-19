@@ -1,4 +1,4 @@
-## Setting up dev environment
+## Environment Setup
 
 ### Prerequisites
 
@@ -10,27 +10,61 @@
 
 ### Setup
 
-First, we need to deploy the core infrastructure:
+### Core Infrastructure
 
-```shell
-ROOT=$(git rev-parse --show-toplevel)
-for ns in kserve kuadrant llm maas-api; do kubectl create ns $ns || true; done
-kustomize build ${ROOT}/deployment/infrastructure/kustomize-templates/kserve | kubectl apply -f -
-cd ${ROOT} && ./deployment/scripts/install-dependencies.sh --cert-manager --kserve --kuadrant && cd -
-make deploy-dev \
-  -e REPO=quay.io/bmajsak/maas-api \
-  -e TAG=sa-token-provider \
-  -e PRE_DEPLOY_STEP='kustomize edit add patch --group apps --kind Deployment --path patches/sa-token-provider.yaml'
-kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/models/simulator | kubectl apply -f -
-```
+First, we need to deploy the core infrastructure. That includes:
+- Kuadrant
+- Cert Manager
 
 > [!IMPORTANT]
-> `vllm-simulator.yaml` in `deploy/overlays/dev/models/simulator` is a symlink, therefore, it needs to be built with --load-restrictor LoadRestrictionsNone.
-> For more details see this [issue](https://github.com/kubernetes-sigs/kustomize/issues/4420).
+> If you are running RHOAI, both Kuadrant and Cert Manager should be already installed.
+
+```shell
+PROJECT_DIR=$(git rev-parse --show-toplevel) 
+for ns in opendatahub kuadrant-system llm maas-api; do kubectl create ns $ns || true; done
+"${PROJECT_DIR}/deployment/scripts/install-dependencies.sh" --cert-manager --kuadrant 
+```
+#### Enabling GW API
+
+> [!IMPORTANT]
+> For enabling Gateway API on OCP 4.19.9+, only GatewayClass creation is needed.
+
+```shell
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+kustomize build ${PROJECT_DIR}/maas-api/deploy/infra/openshift-gateway-api | kubectl apply --server-side=true --force-conflicts -f -
+```
+
+### Deploying Opendatahub KServe
+
+```shell
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+kustomize build ${PROJECT_DIR}/maas-api/deploy/infra/odh | kubectl apply --server-side=true --force-conflicts -f -
+```
+
+> [!NOTE]
+> If it fails the first time, simply re-run. CRDs or Webhooks might not be established timely.
+> This approach is aligned with how odh-operator would process (requeue reconciliation).
+
+### Deploying MaaS API for development
+
+```shell
+make deploy-dev \
+  -e REPO=quay.io/bmajsak/maas-api \
+  -e TAG=latest \
+  -e PRE_DEPLOY_STEP='kustomize edit add patch --group apps --kind Deployment --path patches/sa-token-provider.yaml'
+```
+
+This will:
+- Deploy MaaS API component with Service Account Token provider
+- Set up demo policies (see `deploy/policies`)
 
 #### Patch Kuadrant deployment
 
-If you installed Kuadrant using Helm chats (i.e. by calling `./install-dependencies.sh --kuadrant` like in the example above), you need to patch the Kuadrant deployment to add the correct environment variable.
+> [!IMPORTANT]
+> See https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html/release_notes_for_connectivity_link_1.1/prodname-relnotes_rhcl#connectivity_link_known_issues
+
+If you installed Kuadrant using Helm chats (i.e. by calling `./install-dependencies.sh --kuadrant` like in the example above),
+you need to patch the Kuadrant deployment to add the correct environment variable.
 
 ```shell
 kubectl -n kuadrant-system patch deployment kuadrant-operator-controller-manager \
@@ -53,39 +87,19 @@ kubectl patch csv kuadrant-operator.v0.0.0 -n kuadrant-system --type='json' -p='
 ]'
 ```
 
-#####
-#### Update KServe configmap with the actual ingress domain
-
-```shell
-kubectl -n kserve patch configmap inferenceservice-config \
-  --type='json' \
-  -p="$(cat <<EOF
-[
-  {
-    "op":"replace",
-    "path":"/data/ingress",
-    "value":"{
-  \"enableGatewayApi\": true,
-  \"kserveIngressGateway\": \"openshift-ingress/openshift-ai-inference\",
-  \"ingressGateway\": \"istio-system/istio-ingressgateway\",
-  \"ingressDomain\": \"$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')\"
-}"
-  }
-]
-EOF
-)"
-```
-
 #### Ensure the correct audience is set for AuthPolicy
 
-Patch `AuthPolicy` with the correct audience for Openshift Identities
+Patch `AuthPolicy` with the correct audience for Openshift Identities:
 
 ```shell
+PROJECT_DIR=$(git rev-parse --show-toplevel)
 AUD="$(kubectl create token default --duration=10m \
   | jwt decode --json - \
   | jq -r '.payload.aud[0]')"
 
-kubectl patch --local -f deploy/overlays/dev/policies/auth-policy.yaml \
+echo "Patching AuthPolicy with audience: $AUD"
+
+kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/auth-policy.yaml \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
@@ -96,6 +110,13 @@ kubectl patch --local -f deploy/overlays/dev/policies/auth-policy.yaml \
 ```
 
 ### Testing
+
+#### Deploying the demo model
+
+```shell
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+kustomize build ${PROJECT_DIR}/maas-api/deploy/models/simulator | kubectl apply --server-side=true --force-conflicts -f -
+```
 
 #### Getting the token
 
@@ -109,7 +130,7 @@ TOKEN_RESPONSE=$(curl -sSk \
   -H "Content-Type: application/json" \
   -X POST \
   -d '{
-    "expiration": "10m"
+    "expiration": "4h"
   }' \
   "${HOST}/maas-api/v1/tokens")
 
@@ -123,11 +144,28 @@ TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 
 #### Calling the model and hitting the rate limit
 
+Using model discovery:
+
 ```shell
+HOST="$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+
+MODELS=$(curl ${HOST}/maas-api/v1/models  \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" | jq . -r)
+
+echo $MODELS | jq .
+MODEL_URL=$(echo $MODELS | jq -r '.data[0].url')
+MODEL_NAME=$(echo $MODELS | jq -r '.data[0].id')
+
 for i in {1..16}
 do
-curl -ks -o /dev/null -w "%{http_code}\n" \
+curl -sSk -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer $TOKEN" \
-  "${HOST}/simulator/health";
-done;
+  -d "{
+        \"model\": \"${MODEL_NAME}\",
+        \"prompt\": \"Not really understood prompt\",
+        \"max_prompts\": 40
+    }" \
+  "${MODEL_URL}/v1/chat/completions";
+done
 ```
