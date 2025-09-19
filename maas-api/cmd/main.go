@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
@@ -34,9 +35,25 @@ func main() {
 		gin.SetMode(gin.DebugMode)
 	}
 
+	router := gin.Default()
+	if cfg.DebugMode {
+		router.Use(cors.New(cors.Config{
+			AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+			AllowHeaders:  []string{"Authorization", "Content-Type", "Accept"},
+			ExposeHeaders: []string{"Content-Type"},
+			AllowOriginFunc: func(origin string) bool {
+				return true
+			},
+			AllowCredentials: true,
+			MaxAge:           12 * time.Hour,
+		}))
+	}
+
+	router.OPTIONS("/*path", func(c *gin.Context) { c.Status(204) })
+
 	ctx, cancel := context.WithCancel(context.Background())
 
-	router := registerHandlers(ctx, cfg)
+	registerHandlers(ctx, router, cfg)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -71,9 +88,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, cfg *config.Config) *gin.Engine {
-	router := gin.Default()
-
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -95,13 +110,15 @@ func registerHandlers(ctx context.Context, cfg *config.Config) *gin.Engine {
 		log.Fatalf("Invalid provider: %s. Available providers: [secrets, sa-tokens]", cfg.Provider)
 	}
 
-	return router
 }
 
 func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {
+	// V1 API routes
+	v1Routes := router.Group("/v1")
+
 	tierMapper := tier.NewMapper(clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
 	tierHandler := tier.NewHandler(tierMapper)
-	router.POST("/tiers/lookup", tierHandler.TierLookup)
+	v1Routes.POST("/tiers/lookup", tierHandler.TierLookup)
 
 	informerFactory := informers.NewSharedInformerFactory(clusterConfig.ClientSet, 30*time.Second)
 
@@ -126,8 +143,6 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 		serviceAccountInformer.Lister(),
 	)
 	tokenHandler := token.NewHandler(cfg.Name, manager)
-
-	v1Routes := router.Group("/v1")
 
 	tokenRoutes := v1Routes.Group("/tokens", token.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
 	tokenRoutes.POST("", tokenHandler.IssueToken)
