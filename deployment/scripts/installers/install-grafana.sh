@@ -5,18 +5,18 @@ set -euo pipefail
 # Handles both OpenShift operator installation and vanilla Kubernetes deployment
 # Required for dashboard visualization and monitoring
 
-OCP=false
+OCP=true
 
 usage() {
   cat <<EOF
-Usage: $0 [--ocp]
+Usage: $0 [--kubernetes]
 
 Options:
-  --ocp    Use OpenShift Grafana operator instead of vanilla Grafana
+  --kubernetes    Use vanilla Kubernetes Grafana instead of OpenShift Grafana operator
 
 Examples:
-  $0           # Install vanilla Grafana (not implemented yet)
-  $0 --ocp     # Install OpenShift Grafana operator
+  $0                # Install OpenShift Grafana operator (default)
+  $0 --kubernetes   # Install vanilla Grafana (not implemented yet)
 EOF
   exit 1
 }
@@ -24,7 +24,7 @@ EOF
 # Parse flags
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --ocp)  OCP=true ; shift ;;
+    --kubernetes)  OCP=false ; shift ;;
     -h|--help) usage ;;
     *) echo "❌ Unknown option: $1"; usage ;;
   esac
@@ -51,18 +51,16 @@ spec:
 EOF
 
   echo "⏳ Waiting for Grafana operator to be ready..."
-  kubectl wait --for=condition=CatalogSourcesUnhealthy=false subscription/grafana-operator -n openshift-operators --timeout=300s
+  kubectl wait --for=condition=CatalogSourcesUnhealthy=false subscription/grafana-operator -n openshift-operators --timeout=60s
 
   # Wait for the operator deployment to be available
   echo "⏳ Waiting for Grafana operator deployment..."
-  timeout 300s bash -c 'until kubectl get deployment grafana-operator-controller-manager -n openshift-operators &>/dev/null; do echo "Waiting for operator deployment..."; sleep 10; done'
-  kubectl wait --for=condition=Available deployment/grafana-operator-controller-manager -n openshift-operators --timeout=300s
+  kubectl wait --for=condition=Available deployment/grafana-operator-controller-manager-v5 -n openshift-operators --timeout=60s
 
   echo "✅ Grafana operator is installed and running"
 
 else
   echo "❌ Vanilla Kubernetes Grafana installation not implemented yet, skipping"
-  echo "Use --ocp flag for OpenShift clusters"
 fi
 
 echo "📊 Grafana operator installation completed!"
