@@ -1,0 +1,535 @@
+openapi: 3.0.3
+info:
+    title: MaaS Billing API
+    description: Model as a Service Billing and Management API
+    version: "1.0"
+servers:
+    - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+    /health:
+        get:
+            tags:
+                - health
+            summary: Check the health status of the MaaS API service
+            description: Check if the API service is running and ready to handle requests. Used by load balancers and monitoring.
+            operationId: health#healthcheck
+            security: []  # Health endpoint doesn't require authentication
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HealthResponse'
+                            example:
+                                status: healthy
+    /v1/models:
+        get:
+            tags:
+                - models
+            summary: Lists available large language models in OpenAI-compatible format
+            description: Lists available large language models in OpenAI-compatible format
+            operationId: models#list_llms
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ModelListResponse'
+                            example:
+                                object: list
+                                data:
+                                    - created: 1672531200
+                                      id: llama-2-7b-chat
+                                      object: model
+                                      owned_by: model-namespace
+                                      ready: true
+                                      url: https://api.example.com/v1/models/llama-2-7b-chat
+                                    - created: 1672531200
+                                      id: mistral-7b-instruct
+                                      object: model
+                                      owned_by: model-namespace
+                                      ready: true
+                                      url: https://api.example.com/v1/models/mistral-7b-instruct
+                                    - created: 1672531200
+                                      id: granite-8b-code-instruct
+                                      object: model
+                                      owned_by: model-namespace
+                                      ready: false
+                                    - created: 1672531200
+                                      id: llama-3-8b-instruct
+                                      object: model
+                                      owned_by: model-namespace
+                                      ready: true
+                                      url: https://api.example.com/v1/models/llama-3-8b-instruct
+                "500":
+                    description: Internal Server Error response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                            example:
+                                error: Failed to retrieve LLM models
+    /v1/tiers/lookup:
+        post:
+            tags:
+                - tiers
+            summary: Determines the highest subscription tier based on user group memberships
+            description: Finds the highest subscription tier based on user groups. Checks group memberships against tier mappings and returns the best match.
+            operationId: tiers#lookup
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TierLookupRequest'
+                        examples:
+                            basic_user:
+                                summary: Basic authenticated user
+                                value:
+                                    groups:
+                                        - system:authenticated
+                            premium_user:
+                                summary: Premium user with multiple groups
+                                value:
+                                    groups:
+                                        - system:authenticated
+                                        - premium-users
+                                        - beta-testers
+                            enterprise_user:
+                                summary: Enterprise user
+                                value:
+                                    groups:
+                                        - system:authenticated
+                                        - enterprise-users
+                                        - admin-users
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TierLookupResponse'
+                            examples:
+                                basic_tier:
+                                    summary: Basic tier response
+                                    value:
+                                        tier: basic
+                                premium_tier:
+                                    summary: Premium tier response
+                                    value:
+                                        tier: premium
+                                enterprise_tier:
+                                    summary: Enterprise tier response
+                                    value:
+                                        tier: enterprise
+                "400":
+                    description: Bad Request response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TierErrorResponse'
+                            examples:
+                                invalid_json:
+                                    summary: Invalid JSON body
+                                    value:
+                                        error: bad_request
+                                        message: "invalid request body: invalid character '}' looking for beginning of value"
+                                missing_groups:
+                                    summary: Missing groups field
+                                    value:
+                                        error: bad_request
+                                        message: "invalid request body: Key: 'LookupRequest.Groups' Error:Tag: 'required'"
+                                empty_groups:
+                                    summary: Empty groups array
+                                    value:
+                                        error: bad_request
+                                        message: "invalid request body: Key: 'LookupRequest.Groups' Error:Tag: 'min'"
+                "404":
+                    description: Not Found response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TierErrorResponse'
+                            example:
+                                error: not_found
+                                message: "no tier found for groups: [unknown-group]"
+                "500":
+                    description: Internal Server Error response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TierErrorResponse'
+                            example:
+                                error: internal_error
+                                message: "failed to lookup tier: connection to configmap failed"
+    /v1/tokens:
+        delete:
+            tags:
+                - tokens
+            summary: Revoke all tokens for the authenticated user
+            description: Invalidate all tokens for the current user. This will break any applications currently using those tokens.
+            operationId: tokens#revoke_all
+            responses:
+                "204":
+                    description: No Content response. All tokens have been successfully revoked.
+                "401":
+                    description: Unauthorized response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                            examples:
+                                missing_auth:
+                                    summary: Missing Authorization header
+                                    value:
+                                        error: Authorization header required
+                                invalid_format:
+                                    summary: Invalid authorization format
+                                    value:
+                                        error: "Invalid authorization format. Use: Authorization: Bearer <token>"
+                                validation_failed:
+                                    summary: Token validation failed
+                                    value:
+                                        error: validation failed
+                                not_authenticated:
+                                    summary: Token not authenticated
+                                    value:
+                                        error: not authenticated
+                "500":
+                    description: Internal Server Error response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                            examples:
+                                user_context_missing:
+                                    summary: User context not found
+                                    value:
+                                        error: User context not found
+                                revocation_failed:
+                                    summary: Token revocation failed
+                                    value:
+                                        error: Failed to revoke tokens
+        post:
+            tags:
+                - tokens
+            summary: Issues a new ephemeral token with specified expiration
+            description: Issues a new token with configurable expiration. Accepts either Go-style duration string or seconds as number. Default is 4 hours. Minimum expiration is 10 minutes.
+            operationId: tokens#issue
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TokenRequest'
+                        examples:
+                            default_expiration:
+                                summary: Default 4 hour expiration
+                                value:
+                                    expiration: 4h
+                            duration_string:
+                                summary: Go-style duration string
+                                value:
+                                    expiration: 2h30m
+                            seconds_number:
+                                summary: Expiration in seconds
+                                value:
+                                    expiration: 7200
+                            one_day:
+                                summary: One day expiration
+                                value:
+                                    expiration: 24h
+                            minimal_expiration:
+                                summary: Minimum allowed expiration (10 minutes)
+                                value:
+                                    expiration: 10m
+            responses:
+                "201":
+                    description: Created response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TokenResponse'
+                            examples:
+                                four_hour_token:
+                                    summary: 4 hour token response
+                                    value:
+                                        token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWFzLWFwaSIsInN1YiI6InRlc3QtdXNlciIsImF1ZCI6WyJtYWFzLWFwaSJdLCJleHAiOjE2NzI1NDU2MDAsIm5iZiI6MTY3MjUzMTIwMCwiaWF0IjoxNjcyNTMxMjAwfQ.signature
+                                        expiration: 4h
+                                        expiresAt: 1672545600
+                                duration_token:
+                                    summary: Custom duration token response  
+                                    value:
+                                        token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWFzLWFwaSIsInN1YiI6InRlc3QtdXNlciIsImF1ZCI6WyJtYWFzLWFwaSJdLCJleHAiOjE2NzI1NDAyMDAsIm5iZiI6MTY3MjUzMTIwMCwiaWF0IjoxNjcyNTMxMjAwfQ.signature
+                                        expiration: 2h30m
+                                        expiresAt: 1672540200
+                "400":
+                    description: Bad Request response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                            examples:
+                                invalid_format:
+                                    summary: Invalid expiration format
+                                    value:
+                                        error: "Invalid expiration format, must be positive"
+                                too_short:
+                                    summary: Expiration too short
+                                    value:
+                                        error: "invalid duration \"5m\": must be a positive number ending in s, m, or h (e.g. \"10s\", \"5m\", \"2h\")"
+                                invalid_duration:
+                                    summary: Invalid duration string
+                                    value:
+                                        error: "invalid duration \"2x\": must be a positive number ending in s, m, or h (e.g. \"10s\", \"5m\", \"2h\")"
+                                json_error:
+                                    summary: JSON binding error
+                                    value:
+                                        error: "invalid character 'x' looking for beginning of value"
+                "401":
+                    description: Unauthorized response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                            examples:
+                                missing_auth:
+                                    summary: Missing Authorization header
+                                    value:
+                                        error: Authorization header required
+                                invalid_format:
+                                    summary: Invalid authorization format
+                                    value:
+                                        error: "Invalid authorization format. Use: Authorization: Bearer <token>"
+                                validation_failed:
+                                    summary: Token validation failed
+                                    value:
+                                        error: validation failed
+                                not_authenticated:
+                                    summary: Token not authenticated
+                                    value:
+                                        error: not authenticated
+                "500":
+                    description: Internal Server Error response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                            examples:
+                                user_context_missing:
+                                    summary: User context not found
+                                    value:
+                                        error: User context not found
+                                token_generation_failed:
+                                    summary: Token generation failed
+                                    value:
+                                        error: Failed to generate token
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT  # optional, for documentation purposes only
+  
+  schemas:
+        # Simple error response used by Gin handlers
+        ErrorResponse:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Error message
+                    example: Failed to retrieve models
+            required:
+                - error
+        
+        # Health check response
+        HealthResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: Health status
+                    example: healthy
+            required:
+                - status
+        
+        # Model list response
+        ModelListResponse:
+            type: object
+            properties:
+                object:
+                    type: string
+                    description: Object type, always "list"
+                    example: list
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Model'
+                    description: Array of model objects
+                    example:
+                        - created: 1672531200
+                          id: llama-2-7b-chat
+                          object: model
+                          owned_by: model-namespace
+                          ready: true
+                          url: https://api.example.com/v1/models/llama-2-7b-chat
+                        - created: 1672531200
+                          id: mistral-7b-instruct
+                          object: model
+                          owned_by: model-namespace
+                          ready: true
+                          url: https://api.example.com/v1/models/mistral-7b-instruct
+            example:
+                object: list
+                data:
+                    - created: 1672531200
+                      id: llama-2-7b-chat
+                      object: model
+                      owned_by: model-namespace
+                      ready: true
+                      url: https://api.example.com/v1/models/llama-2-7b-chat
+                    - created: 1672531200
+                      id: mistral-7b-instruct
+                      object: model
+                      owned_by: model-namespace
+                      ready: true
+                      url: https://api.example.com/v1/models/mistral-7b-instruct
+            required:
+                - object
+                - data
+        
+        # Model schema
+        Model:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: The model identifier
+                    example: llama-2-7b-chat
+                object:
+                    type: string
+                    description: The object type, always "model"
+                    example: model
+                created:
+                    type: integer
+                    description: The Unix timestamp (in seconds) when the model was created
+                    example: 1672531200
+                    format: int64
+                owned_by:
+                    type: string
+                    description: The organization that owns the model
+                    example: model-namespace
+                ready:
+                    type: boolean
+                    description: Model ready status
+                    example: true
+                url:
+                    type: string
+                    description: Model URL (optional)
+                    example: https://api.example.com/v1/models/llama-2-7b-chat
+            example:
+                created: 1672531200
+                id: llama-2-7b-chat
+                object: model
+                owned_by: model-namespace
+                ready: true
+                url: https://api.example.com/v1/models/llama-2-7b-chat
+            required:
+                - id
+                - object
+                - created
+                - owned_by
+                - ready
+        
+        # Tier lookup
+        TierLookupRequest:
+            type: object
+            properties:
+                groups:
+                    type: array
+                    items:
+                        type: string
+                    description: Array of user groups to lookup
+                    example:
+                        - system:authenticated
+                        - premium-users
+                    minItems: 1
+            required:
+                - groups
+        
+        # Tier lookup response
+        TierLookupResponse:
+            type: object
+            properties:
+                tier:
+                    type: string
+                    description: Matched tier name
+                    example: premium
+            required:
+                - tier
+        
+        # Tier error response
+        TierErrorResponse:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Error code
+                    example: bad_request
+                message:
+                    type: string
+                    description: Human-readable error message
+                    example: invalid request body
+            required:
+                - error
+                - message
+        
+        # Token request
+        TokenRequest:
+            type: object
+            properties:
+                expiration:
+                    oneOf:
+                        - type: string
+                          description: Go-style duration string (e.g., '30s', '2h45m')
+                          example: 4h
+                        - type: number
+                          description: Number of seconds
+                          example: 14400
+                    description: Token expiration - accepts either Go-style duration string or number of seconds. Minimum 10 minutes. Default is 4 hours.
+        
+        # Token response
+        TokenResponse:
+            type: object
+            properties:
+                token:
+                    type: string
+                    description: Generated JWT token
+                    example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+                expiration:
+                    type: string
+                    description: Token expiration duration as string
+                    example: 4h
+                expiresAt:
+                    type: integer
+                    description: Token expiration timestamp (Unix seconds)
+                    example: 1672531200
+                    format: int64
+            required:
+                - token
+                - expiration
+                - expiresAt
+tags:
+    - name: tokens
+      description: "\U0001F511 Ephemeral Token Management service. Openshift identity access token is used to authenticate and as a refresh token."
+    - name: models
+      description: "\U0001F916 Model management service"
+    - name: tiers
+      description: "\U0001F3F7️Tier lookup service"
+    - name: health
+      description: ❤️ Health check service

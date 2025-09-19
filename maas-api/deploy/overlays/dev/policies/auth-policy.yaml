@@ -15,7 +15,7 @@ spec:
       matchedTier:
         http:
           # TODO: network policy to limit access to this endpoint
-          url: http://maas-api.maas-api.svc.cluster.local:8080/tiers/lookup
+          url: http://maas-api.maas-api.svc.cluster.local:8080/v1/tiers/lookup
           contentType: application/json
           method: POST
           body:
