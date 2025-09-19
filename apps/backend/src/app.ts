@@ -10,7 +10,7 @@ import policiesRoutes from './routes/policies';
 import tokensRoutes from './routes/tokens';
 import simulatorRoutes from './routes/simulator';
 
-// Function to get groups from configmap
+// Function to get groups from configmap for group membership checking
 async function getGroupsFromConfigMap(): Promise<string[]> {
   try {
     const { exec } = require('child_process');
@@ -47,73 +47,29 @@ async function getGroupsFromConfigMap(): Promise<string[]> {
   }
 }
 
-// Function to get tier-to-group mapping from configmap
-async function getTierGroupMapping(): Promise<{ tierGroupMapping: Record<string, string[]>, tierLevels: Record<string, number> }> {
+// Function to get tier from MaaS API using user groups
+async function getTierFromMaasApi(userGroups: string[]): Promise<string> {
   try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    
-    const configMapName = process.env.TIER_GROUP_CONFIGMAP_NAME || (() => { throw new Error('TIER_GROUP_CONFIGMAP_NAME environment variable is required'); })();
-    const configMapNamespace = process.env.TIER_GROUP_CONFIGMAP_NAMESPACE || (() => { throw new Error('TIER_GROUP_CONFIGMAP_NAMESPACE environment variable is required'); })();
-    
-    const { stdout } = await execAsync(`oc get configmap ${configMapName} -n ${configMapNamespace} -o jsonpath='{.data.tiers}' 2>/dev/null`);
-    
-    if (stdout) {
-      // Parse YAML format from the ConfigMap
-      const yaml = require('js-yaml');
-      const tiers = yaml.load(stdout);
-      const tierGroupMapping: Record<string, string[]> = {};
-      const tierLevels: Record<string, number> = {};
-      
-      if (Array.isArray(tiers)) {
-        tiers.forEach((tier: any) => {
-          if (tier.name && tier.groups && Array.isArray(tier.groups)) {
-            tierGroupMapping[tier.name] = tier.groups;
-            tierLevels[tier.name] = tier.level || 0;
-          }
-        });
-      }
-      
-      logger.info(`Loaded tier mappings from ConfigMap: ${Object.keys(tierGroupMapping).join(', ')}`);
-      return { tierGroupMapping, tierLevels };
-    }
-    
-    logger.warn(`ConfigMap ${configMapName} not found or empty, using default tier mapping`);
-    return { 
-      tierGroupMapping: { 'free': ['system:authenticated'] }, 
-      tierLevels: { 'free': 1 } 
-    }; // Minimal fallback
-  } catch (error) {
-    logger.error('Failed to get tier-group mapping from configmap:', error);
-    return { 
-      tierGroupMapping: { 'free': ['system:authenticated'] }, 
-      tierLevels: { 'free': 1 } 
-    }; // Minimal fallback
-  }
-}
+    const maasApiUrl = process.env.MAAS_API_URL || 'http://localhost:8080';
+    const response = await fetch(`${maasApiUrl}/tiers/lookup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ groups: userGroups })
+    });
 
-// Function to determine user tier based on groups and configmap mapping with levels
-function determineTierFromGroups(userGroups: string[], tierGroupMapping: Record<string, string[]>, tierLevels: Record<string, number>): string {
-  // Get available tiers sorted by level (highest first for priority)
-  const availableTiers = Object.keys(tierGroupMapping);
-  const tierPriority = availableTiers.sort((a, b) => {
-    const levelA = tierLevels[a] || 0;
-    const levelB = tierLevels[b] || 0;
-    return levelB - levelA; // Higher level = higher priority
-  });
-  
-  // Check tiers in priority order (highest level first)
-  for (const tier of tierPriority) {
-    const tierGroups = tierGroupMapping[tier] || [];
-    if (tierGroups.some(group => userGroups.includes(group))) {
-      return tier;
+    if (response.ok) {
+      const data = await response.json();
+      return data.tier || 'free';
+    } else {
+      logger.warn(`MaaS API tier lookup failed with status ${response.status}, falling back to 'free'`);
+      return 'free';
     }
+  } catch (error) {
+    logger.error('Failed to get tier from MaaS API:', error);
+    return 'free'; // Fallback
   }
-  
-  // Fallback to lowest level tier from configmap
-  const lowestTier = tierPriority.length > 0 ? tierPriority[tierPriority.length - 1] : 'unknown';
-  return lowestTier;
 }
 
 const app: express.Application = express();
@@ -286,9 +242,8 @@ app.get('/api/v1/user', async (req, res) => {
       groups.push('system:authenticated');
       logger.info(`Found user groups for ${username}: ${groups.join(', ')}`);
       
-      // Dynamic tier determination based on ConfigMap mapping
-      const { tierGroupMapping, tierLevels } = await getTierGroupMapping();
-      tier = determineTierFromGroups(groups, tierGroupMapping, tierLevels);
+      // Dynamic tier determination using MaaS API
+      tier = await getTierFromMaasApi(groups);
       logger.info(`Final tier determination for ${username}: ${tier} (groups: ${groups.join(', ')})`);
       
     } catch (error) {
