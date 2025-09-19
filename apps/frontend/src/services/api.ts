@@ -145,7 +145,7 @@ class ApiService {
   // Token Management APIs
 
   async createToken(params: {
-    ttl?: string; // Optional TTL, e.g. '1h', '4h', '24h'. If not provided, uses MaaS API default (4h)
+    expiration?: string; // Optional expiration, e.g. '1h', '4h', '24h'. If not provided, uses MaaS API default (4h)
   }) {
     return this.fetch('/tokens/create', {
       method: 'POST',
