@@ -45,6 +45,10 @@ spec:
               auth.identity.user.username.split(":")[3]
     authorization:
       tier-access:
+        when:
+          # Target models only (TODO: find a better way to do this)
+          - predicate: |
+              !request.path.startsWith("/maas-api")
         kubernetesSubjectAccessReview:
           user:
             expression: auth.identity.user.username
@@ -60,7 +64,7 @@ spec:
                 request.path.split("/")[1]
             name:
               expression: |
-                request.path.split("/")[1]
+                request.path.split("/")[2]
             verb:
               value: post
     response:
