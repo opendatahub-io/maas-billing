@@ -8,6 +8,10 @@ metadata:
     openshift.io/display-name: Qwen3-0.6B-Instruct
     serving.kserve.io/deploymentMode: RawDeployment
     sidecar.istio.io/inject: "false"
+    serving.kserve.io/storageInitializerMemory: "4Gi"
+    serving.kserve.io/storageInitializerMemoryLimit: "8Gi"
+    serving.kserve.io/storageInitializerCpu: "2"
+    serving.kserve.io/storageInitializerCpuLimit: "4"
   name: qwen3-0-6b-instruct
   namespace: llm
   labels:
@@ -30,12 +34,12 @@ spec:
       storageUri: hf://Qwen/Qwen3-0.6B
       resources:
         limits:
-          cpu: "4"
-          memory: 8Gi
+          cpu: "8"
+          memory: 16Gi
           nvidia.com/gpu: "1"
         requests:
-          cpu: "1"
-          memory: 4Gi
+          cpu: "2"
+          memory: 8Gi
           nvidia.com/gpu: "1"
       runtime: vllm-latest
       env:

@@ -33,6 +33,6 @@ spec:
           window: 2m
       when:
         - predicate: |
-            auth.identity.tiers == "enterprise"
+            auth.identity.tier == "enterprise"
       counters:
         - expression: auth.identity.userid

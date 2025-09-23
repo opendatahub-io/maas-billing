@@ -38,3 +38,5 @@ htmlcov/
 apps/frontend/.env.local
 apps/backend/.env
 CLAUDE.md
+
+temp/
