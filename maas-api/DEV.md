@@ -24,9 +24,18 @@ make deploy-dev \
 kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/models/simulator | kubectl apply -f -
 ```
 
+For GPU-based model deployment (requires GPU nodes):
+
+```shell
+kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/models/qwen3 | kubectl apply -f -
+```
+
 > [!IMPORTANT]
-> `vllm-simulator.yaml` in `deploy/overlays/dev/models/simulator` is a symlink, therefore, it needs to be built with --load-restrictor LoadRestrictionsNone.
+> The model YAML files in `deploy/overlays/dev/models/` are symlinks, therefore, they need to be built with --load-restrictor LoadRestrictionsNone.
 > For more details see this [issue](https://github.com/kubernetes-sigs/kustomize/issues/4420).
+> 
+> [!NOTE]
+> The Qwen3 model requires GPU resources (nvidia.com/gpu) and will only schedule on nodes with GPU support.
 
 #### Patch Kuadrant deployment
 
