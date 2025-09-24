@@ -1,0 +1,38 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: single-node-no-scheduler-nvidia-gpu
+spec:
+  model:
+    uri: hf://Qwen/Qwen3-0.6B
+    name: Qwen/Qwen3-0.6B
+  replicas: 1
+  router:
+    route: { }
+  template:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+    containers:
+      - name: main
+        resources:
+          limits:
+            cpu: "4"
+            memory: 8Gi
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "1"
+            memory: 4Gi
+            nvidia.com/gpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 5

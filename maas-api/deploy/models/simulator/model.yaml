@@ -1,7 +1,7 @@
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
-  name: facebook-opt-125m-single-simulated
+  name: simulated
 spec:
   model:
     uri: hf://facebook/opt-125m
@@ -19,7 +19,7 @@ spec:
         - --port
         - "8000" 
         - --model
-        - facebook-opt-125m-single-simulated
+        - facebook-opt-125m-simulated
         - --mode
         - random
         - --ssl-certfile
@@ -51,4 +51,3 @@ spec:
             path: /ready
             port: https
             scheme: HTTPS
-
