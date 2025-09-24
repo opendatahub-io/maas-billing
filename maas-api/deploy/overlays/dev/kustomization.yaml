@@ -20,5 +20,5 @@ patches:
 
 images:
 - name: maas-api
-  newName: quay.io/opendatahub/maas-api:latest
+  newName: quay.io/opendatahub/maas-api
   newTag: latest

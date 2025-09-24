@@ -4,7 +4,7 @@
 
 - kubectl
 - jq
-- kustomize
+- kustomize 5.7
 - OCP 4.19.9+ (for GW API)
 - [jwt](https://github.com/mike-engel/jwt-cli) CLI tool (for inspecting tokens)
 
@@ -96,7 +96,7 @@ AUD="$(kubectl create token default --duration=10m \
 
 echo "Patching AuthPolicy with audience: $AUD"
 
-kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/maas-api-auth-policy.yaml \
+kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/maas-api/auth-policy.yaml \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
