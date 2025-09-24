@@ -95,20 +95,12 @@ test: ## Run Go tests
 
 .PHONY: build-image
 build-image: ## Build container image (use REPO= and TAG= to specify image)
-	@if [ -z "$(REPO)" ]; then \
-		echo "Error: REPO is required. Usage: make build-image REPO=ghcr.io/myorg/maas-api"; \
-		exit 1; \
-	fi
 	@echo "Building container image $(FULL_IMAGE)..."
 	$(CONTAINER_ENGINE) build $(CONTAINER_ENGINE_EXTRA_FLAGS) -t $(FULL_IMAGE) .
 	@echo "Container image $(FULL_IMAGE) built successfully"
 
 .PHONY: push-image
 push-image: ## Push container image (use REPO= and TAG= to specify image)
-	@if [ -z "$(REPO)" ]; then \
-		echo "Error: REPO is required. Usage: make push-image REPO=ghcr.io/myorg/maas-api"; \
-		exit 1; \
-	fi
 	@echo "Pushing container image $(FULL_IMAGE)..."
 	@$(CONTAINER_ENGINE) push $(FULL_IMAGE)
 	@echo "Container image $(FULL_IMAGE) pushed successfully"
