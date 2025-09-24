@@ -1,0 +1,58 @@
+# KServe Configuration for Kuadrant Integration on OpenShift
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inferenceservice-config
+  namespace: kserve
+data:
+  deploy: |
+    {
+      "defaultDeploymentMode": "RawDeployment"
+    }
+  ingress: |
+    {
+      "enableGatewayApi": true,
+      "kserveIngressGateway": "llm/inference-gateway",
+      "ingressGateway": "istio-system/istio-ingressgateway",
+      "ingressDomain": "${CLUSTER_DOMAIN}"
+    }
+  storageInitializer: |
+    {
+      "image": "kserve/storage-initializer:v0.15.2",
+      "memoryRequest": "4Gi",
+      "memoryLimit": "8Gi",
+      "cpuRequest": "2",
+      "cpuLimit": "4",
+      "caBundleConfigMapName": "",
+      "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
+      "enableDirectPvcVolumeMount": true,
+      "enableModelcar": true,
+      "cpuModelcar": "10m",
+      "memoryModelcar": "15Mi",
+      "uidModelcar": 1010
+    }
+  logger: |
+    {
+      "image": "kserve/agent:v0.15.2",
+      "memoryRequest": "100Mi",
+      "memoryLimit": "1Gi",
+      "cpuRequest": "100m",
+      "cpuLimit": "1"
+    }
+  batcher: |
+    {
+      "image": "kserve/agent:v0.15.2",
+      "memoryRequest": "100Mi",
+      "memoryLimit": "1Gi",
+      "cpuRequest": "100m",
+      "cpuLimit": "1"
+    }
+  agent: |
+    {
+      "image": "kserve/agent:v0.15.2",
+      "memoryRequest": "100Mi",
+      "memoryLimit": "1Gi",
+      "cpuRequest": "100m",
+      "cpuLimit": "1"
+    }

@@ -1,0 +1,79 @@
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: gateway-auth-policy
+  namespace: openshift-ingress
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: openshift-ai-inference
+  rules:
+    metadata:
+      # Enriching identity metadata with a proper subscription tier based on user groups
+      matchedTier:
+        http:
+          # TODO: network policy to limit access to this endpoint
+          url: http://maas-api.maas-api.svc.cluster.local:8080/v1/tiers/lookup
+          contentType: application/json
+          method: POST
+          body:
+            expression: |-
+              { "groups": auth.identity.user.groups }
+        cache:
+          key:
+            selector: auth.identity.user.username
+          ttl: 300
+    authentication:
+      service-accounts:
+        when:
+          - predicate: |
+              request.path.startsWith("/simulator") || request.path.startsWith("/qwen3")
+        kubernetesTokenReview:
+          audiences:
+            - openshift-ai-inference-sa
+        defaults:
+          # token normalization - https://docs.kuadrant.io/1.2.x/authorino/docs/user-guides/token-normalization/
+          # full username: system:serviceaccount:<ns>:<name>
+          userid:
+            expression: |
+              auth.identity.user.username.split(":")[3]
+    authorization:
+      tier-access:
+        when:
+          - predicate: |
+              request.path.startsWith("/maas-api")
+        kubernetesSubjectAccessReview:
+          user:
+            expression: auth.identity.user.username
+          authorizationGroups:
+            expression: auth.identity.user.groups
+          resourceAttributes:
+            group:
+              value: serving.kserve.io
+            resource:
+              # For RHOAI this needs different target 
+              # value: llminferenceservices
+              value: inferenceservices
+            # ns/name can be inferred from path /{model-name}/...
+            namespace:
+              expression: |
+                request.path.split("/")[1]
+            name:
+              expression: |
+                request.path.split('/')[1] == "simulator" ? "vllm-simulator" : 
+                request.path.split('/')[1] == "qwen3" ? "qwen3-0-6b-instruct" : 
+                "unknown"
+            verb:
+              value: post
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                userid:
+                  expression: auth.identity.userid
+                tier:
+                  expression: auth.metadata.matchedTier["tier"]
