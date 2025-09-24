@@ -1,14 +1,17 @@
 FROM registry.access.redhat.com/ubi9/go-toolset:1.24 AS builder
 
+# Temporarily switch to root for build operations
+USER root
+
 WORKDIR /app
 
-COPY go.mod go.sum ./
+COPY --chown=1001:0 go.mod go.sum ./
 
 RUN go mod download
 
-COPY . .
+COPY --chown=1001:0 . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o maas-api ./cmd/
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /tmp/maas-api ./cmd/
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
@@ -17,7 +20,7 @@ RUN microdnf update -y && microdnf install -y ca-certificates curl-minimal && mi
 
 WORKDIR /app
 
-COPY --from=builder /app/maas-api .
+COPY --from=builder /tmp/maas-api ./maas-api
 
 # Make binary executable and fix permissions for OpenShift
 RUN chmod +x maas-api && \

@@ -15,19 +15,16 @@ First, we need to deploy the core infrastructure:
 ```shell
 ROOT=$(git rev-parse --show-toplevel)
 for ns in kserve kuadrant llm maas-api; do kubectl create ns $ns || true; done
-kustomize build ${ROOT}/deployment/infrastructure/kustomize-templates/kserve | kubectl apply -f -
+kustomize build ${ROOT}/deployment/default/odh | kubectl apply -f -
 cd ${ROOT} && ./deployment/scripts/install-dependencies.sh --cert-manager --kserve --kuadrant && cd -
-make deploy-dev \
-  -e REPO=quay.io/bmajsak/maas-api \
-  -e TAG=sa-token-provider \
-  -e PRE_DEPLOY_STEP='kustomize edit add patch --group apps --kind Deployment --path patches/sa-token-provider.yaml'
-kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/models/simulator | kubectl apply -f -
+kustomize build ${ROOT}/deployment/base/maas-api | kubectl apply -f -
+kustomize build --load-restrictor LoadRestrictionsNone ${ROOT}/deployment/samples/models/simulator | kubectl apply -f -
 ```
 
 For GPU-based model deployment (requires GPU nodes):
 
 ```shell
-kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/models/qwen3 | kubectl apply -f -
+kustomize build --load-restrictor LoadRestrictionsNone ${ROOT}/deployment/samples/models/qwen3 | kubectl apply -f -
 ```
 
 > [!IMPORTANT]
@@ -35,7 +32,25 @@ kustomize build --load-restrictor LoadRestrictionsNone deploy/overlays/dev/model
 > For more details see this [issue](https://github.com/kubernetes-sigs/kustomize/issues/4420).
 > 
 > [!NOTE]
-> The Qwen3 model requires GPU resources (nvidia.com/gpu) and will only schedule on nodes with GPU support.
+> The Qwen3 model requires:
+> - GPU resources (nvidia.com/gpu) and will only schedule on nodes with GPU support
+> - Sufficient storage initializer resources (4Gi memory minimum) to download model weights
+> - The KServe inferenceservice-config ConfigMap is pre-configured with appropriate storage initializer resources
+
+#### Storage Initializer Configuration
+
+The KServe storage initializer requires sufficient resources to download large models. The default configuration in `deployment/default/odh/kserve-config-openshift.yaml` is set to:
+
+- Memory Request: 4Gi
+- Memory Limit: 8Gi
+- CPU Request: 2
+- CPU Limit: 4
+
+These values are sufficient for most models including Qwen3. If you encounter OOMKilled errors during model download, you may need to increase these limits by editing the ConfigMap:
+
+```shell
+kubectl edit configmap inferenceservice-config -n kserve
+```
 
 #### Patch Kuadrant deployment
 
@@ -94,7 +109,7 @@ AUD="$(kubectl create token default --duration=10m \
   | jwt decode --json - \
   | jq -r '.payload.aud[0]')"
 
-kubectl patch --local -f deploy/overlays/dev/policies/auth-policy.yaml \
+kubectl patch --local -f ${ROOT}/deployment/base/policies/auth-policy.yaml \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
@@ -139,4 +154,27 @@ curl -ks -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer $TOKEN" \
   "${HOST}/simulator/health";
 done;
+```
+
+#### Testing GPU Models (Qwen3)
+
+If you have deployed the Qwen3 model (requires GPU nodes), you can test it:
+
+```shell
+# Test health endpoint
+curl -ks -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $TOKEN" \
+  "${HOST}/qwen3/health"
+
+# Test completion endpoint
+curl -ks \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  "${HOST}/qwen3/v1/completions" \
+  -d '{
+    "model": "qwen3-0-6b-instruct",
+    "prompt": "Hello, how are you?",
+    "max_tokens": 50
+  }' | jq .
 ```
