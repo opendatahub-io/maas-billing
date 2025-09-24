@@ -1,10 +1,7 @@
 # MaaS Billing Makefile
 
 # Container Engine to be used for building image and with kind
-CONTAINER_ENGINE ?= docker
-ifeq (podman,$(CONTAINER_ENGINE))
-    CONTAINER_ENGINE_EXTRA_FLAGS ?= --load
-endif
+CONTAINER_ENGINE ?= podman
 
 # Image settings
 REPO ?= ghcr.io/your-org/maas-api
