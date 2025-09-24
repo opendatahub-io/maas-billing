@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: maas-api-opendatahub
+  
+# Overlay to be used by OpenDataHub Operator to install MaaS component itself.
+resources:
+- ../../base
+- ../../policies/maas-api
+
+namespace: opendatahub
+
+labels:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/component: api
+    app.kubernetes.io/name: maas-api
+
+# This approach is used across ODH components to set the image through GitOps
+configMapGenerator:
+- name: maas-api-deployment-config
+  envs:
+    - params.env
+  options:
+    disableNameSuffixHash: true
+
+replacements:
+- source:
+    fieldPath: data.maas-api-image
+    kind: ConfigMap
+    name: maas-api-deployment-config
+  targets:
+  - fieldPaths:
+    - spec.template.spec.containers.[name=maas-api].image
+    select:
+      kind: Deployment
+      name: maas-api

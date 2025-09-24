@@ -16,17 +16,9 @@ transformers:
 - transformers/namespace.yaml
 
 patches:
-- path: patches/debug-mode-patch.yaml
+- path: patches/debug-mode.yaml
 
-# Overwrite the image to use the local image set through kustomize edit set image
-# This is needed because the image is set in the base/deployment.yaml using params.env "injection"
 images:
 - name: maas-api
   newName: quay.io/opendatahub/maas-api:latest
   newTag: latest
-
-secretGenerator:
-- name: maas-api-admin-secret
-  behavior: replace
-  literals:
-  - admin-api-key=letmein

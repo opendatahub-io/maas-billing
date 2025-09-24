@@ -3,7 +3,8 @@ kind: Kustomization
 
 metadata:
   name: odh-infra
-
+  
+# Set of Kustomize manifests with OpenDataHub components required for MaaS.
 # For now, install only Model Serving pieces
 resources:
 - github.com/opendatahub-io/kserve/config/overlays/odh?ref=release-v0.15

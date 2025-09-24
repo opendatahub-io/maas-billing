@@ -3,10 +3,6 @@ kind: ClusterRole
 metadata:
   name: maas-api
 rules:
-# Core resources for key management
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
@@ -30,21 +26,6 @@ rules:
 # KServe resources for model management
 - apiGroups: ["serving.kserve.io"]
   resources: ["inferenceservices", "llminferenceservices"]
-  verbs: ["get", "list", "watch"]
-
-# Kuadrant resources for policy management
-- apiGroups: ["kuadrant.io"]
-  resources: ["ratelimitpolicies", "authpolicies"]
-  verbs: ["get", "list", "create", "update", "patch", "delete", "watch"]
-
-# Gateway API resources
-- apiGroups: ["gateway.networking.k8s.io"]
-  resources: ["gateways", "httproutes"]
-  verbs: ["get", "list", "watch"]
-
-# Istio resources (if using Istio)
-- apiGroups: ["networking.istio.io"]
-  resources: ["virtualservices", "destinationrules", "gateways"]
   verbs: ["get", "list", "watch"]
 
 # Metrics and monitoring

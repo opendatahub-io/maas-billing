@@ -48,10 +48,7 @@ kustomize build ${PROJECT_DIR}/maas-api/deploy/infra/odh | kubectl apply --serve
 ### Deploying MaaS API for development
 
 ```shell
-make deploy-dev \
-  -e REPO=quay.io/bmajsak/maas-api \
-  -e TAG=latest \
-  -e PRE_DEPLOY_STEP='kustomize edit add patch --group apps --kind Deployment --path patches/sa-token-provider.yaml'
+make deploy-dev
 ```
 
 This will:
@@ -99,12 +96,12 @@ AUD="$(kubectl create token default --duration=10m \
 
 echo "Patching AuthPolicy with audience: $AUD"
 
-kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/auth-policy.yaml \
+kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/maas-api-auth-policy.yaml \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
-    path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences",
-    value:[$aud]
+    path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
+    value:$aud
   }]')" \
   -o yaml | kubectl apply -f -
 ```

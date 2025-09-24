@@ -11,7 +11,7 @@ spec:
         runAsNonRoot: true
       containers:
       - name: maas-api
-        image: maas-api:latest
+        image: maas-api
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -22,11 +22,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: ADMIN_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: maas-api-admin-secret
-              key: admin-api-key
         resources:
           requests:
             memory: "64Mi"

@@ -26,13 +26,6 @@ spec:
             selector: auth.identity.user.username
           ttl: 300
     authentication:
-      openshift-identities:
-        when:
-          - predicate: |
-              request.path.startsWith("/maas-api")
-        kubernetesTokenReview:
-          audiences:
-            - https://kubernetes.default.svc
       service-accounts:
         kubernetesTokenReview:
           audiences:
@@ -45,10 +38,6 @@ spec:
               auth.identity.user.username.split(":")[3]
     authorization:
       tier-access:
-        when:
-          # Target models only (TODO: find a better way to do this)
-          - predicate: |
-              !request.path.startsWith("/maas-api")
         kubernetesSubjectAccessReview:
           user:
             expression: auth.identity.user.username

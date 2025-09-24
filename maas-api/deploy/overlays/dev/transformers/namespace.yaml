@@ -25,6 +25,7 @@ target:
   group: kuadrant.io
   version: v1
   kind: AuthPolicy 
+  name: gateway-auth-policy
 ---
 apiVersion: builtin
 kind: PatchTransformer
