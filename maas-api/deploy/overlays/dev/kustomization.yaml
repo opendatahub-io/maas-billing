@@ -19,10 +19,10 @@ patches:
 - path: patches/debug-mode-patch.yaml
 
 # Overwrite the image to use the local image set through kustomize edit set image
-# This is needed because the image is set to ghcr.io/redhat-et/maas-key-manager in the base/deployment.yaml using params.env "injection"
+# This is needed because the image is set in the base/deployment.yaml using params.env "injection"
 images:
-- name: ghcr.io/redhat-et/maas-key-manager
-  newName: maas-api
+- name: maas-api
+  newName: quay.io/opendatahub/maas-api:latest
   newTag: latest
 
 secretGenerator:
