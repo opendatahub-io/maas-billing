@@ -66,7 +66,6 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
-	// Set default expiration if not provided
 	if req.Expiration == nil {
 		req.Expiration = &Duration{time.Hour * 4}
 	}
