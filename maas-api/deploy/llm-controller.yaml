@@ -1,0 +1,203 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-controller
+  namespace: kserve
+  labels:
+    app: llm-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-controller
+  template:
+    metadata:
+      labels:
+        app: llm-controller
+    spec:
+      serviceAccountName: kserve-controller-manager
+      containers:
+      - name: controller
+        image: python:3.11-slim
+        command: ["sh", "-c"]
+        args:
+        - |
+          pip install kubernetes && python -c "
+          import asyncio
+          import json
+          import logging
+          import os
+          from datetime import datetime
+          from kubernetes import client, config
+          from kubernetes.client.rest import ApiException
+          
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+          
+          # Load Kubernetes config
+          config.load_incluster_config()
+          v1 = client.CoreV1Api()
+          custom_api = client.CustomObjectsApi()
+          
+          def get_llm_services():
+              \"\"\"Get all LLMInferenceServices\"\"\"
+              try:
+                  result = custom_api.list_cluster_custom_object(
+                      group='serving.kserve.io',
+                      version='v1alpha1',
+                      plural='llminferenceservices'
+                  )
+                  return result
+              except ApiException as e:
+                  logger.error(f'Failed to get LLMInferenceServices: {e}')
+                  return None
+          
+          def get_route_for_service(name, namespace):
+              \"\"\"Find OpenShift route for the service\"\"\"
+              try:
+                  # Try to get route with expected name
+                  route_name = f'{name}-llm'
+                  try:
+                      route = custom_api.get_namespaced_custom_object(
+                          group='route.openshift.io',
+                          version='v1',
+                          namespace=namespace,
+                          plural='routes',
+                          name=route_name
+                      )
+                      host = route.get('spec', {}).get('host')
+                      if host:
+                          return f'https://{host}'
+                  except ApiException:
+                      pass
+                  
+                  # List all routes and find one matching the service name
+                  try:
+                      routes = custom_api.list_namespaced_custom_object(
+                          group='route.openshift.io',
+                          version='v1',
+                          namespace=namespace,
+                          plural='routes'
+                      )
+                      for route in routes.get('items', []):
+                          route_name = route.get('metadata', {}).get('name', '')
+                          if name in route_name:
+                              host = route.get('spec', {}).get('host')
+                              if host:
+                                  return f'https://{host}'
+                  except ApiException:
+                      pass
+                      
+                  return None
+              except Exception as e:
+                  logger.error(f'Error finding route for {name}: {e}')
+                  return None
+          
+          def update_llm_status(name, namespace, url):
+              \"\"\"Update LLMInferenceService status with URL\"\"\"
+              try:
+                  status_patch = {
+                      'status': {
+                          'url': url,
+                          'ready': True,
+                          'conditions': [
+                              {
+                                  'type': 'Ready',
+                                  'status': 'True',
+                                  'lastTransitionTime': datetime.utcnow().isoformat() + 'Z'
+                              }
+                          ]
+                      }
+                  }
+                  
+                  custom_api.patch_namespaced_custom_object_status(
+                      group='serving.kserve.io',
+                      version='v1alpha1',
+                      namespace=namespace,
+                      plural='llminferenceservices',
+                      name=name,
+                      body=status_patch
+                  )
+                  logger.info(f'Updated {name} in {namespace} with URL: {url}')
+                  return True
+              except ApiException as e:
+                  logger.error(f'Failed to update {name} in {namespace}: {e}')
+                  return False
+          
+          async def reconcile_loop():
+              \"\"\"Main reconciliation loop\"\"\"
+              logger.info('Starting LLM controller...')
+              
+              while True:
+                  try:
+                      llm_data = get_llm_services()
+                      if llm_data and llm_data.get('items'):
+                          for item in llm_data['items']:
+                              name = item['metadata']['name']
+                              namespace = item['metadata']['namespace']
+                              
+                              # Check if status.url is already set
+                              current_url = item.get('status', {}).get('url')
+                              if current_url:
+                                  logger.debug(f'LLMInferenceService {name} already has URL: {current_url}')
+                                  continue
+                              
+                              # Find route for this service
+                              url = get_route_for_service(name, namespace)
+                              if url:
+                                  logger.info(f'Found URL for {name}: {url}')
+                                  update_llm_status(name, namespace, url)
+                              else:
+                                  logger.warning(f'No route found for {name} in {namespace}')
+                      
+                      # Wait before next reconciliation
+                      await asyncio.sleep(30)
+                      
+                  except Exception as e:
+                      logger.error(f'Reconciliation error: {e}')
+                      await asyncio.sleep(60)
+          
+          # Run the controller
+          asyncio.run(reconcile_loop())
+          "
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: llm-controller
+rules:
+- apiGroups: ["serving.kserve.io"]
+  resources: ["llminferenceservices"]
+  verbs: ["get", "list", "watch", "patch"]
+- apiGroups: ["serving.kserve.io"]
+  resources: ["llminferenceservices/status"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: ["route.openshift.io"]
+  resources: ["routes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: llm-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: llm-controller
+subjects:
+- kind: ServiceAccount
+  name: kserve-controller-manager
+  namespace: kserve
