@@ -28,7 +28,6 @@ func NewManager(k8sClient dynamic.Interface) *Manager {
 
 // ListAvailableModels lists all InferenceServices across all namespaces
 func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
-
 	inferenceServiceGVR := schema.GroupVersionResource{
 		Group:    "serving.kserve.io",
 		Version:  "v1beta1",
@@ -98,16 +97,35 @@ func toModels(list *unstructured.UnstructuredList) ([]Model, error) {
 }
 
 func findURL(item unstructured.Unstructured) (*apis.URL, error) {
-	status, found := item.Object["status"].(map[string]any)
-	if !found {
-		return nil, fmt.Errorf("failed to find status of %s/%s", item.GetNamespace(), item.GetName())
+	if s, ok, err := unstructured.NestedString(item.Object, "status", "url"); err != nil {
+		return nil, fmt.Errorf("failed to read status.url for %s/%s: %w",
+			item.GetNamespace(), item.GetName(), err)
+	} else if ok && strings.TrimSpace(s) != "" {
+		return apis.ParseURL(s)
 	}
 
-	if url, ok := status["url"].(string); ok {
-		return apis.ParseURL(url)
+	// Fallback: scan status.addresses for the first usable URL.
+	addresses, found, err := unstructured.NestedSlice(item.Object, "status", "addresses")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read status.addresses for %s/%s: %w",
+			item.GetNamespace(), item.GetName(), err)
+	}
+	if !found || len(addresses) == 0 {
+		return nil, fmt.Errorf("no status.url and no status.addresses for %s/%s",
+			item.GetNamespace(), item.GetName())
+	}
+	for _, a := range addresses {
+		m, ok := a.(map[string]any)
+		if !ok {
+			continue
+		}
+		if u, ok, _ := unstructured.NestedString(m, "url"); ok && strings.TrimSpace(u) != "" {
+			return apis.ParseURL(u)
+		}
 	}
 
-	return nil, fmt.Errorf("failed to find URL in status of %s/%s", item.GetNamespace(), item.GetName())
+	return nil, fmt.Errorf("no usable URL in status.addresses for %s/%s",
+		item.GetNamespace(), item.GetName())
 }
 
 func checkReadiness(item unstructured.Unstructured) bool {
