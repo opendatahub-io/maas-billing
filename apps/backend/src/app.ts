@@ -51,7 +51,7 @@ async function getGroupsFromConfigMap(): Promise<string[]> {
 async function getTierFromMaasApi(userGroups: string[]): Promise<string> {
   try {
     const maasApiUrl = process.env.MAAS_API_URL || 'http://localhost:8080';
-    const response = await fetch(`${maasApiUrl}/tiers/lookup`, {
+    const response = await fetch(`${maasApiUrl}/v1/tiers/lookup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
