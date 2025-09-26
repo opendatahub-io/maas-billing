@@ -1,0 +1,54 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: TokenRateLimitPolicy
+metadata:
+  name: llm-token-limits
+  namespace: openshift-ingress
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: openshift-ai-inference
+  limits:
+    # Free tier: 100 tokens per minute
+    free-tier-limit:
+      rates:
+        - limit: 100
+          window: 1m
+      when:
+        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
+        - predicate: auth.identity.namespace.contains("tier-free")
+      counters:
+        - expression: auth.identity.sub
+    
+    # Premium tier: 300 tokens per minute  
+    premium-tier-limit:
+      rates:
+        - limit: 300
+          window: 1m
+      when:
+        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
+        - predicate: auth.identity.namespace.contains("tier-premium")
+      counters:
+        - expression: auth.identity.sub
+    
+    # Enterprise tier: 1000 tokens per minute
+    enterprise-tier-limit:
+      rates:
+        - limit: 1000
+          window: 1m
+      when:
+        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
+        - predicate: auth.identity.namespace.contains("tier-enterprise")
+      counters:
+        - expression: auth.identity.sub
+    
+    # Default tier for unmatched users: 50 tokens per minute
+    default-tier-limit:
+      rates:
+        - limit: 50
+          window: 1m
+      when:
+        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
+        - predicate: '!auth.identity.namespace.contains("tier-")'
+      counters:
+        - expression: auth.identity.sub 

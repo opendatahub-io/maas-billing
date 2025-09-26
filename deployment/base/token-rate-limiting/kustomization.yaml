@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: openshift-ingress
+
+resources:
+  - token-rate-limit-policy.yaml
+  - envoy-response-buffer.yaml
+
+configMapGenerator:
+  - name: token-rate-limit-config
+    literals:
+      - free_tier_limit=100
+      - premium_tier_limit=300
+      - enterprise_tier_limit=1000
+      - window_duration=1m 

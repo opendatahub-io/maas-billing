@@ -5,6 +5,79 @@ metadata:
   name: maas-api
   namespace: maas-api
 ---
+# Main ClusterRole for maas-api with all required permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: maas-api
+rules:
+# SA token provider resources - need to create service accounts in tier namespaces
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch", "create"]
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  verbs: ["create"]
+# ConfigMaps for tier mapping
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+# Token review for authentication
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews"]
+  verbs: ["create"]
+# KServe resources for model listing
+- apiGroups: ["serving.kserve.io"]
+  resources: ["inferenceservices"]
+  verbs: ["get", "list", "watch"]
+# User and Group information
+- apiGroups: ["user.openshift.io"]
+  resources: ["users", "groups", "identities"]
+  verbs: ["get", "list", "watch"]
+---
+# Bind the ClusterRole to the maas-api service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: maas-api
+subjects:
+- kind: ServiceAccount
+  name: maas-api
+  namespace: maas-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: maas-api
+---
+# ClusterRole for reading groups (needed for tier determination)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: maas-api-group-reader
+rules:
+- apiGroups: ["user.openshift.io"]
+  resources: ["groups"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: maas-api-group-reader
+subjects:
+- kind: ServiceAccount
+  name: maas-api
+  namespace: maas-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: maas-api-group-reader
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

@@ -6,53 +6,56 @@ metadata:
   name: inferenceservice-config
   namespace: kserve
 data:
-  deploy: |
+  storageInitializer: |-
     {
-      "defaultDeploymentMode": "RawDeployment"
+        "image" : "kserve/storage-initializer:v0.15.2",
+        "memoryRequest": "4Gi",
+        "memoryLimit": "8Gi",
+        "cpuRequest": "2",
+        "cpuLimit": "4",
+        "caBundleConfigMapName": "",
+        "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
+        "enableDirectPvcVolumeMount": true,
+        "enableModelcar": true,
+        "cpuModelcar": "10m",
+        "memoryModelcar": "15Mi",
+        "uidModelcar": 1010
     }
-  ingress: |
+  logger: |-
     {
-      "enableGatewayApi": true,
-      "kserveIngressGateway": "llm/inference-gateway",
-      "ingressGateway": "istio-system/istio-ingressgateway",
-      "ingressDomain": "${CLUSTER_DOMAIN}"
+        "image" : "kserve/agent:v0.15.2",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1",
+        "defaultUrl": "http://default-broker"
     }
-  storageInitializer: |
+  batcher: |-
     {
-      "image": "kserve/storage-initializer:v0.15.2",
-      "memoryRequest": "4Gi",
-      "memoryLimit": "8Gi",
-      "cpuRequest": "2",
-      "cpuLimit": "4",
-      "caBundleConfigMapName": "",
-      "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
-      "enableDirectPvcVolumeMount": true,
-      "enableModelcar": true,
-      "cpuModelcar": "10m",
-      "memoryModelcar": "15Mi",
-      "uidModelcar": 1010
+        "image" : "kserve/agent:v0.15.2",
+        "memoryRequest": "1Gi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "1",
+        "cpuLimit": "1",
+        "maxBatchSize": "32",
+        "maxLatency": "5000"
     }
-  logger: |
+  agent: |-
     {
-      "image": "kserve/agent:v0.15.2",
-      "memoryRequest": "100Mi",
-      "memoryLimit": "1Gi",
-      "cpuRequest": "100m",
-      "cpuLimit": "1"
+        "image" : "kserve/agent:v0.15.2",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "1Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1"
     }
-  batcher: |
+  ingress: |-
     {
-      "image": "kserve/agent:v0.15.2",
-      "memoryRequest": "100Mi",
-      "memoryLimit": "1Gi",
-      "cpuRequest": "100m",
-      "cpuLimit": "1"
+        "enableGatewayApi": true,
+        "kserveIngressGateway": "openshift-ingress/openshift-ai-inference",
+        "ingressGateway": "istio-system/istio-ingressgateway",
+        "ingressDomain": "example.com"
     }
-  agent: |
+  deploy: |-
     {
-      "image": "kserve/agent:v0.15.2",
-      "memoryRequest": "100Mi",
-      "memoryLimit": "1Gi",
-      "cpuRequest": "100m",
-      "cpuLimit": "1"
+        "defaultDeploymentMode": "RawDeployment"
     }
