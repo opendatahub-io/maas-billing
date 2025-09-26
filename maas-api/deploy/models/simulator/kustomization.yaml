@@ -9,7 +9,7 @@ namespace: llm
 resources:
 - simulated-model.yaml
 - service.yaml
-- route.yaml
+- httproute.yaml
 - rbac.yaml
 
 labels:
