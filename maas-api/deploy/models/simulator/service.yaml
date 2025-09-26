@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: facebook-opt-125m-single-simulated-llm
+  namespace: llm
+  labels:
+    app: facebook-simulator
+spec:
+  type: ClusterIP
+  ports:
+  - name: https
+    port: 443
+    targetPort: https
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: facebook-opt-125m-single-simulated
+    app.kubernetes.io/part-of: llminferenceservice
+    kserve.io/component: workload
