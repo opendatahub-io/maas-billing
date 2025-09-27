@@ -1,7 +1,11 @@
+# Gateway-level Token Rate Limiting Policy for OpenShift
+# Automatically tracks tokens from response bodies (usage.total_tokens)
+# Uses the same user groups as the auth policy configuration
+---
 apiVersion: kuadrant.io/v1alpha1
 kind: TokenRateLimitPolicy
 metadata:
-  name: llm-token-limits
+  name: gateway-token-rate-limits
   namespace: openshift-ingress
 spec:
   targetRef:
@@ -9,46 +13,32 @@ spec:
     kind: Gateway
     name: openshift-ai-inference
   limits:
-    # Free tier: 100 tokens per minute
-    free-tier-limit:
+    free-user-tokens:
       rates:
         - limit: 100
           window: 1m
       when:
-        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
-        - predicate: auth.identity.namespace.contains("tier-free")
+        - predicate: |
+            auth.identity.tier == "free"
       counters:
-        - expression: auth.identity.sub
+        - expression: auth.identity.userid
     
-    # Premium tier: 300 tokens per minute  
-    premium-tier-limit:
+    premium-user-tokens:
       rates:
-        - limit: 300
+        - limit: 50000
           window: 1m
       when:
-        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
-        - predicate: auth.identity.namespace.contains("tier-premium")
+        - predicate: |
+            auth.identity.tier == "premium"
       counters:
-        - expression: auth.identity.sub
-    
-    # Enterprise tier: 1000 tokens per minute
-    enterprise-tier-limit:
+        - expression: auth.identity.userid
+    enterprise-user-tokens:
       rates:
-        - limit: 1000
+        - limit: 100000
           window: 1m
       when:
-        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
-        - predicate: auth.identity.namespace.contains("tier-enterprise")
+        - predicate: |
+            auth.identity.tier == "enterprise"
       counters:
-        - expression: auth.identity.sub
-    
-    # Default tier for unmatched users: 50 tokens per minute
-    default-tier-limit:
-      rates:
-        - limit: 50
-          window: 1m
-      when:
-        - predicate: request.path == "/v1/chat/completions" || request.path == "/qwen3/v1/chat/completions" || request.path == "/simulator/v1/chat/completions"
-        - predicate: '!auth.identity.namespace.contains("tier-")'
-      counters:
-        - expression: auth.identity.sub 
+        - expression: auth.identity.userid
+

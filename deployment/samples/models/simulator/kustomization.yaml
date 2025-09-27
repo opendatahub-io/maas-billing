@@ -4,5 +4,10 @@ kind: Kustomization
 metadata:
   name: vllm-simulator
 
+namespace: llm
+
 resources:
+- kserve-service-account.yaml
 - vllm-simulator.yaml
+- httproute.yaml
+- rbac.yaml

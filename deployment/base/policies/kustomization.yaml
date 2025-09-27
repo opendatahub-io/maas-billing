@@ -5,5 +5,5 @@ metadata:
   name: maas-auth
 
 resources:
-- api-keys
-- token-rate-limiting
+# api-keys removed - contains duplicate gateway-auth-policy
+- auth-policy.yaml
