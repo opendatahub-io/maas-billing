@@ -3,5 +3,6 @@ kind: Kustomization
 
 resources:
 - gateway-routes.yaml
-- reference-grants.yaml
-- token-rate-limiting/ 
+- token-rate-limiting/
+- networking/
+- kserve/ 

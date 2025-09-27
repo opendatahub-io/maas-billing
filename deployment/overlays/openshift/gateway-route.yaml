@@ -1,0 +1,21 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: gateway-route
+  namespace: openshift-ingress
+  labels:
+    app: openshift-ai-inference
+    gateway: openshift-ai-inference
+spec:
+  host: gateway.apps.test-maas-v1.eh5f.s1.devshift.org
+  port:
+    targetPort: 80
+  tls:
+    insecureEdgeTerminationPolicy: Redirect
+    termination: edge
+  to:
+    kind: Service
+    name: openshift-ai-inference-openshift-default
+    weight: 100
+  wildcardPolicy: None 

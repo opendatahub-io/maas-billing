@@ -1,0 +1,30 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: models-user
+  namespace: llm
+rules:
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["inferenceservices"]
+    verbs: ["post"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: model-users-tier-binding
+  namespace: llm
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:openshift-ai-inference-tier-free
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: system:serviceaccounts:openshift-ai-inference-tier-premium
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: system:serviceaccounts:openshift-ai-inference-tier-enterprise
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: models-user
+  apiGroup: rbac.authorization.k8s.io
