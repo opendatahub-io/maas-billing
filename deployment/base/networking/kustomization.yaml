@@ -5,5 +5,7 @@ metadata:
   name: maas-api-all-infra
 
 resources:
-- ../../../infra/kuadrant
-- networking
+- kuadrant.yaml
+- gateway-api.yaml
+- httproute.yaml
+- reference-grant.yaml

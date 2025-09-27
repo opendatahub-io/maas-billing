@@ -112,14 +112,9 @@ kubectl patch csv kuadrant-operator.v0.0.0 -n kuadrant-system --type='json' -p='
 kubectl -n kserve patch configmap inferenceservice-config \
   --type='json' \
   -p="[{
-    \"op\":\"replace\",
-    \"path\":\"/data/ingress\",
-    \"value\":\"{
-  \\\"enableGatewayApi\\\": true,
-  \\\"kserveIngressGateway\\\": \\\"openshift-ingress/openshift-ai-inference\\\",
-  \\\"ingressGateway\\\": \\\"istio-system/istio-ingressgateway\\\",
-  \\\"ingressDomain\\\": \\\"$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')\\\"
-}\"
+    \"op\": \"replace\",
+    \"path\": \"/data/ingress\",
+    \"value\": \"{\\\"enableGatewayApi\\\": true, \\\"kserveIngressGateway\\\": \\\"openshift-ingress/openshift-ai-inference\\\", \\\"ingressGateway\\\": \\\"istio-system/istio-ingressgateway\\\", \\\"ingressDomain\\\": \\\"$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')\\\"}\"
   }]"
 ```
 
