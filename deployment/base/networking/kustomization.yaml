@@ -8,3 +8,4 @@ resources:
 - kuadrant.yaml
 - gateway-api.yaml
 - httproute.yaml
+- reference-grant.yaml

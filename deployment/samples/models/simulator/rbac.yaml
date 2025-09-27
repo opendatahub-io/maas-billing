@@ -7,7 +7,7 @@ metadata:
 rules:
   - apiGroups: ["serving.kserve.io"]
     resources: ["inferenceservices"]
-    verbs: ["post"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
