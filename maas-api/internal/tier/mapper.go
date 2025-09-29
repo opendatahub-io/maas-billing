@@ -51,8 +51,9 @@ func (m *Mapper) Namespaces(ctx context.Context) map[string]string {
 
 	namespaces := make(map[string]string, len(tiers))
 
-	for _, tier := range tiers {
-		namespaces[tier.Name] = fmt.Sprintf("%s-tier-%s", m.tenantName, tier.Name)
+	for i := range tiers {
+		tier := &tiers[i]
+		namespaces[tier.Name] = m.projectedNsName(tier)
 	}
 
 	return namespaces
@@ -109,5 +110,14 @@ func (m *Mapper) loadTierConfig(ctx context.Context) ([]Tier, error) {
 		return nil, fmt.Errorf("failed to parse tier configuration: %w", err)
 	}
 
+	for i := range tiers {
+		tier := &tiers[i]
+		tier.Groups = append(tier.Groups, fmt.Sprintf("system:serviceaccount:%s", m.projectedNsName(tier)))
+	}
+
 	return tiers, nil
+}
+
+func (m *Mapper) projectedNsName(tier *Tier) string {
+	return fmt.Sprintf("%s-tier-%s", m.tenantName, tier.Name)
 }
