@@ -106,6 +106,16 @@ kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/maas-api/auth-p
   -o yaml | kubectl apply -f -
 ```
 
+#### Update Limitador image to expose metrics
+
+Update the Limitador deployment to use the latest image that exposes metrics:
+
+```shell
+NS=kuadrant-system
+kubectl -n $NS patch limitador limitador --type merge \
+  -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}'
+```
+
 ### Testing
 
 #### Deploying the demo model
