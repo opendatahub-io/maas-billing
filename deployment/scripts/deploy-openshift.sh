@@ -1,0 +1,169 @@
+#!/bin/bash
+
+# OpenShift MaaS Platform Deployment Script
+# This script automates the complete deployment of the MaaS platform on OpenShift
+
+set -e
+
+echo "========================================="
+echo "🚀 MaaS Platform OpenShift Deployment"
+echo "========================================="
+echo ""
+
+# Check if running on OpenShift
+if ! kubectl api-resources | grep -q "route.openshift.io"; then
+    echo "❌ This script is for OpenShift clusters only."
+    echo "   Use 'deploy-kubernetes.sh' for standard Kubernetes clusters."
+    exit 1
+fi
+
+# Note about Service Mesh
+echo "📋 Checking prerequisites..."
+echo "ℹ️  Note: OpenShift Service Mesh should be automatically installed when GatewayClass is created."
+echo "   If the Gateway gets stuck in 'Waiting for controller', you may need to manually"
+echo "   install the Red Hat OpenShift Service Mesh operator from OperatorHub."
+
+# Step 1: Enable Gateway API features
+echo ""
+echo "1️⃣ Enabling Gateway API features..."
+oc patch featuregate/cluster --type='merge' \
+  -p '{"spec":{"featureSet":"CustomNoUpgrade","customNoUpgrade":{"enabled":["GatewayAPI","GatewayAPIController"]}}}' || true
+
+echo "   Waiting for feature gates to reconcile (30 seconds)..."
+sleep 30
+
+# Step 2: Create namespaces
+echo ""
+echo "2️⃣ Creating namespaces..."
+for ns in kserve kuadrant-system llm maas-api; do
+    kubectl create namespace $ns 2>/dev/null || echo "   Namespace $ns already exists"
+done
+
+# Step 3: Install dependencies
+echo ""
+echo "3️⃣ Installing dependencies..."
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+echo "   Installing cert-manager..."
+"$SCRIPT_DIR/install-dependencies.sh" --cert-manager
+
+echo "   Installing KServe..."
+"$SCRIPT_DIR/install-dependencies.sh" --kserve
+
+echo "   Installing Kuadrant..."
+"$SCRIPT_DIR/install-dependencies.sh" --kuadrant
+
+# Step 4: Deploy core infrastructure
+echo ""
+echo "4️⃣ Deploying core infrastructure..."
+export CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+echo "   Cluster domain: $CLUSTER_DOMAIN"
+
+cd "$PROJECT_ROOT"
+kustomize build deployment/overlays/openshift | envsubst | kubectl apply -f -
+
+# Step 5: Apply OpenShift-specific patches
+echo ""
+echo "5️⃣ Applying OpenShift-specific configurations..."
+
+# Patch Kuadrant for OpenShift Gateway Controller
+echo "   Patching Kuadrant operator..."
+kubectl -n kuadrant-system patch deployment kuadrant-operator-controller-manager \
+  --type='json' \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"ISTIO_GATEWAY_CONTROLLER_NAMES","value":"openshift.io/gateway-controller/v1"}}]' 2>/dev/null || \
+  echo "   Kuadrant operator already patched"
+
+# Update KServe Ingress Domain
+echo "   Updating KServe configuration..."
+kubectl -n kserve patch configmap inferenceservice-config \
+  --type='json' \
+  -p="[{\"op\": \"replace\", \"path\": \"/data/ingress\", \"value\": \"{\\\"enableGatewayApi\\\": true, \\\"kserveIngressGateway\\\": \\\"openshift-ingress/openshift-ai-inference\\\", \\\"ingressGateway\\\": \\\"istio-system/istio-ingressgateway\\\", \\\"ingressDomain\\\": \\\"$CLUSTER_DOMAIN\\\"}\" }]" 2>/dev/null || \
+  echo "   KServe already configured"
+
+# Step 6: Wait for Gateway to be ready
+echo ""
+echo "6️⃣ Waiting for Gateway to be ready..."
+echo "   Note: This may take a few minutes if Service Mesh is being automatically installed..."
+
+# Check if Service Mesh is being installed
+if kubectl get crd istios.sailoperator.io &>/dev/null 2>&1; then
+    echo "   Service Mesh operator detected"
+else
+    echo "   Waiting for automatic Service Mesh installation (up to 5 minutes)..."
+    for i in {1..30}; do
+        if kubectl get crd istios.sailoperator.io &>/dev/null 2>&1; then
+            echo "   Service Mesh operator installed!"
+            break
+        fi
+        sleep 10
+    done
+fi
+
+kubectl wait --for=condition=Programmed gateway openshift-ai-inference -n openshift-ingress --timeout=300s || \
+  echo "   Gateway is taking longer than expected, continuing..."
+
+# Step 7: Restart Kuadrant operators for policy enforcement
+echo ""
+echo "7️⃣ Restarting Kuadrant operators for policy enforcement..."
+kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system
+kubectl rollout restart deployment/authorino-operator -n kuadrant-system
+kubectl rollout restart deployment/limitador-operator-controller-manager -n kuadrant-system
+
+# Wait for rollouts to complete
+echo "   Waiting for operators to restart..."
+kubectl rollout status deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=120s
+kubectl rollout status deployment/authorino-operator -n kuadrant-system --timeout=120s
+kubectl rollout status deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=120s
+
+# Step 8: Restart KServe controller
+echo ""
+echo "8️⃣ Restarting KServe controller..."
+kubectl rollout restart deployment kserve-controller-manager -n kserve
+kubectl rollout status deployment/kserve-controller-manager -n kserve --timeout=120s
+
+# Verification
+echo ""
+echo "========================================="
+echo "✅ Deployment Complete!"
+echo "========================================="
+echo ""
+echo "📊 Status Check:"
+echo ""
+
+# Check component status
+echo "Component Status:"
+kubectl get pods -n maas-api --no-headers | grep Running | wc -l | xargs echo "  MaaS API pods running:"
+kubectl get pods -n kuadrant-system --no-headers | grep Running | wc -l | xargs echo "  Kuadrant pods running:"
+kubectl get pods -n kserve --no-headers | grep Running | wc -l | xargs echo "  KServe pods running:"
+
+echo ""
+echo "Gateway Status:"
+kubectl get gateway -n openshift-ingress openshift-ai-inference -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' | xargs echo "  Accepted:"
+kubectl get gateway -n openshift-ingress openshift-ai-inference -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' | xargs echo "  Programmed:"
+
+echo ""
+echo "Policy Status:"
+kubectl get authpolicy -n openshift-ingress gateway-auth-policy -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null | xargs echo "  AuthPolicy:"
+kubectl get tokenratelimitpolicy -n openshift-ingress gateway-token-rate-limits -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null | xargs echo "  TokenRateLimitPolicy:"
+
+echo ""
+echo "========================================="
+echo "📝 Next Steps:"
+echo "========================================="
+echo ""
+echo "1. Deploy a sample model:"
+echo "   kustomize build deployment/samples/models/simulator | kubectl apply -f -"
+echo ""
+echo "2. Test the API:"
+echo "   Access the MaaS API at: https://maas-api.$CLUSTER_DOMAIN"
+echo "   Access models through: https://gateway.$CLUSTER_DOMAIN"
+echo ""
+echo "3. Get a token:"
+echo "   curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" \\"
+echo "     -H \"Content-Type: application/json\" -X POST \\"
+echo "     -d '{\"expiration\": \"10m\"}' \\"
+echo "     \"https://maas-api.$CLUSTER_DOMAIN/v1/tokens\""
+echo ""
+echo "For troubleshooting, check the deployment guide at deployment/README.md" 

@@ -9,6 +9,7 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
 - **kustomize** (3.10+)
 - **jq** for JSON processing
 - Optional: **oc** CLI for OpenShift clusters
+- **For Kubernetes**: Istio will be installed via Helm by the dependency script
 
 ## Deployment Structure
 
@@ -32,6 +33,28 @@ deployment/
 ```
 
 ## Quick Start
+
+### Automated OpenShift Deployment (Recommended)
+
+For OpenShift clusters, use the automated deployment script:
+```bash
+./deployment/scripts/deploy-openshift.sh
+```
+
+This script handles all steps including feature gates, dependencies, and OpenShift-specific configurations.
+
+### Manual Deployment Steps
+
+### Step 0: Enable Gateway API Features (OpenShift Only)
+
+If you're on OpenShift, you need to enable the Gateway API features first:
+
+```bash
+oc patch featuregate/cluster --type='merge' \
+  -p '{"spec":{"featureSet":"CustomNoUpgrade","customNoUpgrade":{"enabled":["GatewayAPI","GatewayAPIController"]}}}'
+```
+
+Wait for the cluster operators to reconcile (this may take a few minutes).
 
 ### Step 1: Create Namespaces
 
@@ -93,6 +116,17 @@ kubectl -n kuadrant-system patch deployment kuadrant-operator-controller-manager
   -p='[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"ISTIO_GATEWAY_CONTROLLER_NAMES","value":"openshift.io/gateway-controller/v1"}}]'
 ```
 
+**Important**: After the Gateway becomes ready, restart the Kuadrant operators to ensure policies are properly enforced:
+```bash
+# Wait for Gateway to be ready
+kubectl wait --for=condition=Programmed gateway openshift-ai-inference -n openshift-ingress --timeout=300s
+
+# Restart Kuadrant operators
+kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system
+kubectl rollout restart deployment/authorino-operator -n kuadrant-system
+kubectl rollout restart deployment/limitador-operator-controller-manager -n kuadrant-system
+```
+
 If installed via OLM:
 ```bash
 kubectl patch csv kuadrant-operator.v0.0.0 -n kuadrant-system --type='json' -p='[
@@ -116,6 +150,13 @@ kubectl -n kserve patch configmap inferenceservice-config \
     \"path\": \"/data/ingress\",
     \"value\": \"{\\\"enableGatewayApi\\\": true, \\\"kserveIngressGateway\\\": \\\"openshift-ingress/openshift-ai-inference\\\", \\\"ingressGateway\\\": \\\"istio-system/istio-ingressgateway\\\", \\\"ingressDomain\\\": \\\"$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')\\\"}\"
   }]"
+```
+
+#### Update Limitador Image for Metrics (Optional but Recommended)
+```bash
+# Update Limitador to expose metrics properly
+kubectl -n kuadrant-system patch limitador limitador --type merge \
+  -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}'
 ```
 
 #### Configure AuthPolicy Audience
@@ -226,6 +267,25 @@ for i in {1..16}; do
 done
 ```
 
+### 5. Verify Complete Deployment
+```bash
+# Check all components are running
+kubectl get pods -n maas-api
+kubectl get pods -n kuadrant-system
+kubectl get pods -n kserve
+kubectl get pods -n llm
+
+# Check Gateway status
+kubectl get gateway -n openshift-ingress openshift-ai-inference
+
+# Check policies are enforced
+kubectl get authpolicy -A
+kubectl get tokenratelimitpolicy -A
+
+# Check InferenceServices are ready
+kubectl get inferenceservice -n llm
+```
+
 ## Services Exposed
 
 After deployment, the following services are available:
@@ -288,6 +348,24 @@ kubectl logs -n llm -l component=predictor --tail=50
      kubectl rollout restart deployment/authorino -n kuadrant-system
      ```
    - **Note**: This is a known Kuadrant issue that may occur after initial deployment
+6. **Gateway stuck in "Waiting for controller" on OpenShift**:
+   - **Symptom**: Gateway shows "Waiting for controller" indefinitely
+   - **Expected behavior**: Creating the GatewayClass should automatically trigger Service Mesh installation
+   - **If automatic installation doesn't work**:
+     1. Install Red Hat OpenShift Service Mesh operator from OperatorHub manually
+     2. Create an Istio instance:
+        ```bash
+        cat <<EOF | kubectl apply -f -
+        apiVersion: sailoperator.io/v1
+        kind: Istio
+        metadata:
+          name: openshift-gateway
+        spec:
+          version: v1.26.4
+          namespace: openshift-ingress
+        EOF
+        ```
+   - **Note**: This is typically only needed on non-RHOAI OpenShift clusters
 
 ## Next Steps
 

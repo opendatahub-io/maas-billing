@@ -8,8 +8,8 @@ Our goal is to create a comprehensive platform for **Models as a Service** with 
 ## 📦 Technology Stack
 
 - **Kuadrant/Authorino/Limitador**: API gateway and policy engine
-- **Istio**: Service mesh and traffic management
-- **Gateway API**: Traffic routing and management
+- **Gateway API**: Traffic routing and management (OpenShift native implementation)
+- **Istio**: Service mesh (auto-provisioned on OpenShift via Service Mesh operator)
 - **React**: Frontend framework
 - **Go**: Backend frameworks
 

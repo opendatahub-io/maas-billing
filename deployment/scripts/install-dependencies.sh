@@ -102,8 +102,14 @@ install_component() {
         fi
 
         echo "📦 Installing kuadrant-operator chart ($KUADRANT_CHART_VERSION)"
-        helm upgrade -i kuadrant-operator "$HELM_REPO_NAME/kuadrant-operator" \
-          --version "$KUADRANT_CHART_VERSION" -n "$NAMESPACE" --create-namespace --wait
+        # Add --devel flag if version contains alpha, beta, or rc
+        if [[ "$KUADRANT_CHART_VERSION" =~ (alpha|beta|rc) ]]; then
+            helm upgrade -i kuadrant-operator "$HELM_REPO_NAME/kuadrant-operator" \
+              --version "$KUADRANT_CHART_VERSION" --devel -n "$NAMESPACE" --create-namespace --wait
+        else
+            helm upgrade -i kuadrant-operator "$HELM_REPO_NAME/kuadrant-operator" \
+              --version "$KUADRANT_CHART_VERSION" -n "$NAMESPACE" --create-namespace --wait
+        fi
 
         echo "⏳ Waiting for operators to be ready..."
         kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n "$NAMESPACE" --timeout=300s

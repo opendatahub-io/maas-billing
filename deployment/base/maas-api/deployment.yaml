@@ -25,7 +25,7 @@ spec:
         runAsNonRoot: true
       containers:
       - name: maas-api
-        image: image-registry.openshift-image-registry.svc:5000/maas-api/maas-api:latest
+        image: quay.io/opendatahub/maas-api:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
