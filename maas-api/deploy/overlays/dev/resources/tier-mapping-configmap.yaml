@@ -9,17 +9,14 @@ data:
       level: 1
       groups:
       - system:authenticated
-      - system:serviceaccount:openshift-ai-inference-tier-free
     - name: premium
       description: Premium tier for paying customers
       level: 10
       groups:
-      - system:serviceaccount:openshift-ai-inference-tier-premium
       - premium-users
     - name: enterprise
       description: Enterprise tier for corporate customers
       level: 20
       groups:
-      - system:serviceaccount:openshift-ai-inference-tier-enterprise
       - enterprise-users
       - admin-users

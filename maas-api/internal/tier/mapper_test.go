@@ -39,6 +39,12 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 			description:  "User belongs to only free tier group",
 		},
 		{
+			name:         "inferred SA group - free tier",
+			groups:       []string{"system:serviceaccount:test-tenant-tier-free"},
+			expectedTier: "free",
+			description:  "User belongs to only free tier group",
+		},
+		{
 			name:         "single group - premium tier",
 			groups:       []string{"premium-users"},
 			expectedTier: "premium",
