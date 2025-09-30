@@ -27,9 +27,6 @@ spec:
           ttl: 300
     authentication:
       service-accounts:
-        when:
-          - predicate: |
-              request.path.startsWith("/simulator") || request.path.startsWith("/qwen3")
         kubernetesTokenReview:
           audiences:
             - openshift-ai-inference-sa
@@ -41,9 +38,6 @@ spec:
               auth.identity.user.username.split(":")[3]
     authorization:
       tier-access:
-        when:
-          - predicate: |
-              request.path.startsWith("/maas-api")
         kubernetesSubjectAccessReview:
           user:
             expression: auth.identity.user.username
@@ -53,18 +47,13 @@ spec:
             group:
               value: serving.kserve.io
             resource:
-              # For RHOAI this needs different target 
-              # value: llminferenceservices
-              value: inferenceservices
-            # ns/name can be inferred from path /{model-name}/...
+              value: llminferenceservices
             namespace:
               expression: |
                 request.path.split("/")[1]
             name:
               expression: |
-                request.path.split('/')[1] == "simulator" ? "vllm-simulator" : 
-                request.path.split('/')[1] == "qwen3" ? "qwen3-0-6b-instruct" : 
-                "unknown"
+                request.path.split("/")[2]
             verb:
               value: post
     response:
