@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  actions: write
+  actions: read
   contents: read
 
 jobs:
