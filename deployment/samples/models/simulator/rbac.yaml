@@ -6,8 +6,8 @@ metadata:
   namespace: llm
 rules:
   - apiGroups: ["serving.kserve.io"]
-    resources: ["inferenceservices"]
-    verbs: ["create"]
+    resources: ["llminferenceservices"]
+    verbs: ["post"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

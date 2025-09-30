@@ -181,22 +181,31 @@ kubectl -n kuadrant-system patch limitador limitador --type merge \
   -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}'
 ```
 
-#### Configure AuthPolicy Audience
+#### Ensure the correct audience is set for AuthPolicy
 
-First, get the correct audience for OpenShift identities, then apply the auth policy:
+Patch `AuthPolicy` with the correct audience for Openshift Identities:
 
-```bash
+```shell
+PROJECT_DIR=$(git rev-parse --show-toplevel)
 AUD="$(kubectl create token default --duration=10m \
   | jwt decode --json - \
   | jq -r '.payload.aud[0]')"
-kubectl patch -f deployment/base/policies/auth-policy.yaml \
+
+echo "Patching AuthPolicy with audience: $AUD"
+
+# Note: Auth policy path may vary depending on your deployment
+# For consolidated deployment structure:
+
+# Patch MaaS API AuthPolicy
+kubectl patch --local -f ${PROJECT_DIR}/deployment/base/policies/maas-auth-policy.yaml \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
-    path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences",
-    value:[$aud]
+    path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
+    value:$aud
   }]')" \
   -o yaml | kubectl apply -f -
+  
 ```
 
 ### Kubernetes Configuration

@@ -167,10 +167,10 @@ kubectl rollout status deployment/authorino-operator -n kuadrant-system --timeou
 kubectl rollout status deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=120s
 
 # Step 8: Restart KServe controller
-echo ""
-echo "8️⃣ Restarting KServe controller..."
-kubectl rollout restart deployment kserve-controller-manager -n kserve
-kubectl rollout status deployment/kserve-controller-manager -n kserve --timeout=120s
+# echo ""
+# echo "8️⃣ Restarting KServe controller..."
+# kubectl rollout restart deployment kserve-controller-manager -n kserve
+# kubectl rollout status deployment/kserve-controller-manager -n kserve --timeout=120s
 
 # Verification
 echo ""
