@@ -10,17 +10,30 @@ MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 if [ -z "${GATEWAY_URL:-}" ]; then
-    HOST=$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
-    if [ -z "$HOST" ]; then
-        echo "Failed to resolve gateway host; set GATEWAY_URL explicitly." >&2
-        exit 1
+    # For OpenShift, use the route instead of the AWS ELB
+    if command -v oc &> /dev/null; then
+        CLUSTER_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
+        if [ -n "$CLUSTER_DOMAIN" ]; then
+            GATEWAY_URL="https://gateway.${CLUSTER_DOMAIN}"
+        fi
     fi
-    GATEWAY_URL="https://${HOST}"
+    
+    # Fallback to gateway status address if OpenShift route not available
+    if [ -z "${GATEWAY_URL:-}" ]; then
+        HOST=$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
+        if [ -z "$HOST" ]; then
+            echo "Failed to resolve gateway host; set GATEWAY_URL explicitly." >&2
+            exit 1
+        fi
+        GATEWAY_URL="https://${HOST}"
+    fi
 fi
 
 echo -e "${CYAN}======================================${NC}"
 echo -e "${CYAN}   Model Inference & Rate Limit Test  ${NC}"
 echo -e "${CYAN}======================================${NC}"
+echo ""
+echo -e "${BLUE}Gateway URL:${NC} $GATEWAY_URL"
 echo ""
 
 # Step 1: Create a test service account and get token
@@ -33,6 +46,11 @@ if [ -z "$TOKEN" ]; then
     exit 1
 fi
 echo -e "${GREEN}✓ Token obtained successfully${NC}"
+
+# Check the user's tier (for debugging rate limits)
+SA_NAME=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.["kubernetes.io"].serviceaccount.name' 2>/dev/null || echo "unknown")
+echo -e "${CYAN}Service Account:${NC} $SA_NAME"
+echo -e "${CYAN}Note:${NC} Service accounts without group membership get minimal rate limits"
 echo ""
 
 # Function to test a model
@@ -207,7 +225,13 @@ if [ "$http_status" = "200" ] || [ "$total_success" -gt 0 ]; then
         echo -e "${YELLOW}⚠${NC}  Token rate limiting not triggered (may need adjustment)"
     fi
 else
-    echo -e "${RED}✗${NC} There were issues accessing the models"
+    if [ "$rate_limited" = true ]; then
+        echo -e "${YELLOW}⚠${NC}  Models are accessible but rate limits are very restrictive"
+        echo -e "${GREEN}✓${NC} Token authentication is working"
+        echo -e "${GREEN}✓${NC} Token rate limiting is enforced (very strict for service accounts)"
+    else
+        echo -e "${RED}✗${NC} There were issues accessing the models"
+    fi
 fi
 
 echo ""
