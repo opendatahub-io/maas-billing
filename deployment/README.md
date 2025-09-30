@@ -4,12 +4,6 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
 
 ## Prerequisites
 
-- **OpenShift** (4.19+) with OpenDataHub (ODH) or Red Hat OpenShift AI (RHOAI) installed
-  - Note: Kubernetes support is experimental and requires additional configuration
-- **kubectl** configured to access your cluster
-- **kustomize** (5.7+) - older versions have critical bugs
-- **jq** for JSON processing
-- **oc** CLI for OpenShift clusters
 - **ODH/RHOAI requirements**:
   - KServe enabled in DataScienceCluster
   - Service Mesh installed (automatically installed with ODH/RHOAI)
