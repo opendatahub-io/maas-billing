@@ -1,3 +1,11 @@
+# OpenShift Route for Gateway access with policy enforcement
+# 
+# This route provides controlled access to AI models through the Gateway which:
+#   - Enforces authentication via AuthPolicy
+#   - Applies rate limiting via TokenRateLimitPolicy
+#   - Routes to appropriate model backends based on HTTPRoutes
+#
+# All model inference requests should use this gateway endpoint
 ---
 apiVersion: route.openshift.io/v1
 kind: Route

@@ -4,4 +4,4 @@ kind: Kustomization
 resources:
 - token-rate-limiting/
 - networking/
-- kserve/ 
+# kserve removed - now optional component when not using ODH/RHOAI 

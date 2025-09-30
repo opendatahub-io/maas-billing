@@ -9,7 +9,7 @@ Our goal is to create a comprehensive platform for **Models as a Service** with 
 
 - **Kuadrant/Authorino/Limitador**: API gateway and policy engine
 - **Gateway API**: Traffic routing and management (OpenShift native implementation)
-- **Istio**: Service mesh (auto-provisioned on OpenShift via Service Mesh operator)
+- **OpenShift Service Mesh**: Automatically provisioned when Gateway API is enabled (includes Istio)
 - **React**: Frontend framework
 - **Go**: Backend frameworks
 
@@ -26,7 +26,7 @@ Our goal is to create a comprehensive platform for **Models as a Service** with 
 ## 🏗️ Architecture
 
 ### Backend Components
-- **API Gateway**: Istio/Envoy with Gateway API support and Kuadrant integration
+- **API Gateway**: OpenShift Gateway API implementation with Envoy proxy and Kuadrant integration
 - **Policy Engine**: Real-time policy enforcement through Kuadrant (Authorino + Limitador)
 - **Model Serving**: KServe-based AI model deployment with vLLM runtime
 - **Model Discovery**: Automatic model listing model resources
@@ -118,32 +118,14 @@ This will:
 ## 🔧 Development
 
 ### Project Structure
-```
-maas-billing/
-├── apps/
-│   ├── frontend/          # React frontend with Material-UI
-│   │   ├── src/
-│   │   │   ├── components/    # Policy Manager, Metrics Dashboard, etc.
-│   │   │   ├── hooks/         # API integration hooks
-│   │   │   └── services/      # API client
-│   │   └── package.json
-│   └── backend/           # Node.js/Express API server
-│       ├── src/
-│       │   ├── routes/        # API endpoints
-│       │   ├── services/      # Kuadrant & model integration
-│       │   └── app.ts
-│       └── package.json
-├── deployment/            # Kubernetes/OpenShift deployments
-│   ├── base/             # Core infrastructure
-│   ├── overlays/         # Platform-specific configs
-│   ├── samples/          # Example model deployments
-│   └── README.md         # Deployment guide
-├── maas-api/             # Go API for key management
-│   ├── cmd/              # Application entrypoint
-│   ├── internal/         # Core business logic
-│   └── README.md
-└── scripts/              # Automation scripts
-```
+
+| Directory | Description | Documentation |
+|-----------|-------------|---------------|
+| `apps/frontend/` | React frontend with Material-UI | [Frontend Guide](apps/frontend/README.md) |
+| `apps/backend/` | Node.js/Express API server | [Backend Guide](apps/backend/README.md) |
+| `maas-api/` | Go API for key management | [MaaS API Guide](maas-api/README.md) |
+| `deployment/` | Kubernetes/OpenShift deployments | [Deployment Guide](deployment/README.md) |
+| `scripts/` | Automation and utility scripts | - |
 
 ### Available Scripts
 
@@ -218,7 +200,7 @@ This project is licensed under the Apache 2.0 License.
 Built with:
 - [Kuadrant](https://kuadrant.io/) for API management
 - [KServe](https://kserve.github.io/) for model serving
-- [Istio](https://istio.io/) for service mesh
+- [OpenShift](https://www.openshift.com/) with Service Mesh for infrastructure
 - [React](https://react.dev/) and [Material-UI](https://mui.com/)
 
 ## 📞 Support

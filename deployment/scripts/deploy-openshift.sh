@@ -23,14 +23,49 @@ echo "ℹ️  Note: OpenShift Service Mesh should be automatically installed whe
 echo "   If the Gateway gets stuck in 'Waiting for controller', you may need to manually"
 echo "   install the Red Hat OpenShift Service Mesh operator from OperatorHub."
 
-# Step 1: Enable Gateway API features
+# Step 1: Enable Gateway API features (if needed)
 echo ""
-echo "1️⃣ Enabling Gateway API features..."
-oc patch featuregate/cluster --type='merge' \
-  -p '{"spec":{"featureSet":"CustomNoUpgrade","customNoUpgrade":{"enabled":["GatewayAPI","GatewayAPIController"]}}}' || true
+echo "1️⃣ Checking OpenShift version and Gateway API requirements..."
 
-echo "   Waiting for feature gates to reconcile (30 seconds)..."
-sleep 30
+# Get OpenShift version
+OCP_VERSION=$(oc version -o json | jq -r '.openshiftVersion' 2>/dev/null || echo "unknown")
+echo "   OpenShift version: $OCP_VERSION"
+
+# Check if version is 4.19.9 or higher
+if [[ "$OCP_VERSION" == "unknown" ]]; then
+    echo "   ⚠️  Could not determine OpenShift version, applying feature gates to be safe"
+    oc patch featuregate/cluster --type='merge' \
+      -p '{"spec":{"featureSet":"CustomNoUpgrade","customNoUpgrade":{"enabled":["GatewayAPI","GatewayAPIController"]}}}' || true
+    echo "   Waiting for feature gates to reconcile (30 seconds)..."
+    sleep 30
+else
+    # Extract major.minor.patch version numbers
+    VERSION_REGEX="^[v]?([0-9]+)\.([0-9]+)\.([0-9]+)"
+    if [[ "$OCP_VERSION" =~ $VERSION_REGEX ]]; then
+        MAJOR="${BASH_REMATCH[1]}"
+        MINOR="${BASH_REMATCH[2]}"
+        PATCH="${BASH_REMATCH[3]}"
+        
+        # Check if version is 4.19.9 or higher
+        if [[ $MAJOR -gt 4 ]] || \
+           [[ $MAJOR -eq 4 && $MINOR -gt 19 ]] || \
+           [[ $MAJOR -eq 4 && $MINOR -eq 19 && $PATCH -ge 9 ]]; then
+            echo "   ✅ OpenShift $OCP_VERSION supports Gateway API via GatewayClass (no feature gates needed)"
+        else
+            echo "   Applying Gateway API feature gates for OpenShift < 4.19.9"
+            oc patch featuregate/cluster --type='merge' \
+              -p '{"spec":{"featureSet":"CustomNoUpgrade","customNoUpgrade":{"enabled":["GatewayAPI","GatewayAPIController"]}}}' || true
+            echo "   Waiting for feature gates to reconcile (30 seconds)..."
+            sleep 30
+        fi
+    else
+        echo "   ⚠️  Could not parse version, applying feature gates to be safe"
+        oc patch featuregate/cluster --type='merge' \
+          -p '{"spec":{"featureSet":"CustomNoUpgrade","customNoUpgrade":{"enabled":["GatewayAPI","GatewayAPIController"]}}}' || true
+        echo "   Waiting for feature gates to reconcile (30 seconds)..."
+        sleep 30
+    fi
+fi
 
 # Step 2: Create namespaces
 echo ""
@@ -49,8 +84,17 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "   Installing cert-manager..."
 "$SCRIPT_DIR/install-dependencies.sh" --cert-manager
 
-echo "   Installing KServe..."
-"$SCRIPT_DIR/install-dependencies.sh" --kserve
+# Note: KServe should be installed as part of ODH/RHOAI, not separately
+# If ODH/RHOAI is not installed, uncomment the following line:
+# "$SCRIPT_DIR/install-dependencies.sh" --kserve
+
+# Clean up any leftover Kuadrant CRDs from previous installations
+echo "   Checking for leftover Kuadrant CRDs..."
+LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
+if [ -n "$LEFTOVER_CRDS" ]; then
+    echo "   Found leftover CRDs, cleaning up..."
+    echo "$LEFTOVER_CRDS" | xargs -r kubectl delete crd --timeout=30s 2>/dev/null || true
+fi
 
 echo "   Installing Kuadrant..."
 "$SCRIPT_DIR/install-dependencies.sh" --kuadrant
@@ -58,7 +102,12 @@ echo "   Installing Kuadrant..."
 # Step 4: Deploy core infrastructure
 echo ""
 echo "4️⃣ Deploying core infrastructure..."
-export CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+if [ -z "$CLUSTER_DOMAIN" ]; then
+    echo "❌ Failed to retrieve cluster domain from OpenShift"
+    exit 1
+fi
+export CLUSTER_DOMAIN
 echo "   Cluster domain: $CLUSTER_DOMAIN"
 
 cd "$PROJECT_ROOT"

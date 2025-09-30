@@ -1,6 +1,16 @@
-# OpenShift Routes for external access
-# NOTE: Model access goes through gateway-route.yaml to enforce rate limiting
-# Direct routes to models bypass TokenRateLimitPolicy and should not be used
+# OpenShift Route for MaaS API administrative access
+# 
+# IMPORTANT: This route provides direct access to the MaaS API service for:
+#   - Token management (creation/revocation)
+#   - Administrative operations
+#   - Health checks and monitoring
+#
+# For model inference requests, use the Gateway route (gateway-route.yaml) which:
+#   - Enforces authentication policies
+#   - Applies rate limiting
+#   - Manages token-based access control
+#
+# Direct routes to models bypass TokenRateLimitPolicy and should NEVER be created
 ---
 apiVersion: route.openshift.io/v1
 kind: Route

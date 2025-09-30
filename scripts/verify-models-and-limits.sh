@@ -9,7 +9,14 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
-GATEWAY_URL="https://gateway.apps.test-maas-v1.eh5f.s1.devshift.org"
+if [ -z "${GATEWAY_URL:-}" ]; then
+    HOST=$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
+    if [ -z "$HOST" ]; then
+        echo "Failed to resolve gateway host; set GATEWAY_URL explicitly." >&2
+        exit 1
+    fi
+    GATEWAY_URL="https://${HOST}"
+fi
 
 echo -e "${CYAN}======================================${NC}"
 echo -e "${CYAN}   Model Inference & Rate Limit Test  ${NC}"
@@ -162,8 +169,8 @@ for i in {1..25}; do
         echo -ne "${YELLOW}?${NC}"
     fi
     
-    # Very small delay to not overwhelm the system
-    sleep 0.05
+    # Small delay to avoid overwhelming the system
+    sleep 0.2
 done
 
 echo ""
