@@ -8,16 +8,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1typed "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/errors"
-)
-
-const (
-	MappingConfigMap = "tier-to-group-mapping"
 )
 
 var defaultTier = Tier{
@@ -71,10 +68,10 @@ func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string
 	tiers, err := m.loadTierConfig(ctx)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Printf("tier mapping %s not found, defaulting to 'free' tier", MappingConfigMap)
+			log.Printf("tier mapping %s not found, defaulting to 'free' tier", constant.TierMappingConfigMap)
 			return "free", nil
 		}
-		log.Printf("Failed to load tier configuration from ConfigMap %s: %v", MappingConfigMap, err)
+		log.Printf("Failed to load tier configuration from ConfigMap %s: %v", constant.TierMappingConfigMap, err)
 		return "", fmt.Errorf("failed to load tier configuration: %w", err)
 	}
 
@@ -94,14 +91,14 @@ func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string
 }
 
 func (m *Mapper) loadTierConfig(ctx context.Context) ([]Tier, error) {
-	cm, err := m.configMapClient.Get(ctx, MappingConfigMap, metav1.GetOptions{})
+	cm, err := m.configMapClient.Get(ctx, constant.TierMappingConfigMap, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	configData, exists := cm.Data["tiers"]
 	if !exists {
-		log.Printf("tiers key not found in ConfigMap %s", MappingConfigMap)
+		log.Printf("tiers key not found in ConfigMap %s", constant.TierMappingConfigMap)
 		return nil, fmt.Errorf("tier to group mapping configuration not found")
 	}
 

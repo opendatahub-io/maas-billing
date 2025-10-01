@@ -3,6 +3,7 @@ package tier_test
 import (
 	"testing"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	corev1 "k8s.io/api/core/v1"
@@ -162,7 +163,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	// Test case where two tiers have the same level
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tier.MappingConfigMap,
+			Name:      constant.TierMappingConfigMap,
 			Namespace: testNamespace,
 		},
 		Data: map[string]string{
