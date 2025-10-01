@@ -88,7 +88,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 
 	saName, errName := m.sanitizeServiceAccountName(user.Username)
 	if errName != nil {
-		return fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, err)
+		return fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
 	}
 
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
