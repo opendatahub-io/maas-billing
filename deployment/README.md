@@ -284,31 +284,15 @@ TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 For OpenShift deployments, first get the gateway route:
 
 ```bash
-GATEWAY_HOST="gateway.${CLUSTER_DOMAIN}"
+MODELS=$(curl ${HOST}/maas-api/v1/models  \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" | jq . -r)
 
-# Test Simulator through gateway (with rate limiting)
-curl -ks \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -X POST \
-  "https://${GATEWAY_HOST}/simulator/v1/chat/completions" \
-  -d '{
-    "model": "vllm-simulator",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 10
-  }' | jq .
+echo $MODELS | jq .
+MODEL_URL=$(echo $MODELS | jq -r '.data[0].url')
+MODEL_NAME=$(echo $MODELS | jq -r '.data[0].id')
 
-# Test Qwen3 through gateway (if deployed)
-curl -ks \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -X POST \
-  "https://${GATEWAY_HOST}/qwen3/v1/chat/completions" \
-  -d '{
-    "model": "qwen3-0-6b-instruct",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 50
-  }' | jq .
+echo $MODEL_URL
 ```
 
 ### 4. Test Rate Limiting
@@ -316,10 +300,16 @@ curl -ks \
 Send multiple requests to trigger rate limit:
 
 ```bash
-for i in {1..16}; do
-  curl -ks -o /dev/null -w "%{http_code}\n" \
-    -H "Authorization: Bearer $TOKEN" \
-    "${HOST}/simulator/health"
+for i in {1..16}
+do
+curl -sSk -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{
+        \"model\": \"${MODEL_NAME}\",
+        \"prompt\": \"Not really understood prompt\",
+        \"max_prompts\": 40
+    }" \
+  "${MODEL_URL}/v1/chat/completions";
 done
 ```
 

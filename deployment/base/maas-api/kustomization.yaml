@@ -5,7 +5,6 @@ namespace: maas-api
 
 resources:
   - namespace.yaml
-  - rbac.yaml
   - deployment.yaml
   - token-rate-limit-policy.yaml
   - service.yaml
@@ -13,3 +12,5 @@ resources:
   - httproute.yaml
   - auth-override.yaml
   - tier-mapping-configmap.yaml
+  - clusterrolebinding.yaml
+  - clusterrole.yaml
