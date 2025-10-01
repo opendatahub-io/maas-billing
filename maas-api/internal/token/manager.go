@@ -54,20 +54,20 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 	namespace, errNs := m.ensureTierNamespace(ctx, userTier)
 	if errNs != nil {
-		log.Printf("Failed to ensure tier namespace for user %s: %v", userTier, err)
+		log.Printf("Failed to ensure tier namespace for user %s: %v", userTier, errNs)
 		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier, errNs)
 	}
 
-	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, "")
+	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, userTier)
 	if errSA != nil {
-		log.Printf("Failed to ensure service account for user %s in namespace %s: %v", user.Username, namespace, err)
-		return nil, fmt.Errorf("failed to ensure service account for user %s in namespace %s: %w", user.Username, namespace, err)
+		log.Printf("Failed to ensure service account for user %s in namespace %s: %v", user.Username, namespace, errSA)
+		return nil, fmt.Errorf("failed to ensure service account for user %s in namespace %s: %w", user.Username, namespace, errSA)
 	}
 
 	token, errToken := m.createServiceAccountToken(ctx, namespace, saName, int(expiration.Seconds()))
 	if errToken != nil {
-		log.Printf("Failed to create token for service account %s in namespace %s: %v", saName, namespace, err)
-		return nil, fmt.Errorf("failed to create token for service account %s in namespace %s: %w", saName, namespace, err)
+		log.Printf("Failed to create token for service account %s in namespace %s: %v", saName, namespace, errToken)
+		return nil, fmt.Errorf("failed to create token for service account %s in namespace %s: %w", saName, namespace, errToken)
 	}
 
 	return &Token{
