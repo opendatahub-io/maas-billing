@@ -55,7 +55,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	namespace, errNs := m.ensureTierNamespace(ctx, userTier)
 	if errNs != nil {
 		log.Printf("Failed to ensure tier namespace for user %s: %v", userTier, err)
-		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier, err)
+		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier, errNs)
 	}
 
 	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, "")
