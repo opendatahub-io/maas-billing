@@ -58,7 +58,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier, err)
 	}
 
-	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, "")
+	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, userTier)
 	if errSA != nil {
 		log.Printf("Failed to ensure service account for user %s in namespace %s: %v", user.Username, namespace, err)
 		return nil, fmt.Errorf("failed to ensure service account for user %s in namespace %s: %w", user.Username, namespace, err)
@@ -86,7 +86,10 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 
 	namespace := m.tierMapper.Namespaces(ctx)[userTier]
 
-	saName := m.sanitizeServiceAccountName(user.Username)
+	saName, errName := m.sanitizeServiceAccountName(user.Username)
+	if errName != nil {
+		return fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, err)
+	}
 
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if errors.IsNotFound(err) {
@@ -150,7 +153,10 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 // ensureServiceAccount creates a service account if it doesn't exist.
 // It takes a raw username, sanitizes it for Kubernetes naming, and returns the sanitized name.
 func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username, userTier string) (string, error) {
-	saName := m.sanitizeServiceAccountName(username)
+	saName, errName := m.sanitizeServiceAccountName(username)
+	if errName != nil {
+		return "", fmt.Errorf("failed to sanitize service account name for user %s: %w", username, errName)
+	}
 
 	_, err := m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if err == nil {
@@ -166,9 +172,6 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 			Name:      saName,
 			Namespace: namespace,
 			Labels:    commonLabels(m.tenantName, userTier),
-			Annotations: map[string]string{
-				"maas.opendatahub.io/username": username,
-			},
 		},
 	}
 
@@ -221,7 +224,7 @@ func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName st
 // sanitizeServiceAccountName ensures the service account name follows Kubernetes naming conventions.
 // While ideally usernames should be pre-validated, Kubernetes TokenReview can return usernames
 // in various formats (OIDC emails, LDAP DNs, etc.) that need sanitization for use as SA names.
-func (m *Manager) sanitizeServiceAccountName(username string) string {
+func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	// Kubernetes ServiceAccount names must be valid DNS-1123 labels:
 	// [a-z0-9-], 1-63 chars, start/end alphanumeric.
 	name := strings.ToLower(username)
@@ -235,7 +238,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) string {
 	name = reDash.ReplaceAllString(name, "-")
 	name = strings.Trim(name, "-")
 	if name == "" {
-		name = "user"
+		return "", fmt.Errorf("invalid username %q", username)
 	}
 
 	// Append a stable short hash to reduce collisions
@@ -250,7 +253,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) string {
 		name = strings.Trim(name, "-")
 	}
 
-	return name + "-" + suffix
+	return name + "-" + suffix, nil
 }
 
 func commonLabels(name string, t string) map[string]string {
