@@ -11,6 +11,5 @@ resources:
 - rbac.yaml
 # HTTPRoute for routing
 - httproute.yaml
-# Symlinks to actual model definitions
-- qwen3-model.yaml
-- vllm-runtime.yaml 
+# Symlink to actual model definition
+- qwen3-model.yaml 

@@ -1,1 +1,12 @@
-../../../../../../deployment/samples/models/qwen3/qwen3-model.yaml
+# NOTE: This is a placeholder for CI validation only
+# The actual model deployment is in deployment/samples/models/qwen3/model.yaml
+# This maas-api directory is for reference only, not for actual deployment
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: qwen3-placeholder
+spec:
+  model:
+    uri: hf://Qwen/Qwen3-0.6B
+    name: Qwen/Qwen3-0.6B 

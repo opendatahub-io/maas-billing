@@ -4,10 +4,14 @@ kind: Kustomization
 metadata:
   name: odh-infra
   
+# NOTE: This is a reference file only. Actual deployment uses deployment/ folder
+# Commenting out remote reference that causes kustomize validation issues
+# For actual ODH/KServe deployment, use the deployment/components/odh/ folder
+#
 # Set of Kustomize manifests with OpenDataHub components required for MaaS.
 # For now, install only Model Serving pieces
-resources:
-- github.com/opendatahub-io/kserve/config/overlays/odh?ref=release-v0.15
+# resources:
+# - github.com/opendatahub-io/kserve/config/overlays/odh?ref=release-v0.15
   
 namespace: opendatahub
 
