@@ -4,8 +4,7 @@ kind: Kustomization
 metadata:
   name: maas-api-infra
 
-# NOTE: This is a reference file only. Actual deployment uses deployment/ folder
 resources:
 - openshift-gateway-api
 - kuadrant
-# - odh  # Commented out - causes kustomize validation issues with remote references
+- odh

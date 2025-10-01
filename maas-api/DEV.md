@@ -4,10 +4,9 @@
 
 - kubectl
 - jq
-- kustomize 5.7+
+- kustomize 5.7
 - OCP 4.19.9+ (for GW API)
 - [jwt](https://github.com/mike-engel/jwt-cli) CLI tool (for inspecting tokens)
-- **OpenDataHub (ODH) or Red Hat OpenShift AI (RHOAI)** installed with KServe enabled
 
 ### Setup
 
@@ -22,8 +21,7 @@ First, we need to deploy the core infrastructure. That includes:
 
 ```shell
 PROJECT_DIR=$(git rev-parse --show-toplevel) 
-# Note: kserve and opendatahub namespaces are managed by ODH/RHOAI
-for ns in kuadrant-system llm maas-api; do kubectl create ns $ns || true; done
+for ns in opendatahub kuadrant-system llm maas-api; do kubectl create ns $ns || true; done
 "${PROJECT_DIR}/deployment/scripts/install-dependencies.sh" --cert-manager --kuadrant 
 ```
 #### Enabling GW API
@@ -37,9 +35,6 @@ kustomize build ${PROJECT_DIR}/maas-api/deploy/infra/openshift-gateway-api | kub
 ```
 
 ### Deploying Opendatahub KServe
-
-> [!NOTE]
-> Skip this section if you already have ODH/RHOAI installed with KServe enabled.
 
 ```shell
 PROJECT_DIR=$(git rev-parse --show-toplevel)
@@ -101,9 +96,7 @@ AUD="$(kubectl create token default --duration=10m \
 
 echo "Patching AuthPolicy with audience: $AUD"
 
-# Note: Auth policy path may vary depending on your deployment
-# For consolidated deployment structure:
-kubectl patch --local -f ${PROJECT_DIR}/deployment/base/policies/auth-policy.yaml \
+kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/maas-api/auth-policy.yaml \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
@@ -129,8 +122,7 @@ kubectl -n $NS patch limitador limitador --type merge \
 
 ```shell
 PROJECT_DIR=$(git rev-parse --show-toplevel)
-# Using the consolidated samples structure:
-kustomize build ${PROJECT_DIR}/deployment/samples/models/simulator | kubectl apply --server-side=true --force-conflicts -f -
+kustomize build ${PROJECT_DIR}/maas-api/deploy/models/simulator | kubectl apply --server-side=true --force-conflicts -f -
 ```
 
 #### Getting the token
