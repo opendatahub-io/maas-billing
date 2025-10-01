@@ -31,7 +31,9 @@ deployment/
 │   └── kubernetes/          # Standard Kubernetes deployment (experimental)
 ├── samples/                 # Example model deployments
 │   └── models/
-│       ├── simulator/       # CPU-based test model
+│       ├── rbac/            # Shared RBAC for LLMInferenceService
+│       ├── simulator/       # CPU-based test model (llm-d-inference-sim)
+│       ├── facebook-opt-125m-cpu/  # CPU-based OPT-125M model
 │       └── qwen3/           # GPU-based Qwen3 model
 └── scripts/                 # Installation utilities
 ```
@@ -103,9 +105,17 @@ kustomize build deployment/overlays/kubernetes | envsubst | kubectl apply -f -
 
 ### Step 4: Deploy Sample Models (Optional)
 
+> [!NOTE]
+> These models use KServe's `LLMInferenceService` custom resource, which requires ODH/RHOAI with KServe enabled.
+
 #### Simulator Model (CPU)
 ```bash
-kustomize build deployment/samples/models/simulator | kubectl apply -f -
+kubectl apply -k deployment/samples/models/simulator/
+```
+
+#### Facebook OPT-125M Model (CPU)
+```bash
+kubectl apply -k deployment/samples/models/facebook-opt-125m-cpu/
 ```
 
 #### Qwen3 Model (GPU Required)
@@ -114,7 +124,16 @@ kustomize build deployment/samples/models/simulator | kubectl apply -f -
 > This model requires GPU nodes with `nvidia.com/gpu` resources available in your cluster.
 
 ```bash
-kustomize build deployment/samples/models/qwen3 | kubectl apply -f -
+kubectl apply -k deployment/samples/models/qwen3/
+```
+
+#### Verify Model Deployment
+```bash
+# Check LLMInferenceService status
+kubectl get llminferenceservices -n llm
+
+# Check pods
+kubectl get pods -n llm
 ```
 
 ## Platform-Specific Configuration
@@ -327,8 +346,8 @@ Check that policies are enforced:
 kubectl get authpolicy -A
 kubectl get tokenratelimitpolicy -A
 
-# Check InferenceServices are ready
-kubectl get inferenceservice -n llm
+# Check LLMInferenceServices are ready
+kubectl get llminferenceservices -n llm
 ```
 
 ## Services Exposed

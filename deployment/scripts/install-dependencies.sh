@@ -7,7 +7,7 @@ set -euo pipefail
 # Supports both vanilla Kubernetes and OpenShift deployments
 
 # Component definitions with installation order
-COMPONENTS=("istio" "cert-manager" "kserve" "prometheus" "kuadrant"  "grafana")
+COMPONENTS=("istio" "cert-manager" "odh" "kserve" "prometheus" "kuadrant"  "grafana")
 
 # OpenShift flag
 OCP=false
@@ -19,6 +19,7 @@ get_component_description() {
     case "$1" in
         istio) echo "Service mesh and Gateway API configuration" ;;
         cert-manager) echo "Certificate management for TLS and webhooks" ;;
+        odh) echo "OpenDataHub operator for ML/AI platform (OpenShift only)" ;;
         kserve) 
             if [[ "$OCP" == true ]]; then
                 echo "Model serving platform (validates OpenShift Serverless)"
@@ -54,6 +55,7 @@ usage() {
     echo "  --all                    Install all components"
     echo "  --istio                  Install Istio service mesh"
     echo "  --cert-manager           Install cert-manager"
+    echo "  --odh                    Install OpenDataHub operator (OpenShift only)"
     echo "  --kserve                 Install KServe model serving platform"
     echo "  --prometheus             Install Prometheus operator"
     echo "  --grafana                Install Grafana dashboard platform"
@@ -77,6 +79,22 @@ usage() {
 install_component() {
     local component="$1"
     local installer_script="$INSTALLERS_DIR/install-${component}.sh"
+    
+    # Special handler for ODH (OpenShift only)
+    if [[ "$component" == "odh" ]]; then
+        if [[ "$OCP" != true ]]; then
+            echo "⚠️  ODH is only available on OpenShift clusters, skipping..."
+            return 0
+        fi
+        if [[ -f "$installer_script" ]]; then
+            echo "🚀 Installing $component..."
+            bash "$installer_script"
+        else
+            echo "❌ Installer script not found: $installer_script"
+            return 1
+        fi
+        return 0
+    fi
     
     # Inline handler for Kuadrant (installed via Helm)
     if [[ "$component" == "kuadrant" ]]; then
@@ -237,6 +255,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --cert-manager)
             install_component "cert-manager"
+            COMPONENT_SELECTED=true
+            ;;
+        --odh)
+            install_component "odh"
             COMPONENT_SELECTED=true
             ;;
         --kserve)

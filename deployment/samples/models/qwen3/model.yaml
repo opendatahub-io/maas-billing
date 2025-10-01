@@ -1,0 +1,69 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: single-node-no-scheduler-nvidia-gpu
+  namespace: llm
+spec:
+  model:
+    uri: hf://Qwen/Qwen3-0.6B
+    name: Qwen/Qwen3-0.6B
+  replicas: 1
+  router:
+    route: { }
+  template:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+    containers:
+      - name: main
+        # Use OpenDataHub vLLM image and override args to avoid incompatible flags
+        image: "quay.io/opendatahub/vllm:fast"
+        command: ["vllm", "serve"]
+        args:
+          - "/mnt/models"
+          - "--served-model-name"
+          - "Qwen/Qwen3-0.6B"
+          - "--port"
+          - "8000"
+        env:
+          # Essential GPU configuration for Tesla T4
+          - name: VLLM_ATTENTION_BACKEND
+            value: "XFORMERS"  # Use XFormers for Tesla T4 compatibility
+          - name: VLLM_USE_TRITON_FLASH_ATTN
+            value: "false"  # Disable Triton to avoid compilation issues on Tesla T4
+          # Add CUDA visibility
+          - name: NVIDIA_VISIBLE_DEVICES
+            value: "all"
+          - name: NVIDIA_DRIVER_CAPABILITIES
+            value: "compute,utility"
+        resources:
+          limits:
+            cpu: "4"
+            memory: 8Gi
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "1"
+            memory: 4Gi
+            nvidia.com/gpu: "1"
+        # Update probes to use HTTP instead of HTTPS
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 30 

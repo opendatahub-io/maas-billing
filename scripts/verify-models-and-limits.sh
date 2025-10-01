@@ -38,8 +38,9 @@ echo ""
 
 # Step 1: Create a test service account and get token
 echo -e "${BLUE}Step 1: Creating test service account and obtaining token...${NC}"
-kubectl create serviceaccount model-test-user -n llm --dry-run=client -o yaml | kubectl apply -f - > /dev/null 2>&1
-TOKEN=$(kubectl create token model-test-user -n llm --audience=openshift-ai-inference-sa --duration=1h 2>/dev/null)
+# Create service account in the free tier namespace so it gets the right group membership
+kubectl create serviceaccount model-test-user -n openshift-ai-inference-tier-free --dry-run=client -o yaml | kubectl apply -f - > /dev/null 2>&1
+TOKEN=$(kubectl create token model-test-user -n openshift-ai-inference-tier-free --audience=openshift-ai-inference-sa --duration=1h 2>/dev/null)
 
 if [ -z "$TOKEN" ]; then
     echo -e "${RED}Failed to obtain token!${NC}"
@@ -49,8 +50,10 @@ echo -e "${GREEN}✓ Token obtained successfully${NC}"
 
 # Check the user's tier (for debugging rate limits)
 SA_NAME=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.["kubernetes.io"].serviceaccount.name' 2>/dev/null || echo "unknown")
+SA_NAMESPACE=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.["kubernetes.io"].serviceaccount.namespace' 2>/dev/null || echo "unknown")
 echo -e "${CYAN}Service Account:${NC} $SA_NAME"
-echo -e "${CYAN}Note:${NC} Service accounts without group membership get minimal rate limits"
+echo -e "${CYAN}Namespace:${NC} $SA_NAMESPACE (tier: free)"
+echo -e "${CYAN}Note:${NC} Using free tier limits (5 requests per 2 minutes)"
 echo ""
 
 # Function to test a model
@@ -126,9 +129,10 @@ EOF
     done
 }
 
-# Test both models
-test_model "QWEN3-0.6B" "/qwen3" "qwen3-0-6b-instruct"
-test_model "SIMULATOR" "/simulator" "vllm-simulator"
+# Test all models
+test_model "Facebook OPT-125M Simulator" "/llm/facebook-opt-125m-simulated" "facebook-opt-125m-simulated"
+test_model "Facebook OPT-125M CPU" "/llm/facebook-opt-125m-cpu-single-node-no-scheduler-cpu" "facebook/opt-125m"
+test_model "QWEN3-0.6B GPU" "/llm/single-node-no-scheduler-nvidia-gpu" "Qwen/Qwen3-0.6B"
 
 # Step 2: Test rate limiting
 echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -136,13 +140,13 @@ echo -e "${MAGENTA}Testing Token Rate Limiting${NC}"
 echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "${BLUE}Making rapid requests to trigger rate limit...${NC}"
-echo "(Using QWEN3 model for rate limit test)"
+echo "(Using Facebook OPT-125M Simulator for rate limit test)"
 echo ""
 
 # Rapid fire requests to trigger rate limiting
 REQUEST_BODY_SIMPLE=$(cat <<EOF
 {
-  "model": "qwen3-0-6b-instruct",
+  "model": "facebook-opt-125m-simulated",
   "messages": [
     {"role": "user", "content": "Count to 5"}
   ],
@@ -164,7 +168,7 @@ for i in {1..25}; do
         -X POST \
         -d "$REQUEST_BODY_SIMPLE" \
         -w "\nHTTP_STATUS:%{http_code}\n" \
-        "$GATEWAY_URL/qwen3/v1/chat/completions" 2>&1)
+        "$GATEWAY_URL/llm/facebook-opt-125m-simulated/v1/chat/completions" 2>&1)
     
     http_status=$(echo "$response" | grep "HTTP_STATUS:" | cut -d':' -f2)
     
@@ -205,7 +209,7 @@ fi
 # Cleanup
 echo ""
 echo -e "${BLUE}Cleaning up test resources...${NC}"
-kubectl delete serviceaccount model-test-user -n llm > /dev/null 2>&1
+kubectl delete serviceaccount model-test-user -n openshift-ai-inference-tier-free > /dev/null 2>&1
 
 # Final summary
 echo ""
@@ -214,9 +218,9 @@ echo -e "${CYAN}           Test Summary                ${NC}"
 echo -e "${CYAN}======================================${NC}"
 echo ""
 
-# Check if both models responded
+# Check if models responded
 if [ "$http_status" = "200" ] || [ "$total_success" -gt 0 ]; then
-    echo -e "${GREEN}✓${NC} Both models are accessible and responding"
+    echo -e "${GREEN}✓${NC} Models are accessible and responding"
     echo -e "${GREEN}✓${NC} Token authentication is working"
     echo -e "${GREEN}✓${NC} Inference endpoints are functional"
     if [ "$rate_limited" = true ]; then
@@ -237,6 +241,7 @@ fi
 echo ""
 echo -e "${BLUE}Gateway URL:${NC} $GATEWAY_URL"
 echo -e "${BLUE}Models tested:${NC}"
-echo "  • QWEN3-0.6B at /qwen3"
-echo "  • VLLM Simulator at /simulator"
+echo "  • Facebook OPT-125M Simulator at /llm/facebook-opt-125m-simulated"
+echo "  • Facebook OPT-125M CPU at /llm/facebook-opt-125m-cpu-single-node-no-scheduler-cpu"
+echo "  • QWEN3-0.6B GPU at /llm/single-node-no-scheduler-nvidia-gpu"
 echo "" 
