@@ -2,7 +2,7 @@
 
 ## Quick Setup Script
 
-The `create-my-env.sh` script automatically generates environment files for both backend and frontend by extracting information from your current OpenShift cluster.
+The `scripts/create-my-env.sh` script automatically generates environment files for both backend and frontend by extracting information from your current OpenShift cluster.
 
 ### Prerequisites
 
