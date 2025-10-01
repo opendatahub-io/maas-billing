@@ -19,51 +19,68 @@ spec:
         operator: Exists
     containers:
       - name: main
-        # Use OpenDataHub vLLM image and override args to avoid incompatible flags
-        image: "quay.io/opendatahub/vllm:fast"
-        command: ["vllm", "serve"]
+        # Use latest official vLLM image which should support Qwen3
+        image: "vllm/vllm-openai:latest"
+        command: ["sh", "-c"]
         args:
-          - "/mnt/models"
-          - "--served-model-name"
-          - "Qwen/Qwen3-0.6B"
-          - "--port"
-          - "8000"
+          - |
+            # Create dummy certificate file in /tmp to prevent FileNotFoundError
+            mkdir -p /tmp/certs
+            touch /tmp/certs/ca-certificates.crt
+            export REQUESTS_CA_BUNDLE=/tmp/certs/ca-certificates.crt
+            export SSL_CERT_FILE=/tmp/certs/ca-certificates.crt
+            # Run vLLM with HTTPS using KServe certificates
+            # Use enforce-eager to avoid Triton compilation issues on Tesla T4
+            exec vllm serve /mnt/models \
+              --served-model-name "Qwen/Qwen3-0.6B" \
+              --port 8000 \
+              --trust-remote-code \
+              --disable-log-requests \
+              --ssl-certfile /etc/ssl/certs/tls.crt \
+              --ssl-keyfile /etc/ssl/certs/tls.key \
+              --enforce-eager \
+              --max-model-len 8192
         env:
-          # Essential GPU configuration for Tesla T4
+          # Avoid Triton completely
           - name: VLLM_ATTENTION_BACKEND
-            value: "XFORMERS"  # Use XFormers for Tesla T4 compatibility
+            value: "FLASH_ATTN"  # Try Flash Attention instead of XFormers
           - name: VLLM_USE_TRITON_FLASH_ATTN
-            value: "false"  # Disable Triton to avoid compilation issues on Tesla T4
+            value: "false"  # Disable Triton
+          - name: VLLM_WORKER_MULTIPROC_METHOD
+            value: "spawn"  # Use spawn instead of fork
           # Add CUDA visibility
           - name: NVIDIA_VISIBLE_DEVICES
             value: "all"
           - name: NVIDIA_DRIVER_CAPABILITIES
             value: "compute,utility"
+          # Disable SSL verification
+          - name: PYTHONHTTPSVERIFY
+            value: "0"
         resources:
           limits:
             cpu: "4"
-            memory: 8Gi
+            memory: 12Gi  # Increased from 8Gi to prevent OOM
             nvidia.com/gpu: "1"
           requests:
             cpu: "1"
-            memory: 4Gi
+            memory: 8Gi  # Increased from 4Gi
             nvidia.com/gpu: "1"
-        # Update probes to use HTTP instead of HTTPS
+        # Update probes to use HTTPS
         livenessProbe:
           httpGet:
             path: /health
             port: 8000
-            scheme: HTTP
-          initialDelaySeconds: 120
+            scheme: HTTPS
+          initialDelaySeconds: 240  # Increased to give more time
           periodSeconds: 30
           timeoutSeconds: 30
-          failureThreshold: 5
+          failureThreshold: 10
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-            scheme: HTTP
-          initialDelaySeconds: 120
+            scheme: HTTPS
+          initialDelaySeconds: 240  # Increased to give more time
           periodSeconds: 10
           timeoutSeconds: 10
           failureThreshold: 30 

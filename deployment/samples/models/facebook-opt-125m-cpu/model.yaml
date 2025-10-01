@@ -15,27 +15,29 @@ spec:
         image: quay.io/pierdipi/vllm-cpu:latest
         env:
           - name: VLLM_LOGGING_LEVEL
-            value: DEBUG
-          # OPT models don't have a built-in chat template
-          # Provide a simple chat template for OPT models
-          - name: VLLM_CHAT_TEMPLATE
-            value: |
-              {% for message in messages %}
-              {% if message['role'] == 'user' %}User: {{ message['content'] }}
-              {% elif message['role'] == 'assistant' %}Assistant: {{ message['content'] }}
-              {% elif message['role'] == 'system' %}System: {{ message['content'] }}
-              {% endif %}
-              {% endfor %}
-              Assistant:
+            value: INFO
         resources:
           limits:
-            cpu: '1'
+            cpu: '2'
             memory: 10Gi
           requests:
             cpu: '100m'
             memory: 8Gi
         livenessProbe:
-          initialDelaySeconds: 30
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 90
           periodSeconds: 30
           timeoutSeconds: 30
           failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 30
