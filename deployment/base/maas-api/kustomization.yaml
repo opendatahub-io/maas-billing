@@ -8,7 +8,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - httproute.yaml
-  - auth-override.yaml
+  - maas-auth-policy.yaml
   - tier-mapping-configmap.yaml
   - clusterrolebinding.yaml
   - clusterrole.yaml
