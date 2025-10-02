@@ -337,7 +337,7 @@ permissions and a `RoleBinding` to link that `Role` to the tier namespaces.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: model-user
+  name: model-post-access
   namespace: model-serving
 rules:
   - apiGroups: ["serving.kserve.io"]
@@ -347,7 +347,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: model-user-tier-binding
+  name: model-post-access-tier-binding
   namespace: model-serving
 subjects:
   - kind: Group
@@ -361,7 +361,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: Role
-  name: model-user
+  name: model-post-access
   apiGroup: rbac.authorization.k8s.io
 ```
 
