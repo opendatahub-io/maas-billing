@@ -8,7 +8,6 @@ resources:
   - deployment.yaml
   - token-rate-limit-policy.yaml
   - service.yaml
-  - admin-secret.yaml
   - httproute.yaml
   - auth-override.yaml
   - tier-mapping-configmap.yaml
