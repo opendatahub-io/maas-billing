@@ -419,6 +419,10 @@ spec:
         - expression: auth.identity.userid
 ```
 
+> [!NOTE]
+> This policy is applied to the `HTTPRoute` resource that handles the model inference requests, so it is specific to the particular model.
+> It can also be applied to the `Gateway` resource, and so it would apply to all models attached to this gateway.
+
 **Token-based limits** track LLM token consumption. Configure similarly with token counters.
 
 **Apply:**
