@@ -1,7 +1,6 @@
 # Sample LLMInferenceService Models
 
-This directory contains  `LLMInferenceService` for deployment of sample models. Please refer to the [deployment guide](../deployment/README.md) for more details of how to test MaaS Platform with these models.
-
+This directory contains `LLMInferenceService`s for deploying sample models. Please refer to the [deployment guide](../../deployment/README.md) for more details on how to test the MaaS Platform with these models.
 # Deployment
 
 ```bash
