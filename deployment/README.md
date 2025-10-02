@@ -14,30 +14,6 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
 - KServe components are expected to be provided by ODH/RHOAI, not installed separately
 - For non-ODH/RHOAI deployments, KServe can be optionally installed from `deployment/components/kserve`
 
-## Deployment Structure
-
-```
-deployment/
-├── base/                    # Core infrastructure components
-│   ├── maas-api/            # MaaS API deployment
-│   ├── networking/          # Gateway API and Kuadrant
-│   ├── policies/            # Gateway-level authentication and rate limiting policies
-│   └── token-rate-limiting/ # Token-based rate limiting configuration
-├── components/              # Optional components
-│   ├── kserve/              # KServe config (only if not using ODH/RHOAI)
-│   └── observability/       # Monitoring and observability
-├── overlays/                # Platform-specific configurations
-│   ├── openshift/           # OpenShift deployment
-│   └── kubernetes/          # Standard Kubernetes deployment (experimental)
-├── samples/                 # Example model deployments
-│   └── models/
-│       ├── rbac/            # Shared RBAC for LLMInferenceService
-│       ├── simulator/       # CPU-based test model (llm-d-inference-sim)
-│       ├── facebook-opt-125m-cpu/  # CPU-based OPT-125M model
-│       └── qwen3/           # GPU-based Qwen3 model
-└── scripts/                 # Installation utilities
-```
-
 ## Quick Start
 
 ### Automated OpenShift Deployment (Recommended)
