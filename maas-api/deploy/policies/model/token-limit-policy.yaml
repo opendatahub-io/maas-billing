@@ -6,7 +6,7 @@ apiVersion: kuadrant.io/v1alpha1
 kind: TokenRateLimitPolicy
 metadata:
   name: gateway-token-rate-limits
-  namespace: llm
+  namespace: openshift-ingress
 spec:
   targetRef:
     group: gateway.networking.k8s.io
