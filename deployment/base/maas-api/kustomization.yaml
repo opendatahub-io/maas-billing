@@ -6,7 +6,6 @@ namespace: maas-api
 resources:
   - namespace.yaml
   - deployment.yaml
-  - token-rate-limit-policy.yaml
   - service.yaml
   - httproute.yaml
   - auth-override.yaml
