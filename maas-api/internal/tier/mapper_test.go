@@ -155,7 +155,7 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
 	ctx := t.Context()
 
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewClientset()
 	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	// Should default to free mappedTier when ConfigMap is missing
@@ -194,7 +194,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 		},
 	}
 
-	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
+	clientset := fake.NewClientset([]runtime.Object{configMap}...)
 	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	// When levels are equal, first tier found should win

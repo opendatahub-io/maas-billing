@@ -134,7 +134,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   namespace,
-			Labels: commonLabels(m.tenantName, tier),
+			Labels: namespaceLabels(m.tenantName, tier),
 		},
 	}
 
@@ -171,7 +171,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      saName,
 			Namespace: namespace,
-			Labels:    commonLabels(m.tenantName, userTier),
+			Labels:    serviceAccountLabels(m.tenantName, userTier),
 		},
 	}
 
@@ -254,13 +254,4 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	return name + "-" + suffix, nil
-}
-
-func commonLabels(name string, t string) map[string]string {
-	return map[string]string{
-		"app.kubernetes.io/component":  "token-issuer",
-		"app.kubernetes.io/part-of":    "maas-api",
-		"maas.opendatahub.io/instance": name,
-		"maas.opendatahub.io/tier":     t,
-	}
 }
