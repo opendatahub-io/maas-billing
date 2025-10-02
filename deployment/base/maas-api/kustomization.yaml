@@ -12,3 +12,4 @@ resources:
   - tier-mapping-configmap.yaml
   - clusterrolebinding.yaml
   - clusterrole.yaml
+  - serviceaccount.yaml
