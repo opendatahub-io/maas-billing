@@ -119,16 +119,12 @@ define deploy
 		trap 'mv kustomization.yaml.backup kustomization.yaml 2>/dev/null || true' EXIT INT TERM && \
 		kustomize edit set image maas-api=$(FULL_IMAGE) && \
 		$(if $(PRE_DEPLOY_STEP),$(PRE_DEPLOY_STEP) &&) \
-		kustomize build . | kubectl apply -f -
+		kustomize build . --load-restrictor LoadRestrictionsNone | kubectl apply -f -
 endef
 
 .PHONY: deploy-dev
 deploy-dev: ## Deploy development version
 	$(call deploy,overlays/dev)
-
-.PHONY: deploy
-deploy: ## Deploy base component
-	$(call deploy,base)
 
 default_run_flags := --debug
 RUN_FLAGS ?= 
