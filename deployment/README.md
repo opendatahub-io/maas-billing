@@ -86,12 +86,14 @@ kustomize build deployment/overlays/kubernetes | envsubst | kubectl apply -f -
 
 #### Simulator Model (CPU)
 ```bash
-kubectl apply -k deployment/samples/models/simulator/
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+kustomize build ${PROJECT_DIR}/docs/samples/models/simulator/ | kubectl apply -f -
 ```
 
 #### Facebook OPT-125M Model (CPU)
 ```bash
-kubectl apply -k deployment/samples/models/facebook-opt-125m-cpu/
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+kustomize build ${PROJECT_DIR}/docs/samples/models/facebook-opt-125m-cpu/  | kubectl apply -f -
 ```
 
 #### Qwen3 Model (GPU Required)
@@ -100,7 +102,8 @@ kubectl apply -k deployment/samples/models/facebook-opt-125m-cpu/
 > This model requires GPU nodes with `nvidia.com/gpu` resources available in your cluster.
 
 ```bash
-kubectl apply -k deployment/samples/models/qwen3/
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+kustomize build ${PROJECT_DIR}/docs/samples/models/qwen3/ | kubectl apply -f -
 ```
 
 #### Verify Model Deployment
@@ -202,31 +205,6 @@ kubectl patch --local -f ${PROJECT_DIR}/deployment/base/policies/maas-auth-polic
   -o yaml | kubectl apply -f -
   
 ```
-
-### Kubernetes Configuration
-
-For standard Kubernetes clusters, ensure you have an Ingress controller installed (e.g., NGINX).
-
-Install NGINX Ingress Controller if not present:
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
-```
-
-## Storage Initializer Configuration
-
-The KServe storage initializer requires sufficient resources for downloading large models. Default settings in `deployment/base/kserve/kserve-config-openshift.yaml`:
-
-- Memory Request: 4Gi
-- Memory Limit: 8Gi
-- CPU Request: 2
-- CPU Limit: 4
-
-To adjust for larger models:
-```bash
-kubectl edit configmap inferenceservice-config -n kserve
-```
-
 ## Testing the Deployment
 
 ### 1. Get Gateway Endpoint
