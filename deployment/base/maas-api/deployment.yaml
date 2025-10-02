@@ -52,11 +52,6 @@ spec:
           value: "gateway-token-rate-limits"
         - name: AUTH_POLICY_NAME
           value: "gateway-auth-policy"
-        - name: ADMIN_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: maas-api-admin
-              key: admin-key
         - name: GIN_MODE
           value: "debug"
         livenessProbe:
