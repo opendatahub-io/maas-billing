@@ -5,7 +5,6 @@ This directory contains  `LLMInferenceService` for deployment of sample models. 
 # Deployment
 
 ```bash
-cd demo-models
 MODEL_NAME=simulator # or facebook-opt-125m-cpu or qwen3
 kustomize build $MODEL_NAME | kubectl apply -f -
 ```
