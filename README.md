@@ -208,4 +208,4 @@ Built with:
 For questions or issues:
 - Open an issue on GitHub
 - Check the [deployment guide](deployment/README.md) for troubleshooting
-- Review the [samples](deployment/samples/models/) for examples
+- Review the [samples](docs/samples/models) for examples
