@@ -18,7 +18,7 @@ It covers Admin, Free, and Premium and shows how to generate HTML/JUnit reports.
 Create a venv and install deps:
 
 ```bash
-cd maas_billing_tests_independent_v5_full
+cd maas_billing_tests_independent
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -38,32 +38,25 @@ oc login https://api.<cluster>:6443 --token '<your-user-token>'
 oc whoami
 ```
 
-Maas API base URLs:
+Get Gateway Endpoint and set base URLs:
 
-# Preferred: apps-domain host (TLS + correct Host header)
-APPS=$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')
-export MAAS_API_BASE_URL="https://maas-api.${APPS}"
-export USAGE_API_BASE="${MAAS_API_BASE_URL}"   # used by usage tests
-
-# Fallback (commented): ELB endpoint + explicit Host header
-# HOST=$(oc -n openshift-ingress get gateway openshift-ai-inference -o jsonpath='{.status.addresses[0].value}')
-# curl -H "Host: maas-api.${APPS}" "http://${HOST}/v1/models"
-
-
+```bash
+HOST=$(oc -n openshift-ingress get gateway openshift-ai-inference -o jsonpath='{.status.addresses[0].value}')
+export MAAS_API_BASE_URL="http://${HOST}/maas-api"
+export USAGE_API_BASE="${MAAS_API_BASE_URL}"     # used by usage tests
+```
 Export the **current user’s** OpenShift token into `FREE_OC_TOKEN`
 (the tests use this name for “who you are right now”):
 
 ```bash
 export FREE_OC_TOKEN="$(oc whoami -t)"
 ```
-
 Pick a **MODEL_NAME** from the catalog (`id` field):
 
 ```bash
 curl -s -H "Authorization: Bearer ${FREE_OC_TOKEN}" "${MAAS_API_BASE_URL}/v1/models" | jq -r '.data[] | [.id,.name,.url] | @tsv'
 export MODEL_NAME="<paste-id-from-output>"     # e.g., facebook-opt-125m-simulated
 ```
-
 ---
 
 ## 2) Configure limits the tests will use
@@ -74,16 +67,16 @@ Read your gateway **RateLimitPolicy** values and export them so the tests know
 what to expect:
 
 ```bash
-# Free (update the jsonpath if your CR layout differs)
+# FREE request-rate burst (per window)
 export RATE_LIMIT_BURST_FREE=$(
-  oc -n openshift-ingress get ratelimitpolicies.gateway.networking.k8s.io gateway-rate-limits \
+  oc -n openshift-ingress get ratelimitpolicies.kuadrant.io gateway-rate-limits \
   -o jsonpath='{.spec.limits.free.rates[0].limit}'
 )
 
 # Premium (optional; only needed for the Free-vs-Premium test)
 export RATE_LIMIT_BURST_PREMIUM=$(
-  oc -n openshift-ingress get ratelimitpolicies.gateway.networking.k8s.io gateway-rate-limits \
-  -o jsonpath='{.spec.limits.premium.rates[0].limit}'
+  oc -n openshift-ingress get ratelimitpolicies.kuadrant.io gateway-rate-limits \
+  -o jsonpath='{.spec.limits.enterprise.rates[0].limit}'
 )
 ```
 
@@ -108,9 +101,11 @@ The suite assumes **`FREE_OC_TOKEN`** holds the *current* user’s token.
 ### A) Admin (sanity / wiring)
 
 ```bash
-pytest -q tests/test_tokens.py::test_minted_token_is_jwt
-pytest -q tests/test_models_user.py
-pytest -q tests/test_gateway_endpoints.py::test_chat_completion_works
+
+pytest -q testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
+pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
+pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
+
 ```
 
 ### B) Free user (authz + request-rate burst + usage)
@@ -120,22 +115,22 @@ pytest -q tests/test_gateway_endpoints.py::test_chat_completion_works
 export FREE_OC_TOKEN="$(oc whoami -t)"
 
 # basics
-pytest -q tests/test_tokens.py::test_minted_token_is_jwt
-pytest -q tests/test_models_user.py
-pytest -q tests/test_gateway_endpoints.py::test_chat_completion_works
+pytest -q testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
+pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
+pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
 
 # request-rate burst (expects some 429s after RATE_LIMIT_BURST_FREE)
-pytest -q tests/test_quota_global.py::test_rate_limit_burst
+pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 
 # usage (optional; requires USAGE_API_BASE)
-pytest -q tests/test_usage_logs.py
+pytest -q testing/maas_billing_tests_independent/tests/test_usage_logs.py
 ```
 
 #### Token‑rate for Free
 Trigger token-based limiting by making each call expensive in tokens:
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q tests/test_token_ratelimit.py
+pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 #### Interplay for Free — which limiter fires first?
@@ -143,12 +138,12 @@ pytest -q tests/test_token_ratelimit.py
 ```bash
 export TOKENS_PER_CALL_SMALL=16
 export BURST_SLEEP=0.05
-pytest -q tests/test_quota_global.py::test_rate_limit_burst
+pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 ```
 **Token‑rate first:** few *expensive* calls
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q tests/test_token_ratelimit.py
+pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 ### C) Premium user (same flow + Free-vs-Premium comparison)
@@ -158,18 +153,18 @@ pytest -q tests/test_token_ratelimit.py
 export FREE_OC_TOKEN="$(oc whoami -t)"     # current user’s token again
 export PREMIUM_OC_TOKEN="$FREE_OC_TOKEN"   # used by the test to mint for premium
 
-pytest -q tests/test_gateway_endpoints.py::test_chat_completion_works
+pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
 
 # Compare Free vs Premium burst; Premium must not be worse than Free
 # (uses RATE_LIMIT_BURST_FREE / RATE_LIMIT_BURST_PREMIUM)
-pytest -q tests/test_quota_per_user.py::test_free_vs_premium_quota
+pytest -q testing/maas_billing_tests_independent/tests/test_quota_per_user.py::test_free_vs_premium_quota
 ```
 
 #### Token‑rate for Premium
 Run the token limiter test while logged in as your Premium user:
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q tests/test_token_ratelimit.py
+pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 #### Interplay for Premium — which limiter fires first?
@@ -177,12 +172,12 @@ pytest -q tests/test_token_ratelimit.py
 ```bash
 export TOKENS_PER_CALL_SMALL=16
 export BURST_SLEEP=0.05
-pytest -q tests/test_quota_global.py::test_rate_limit_burst
+pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 ```
 **Token‑rate first:** few *expensive* calls
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q tests/test_token_ratelimit.py
+pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 ### D) Token-rate (current user – Free **or** Premium)
@@ -191,7 +186,7 @@ If you want to *exercise* token-rate limiting, increase tokens per call to make 
 
 ```bash
 export TOKENS_PER_CALL_LARGE=1200   # example value to drive token usage
-pytest -q tests/test_token_ratelimit.py
+pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 ---
@@ -206,12 +201,12 @@ By shaping traffic as above (many *cheap* calls vs few *expensive* calls), you c
 ## 4) Reports (HTML & JUnit)
 
 ```bash
-mkdir -p reports
+mkdir -p testing/maas_billing_tests_independent/reports
 
 # Example: run everything for the current user and produce reports
-pytest -q \
-  --html=reports/current.html --self-contained-html \
-  --junitxml=reports/current.xml
+pytest -q testing/maas_billing_tests_independent/tests \
+  --html=testing/maas_billing_tests_independent/reports/current.html --self-contained-html \
+  --junitxml=testing/maas_billing_tests_independent/reports/current.xml
 ```
 
 Open `reports/current.html` in your browser.
@@ -235,21 +230,7 @@ Open `reports/current.html` in your browser.
 
 ---
 
-## 6) Troubleshooting
-
-- **401 Unauthorized** – ensure you exported `FREE_OC_TOKEN="$(oc whoami -t)"` in this shell.
-- **404 on chat** – the test already posts to **`<model-url>/v1/chat/completions`**.
-  If you edited anything, make sure you didn’t send to `/maas-api/v1/chat/completions`.
-- **Burst test returns 429 too early** – your exported `RATE_LIMIT_BURST_FREE` is higher than
-  the actual policy. Re-read the CR and export the real value (or lower `N_BURST` if you set it).
-- **Never see 429** – increase `N_BURST` or verify the RateLimitPolicy is **Accepted/Enforced**
-  in the `openshift-ingress` project.
-- **WSL vs PowerShell** – they’re separate shells; log in and re-export vars in whichever one
-  you use to run `pytest`.
-
----
-
-## 7) PowerShell equivalents (Windows)
+## 6) PowerShell equivalents (Windows)
 
 ```powershell
 # venv
@@ -319,10 +300,10 @@ export TOKENS_PER_CALL_SMALL=16
 export BURST_SLEEP=0.05
 
 # run a few
-pytest -q tests/test_tokens.py::test_minted_token_is_jwt
-pytest -q tests/test_models_user.py
-pytest -q tests/test_gateway_endpoints.py::test_chat_completion_works
-pytest -q tests/test_quota_global.py::test_rate_limit_burst
+pytest -q testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
+pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
+pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
+pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 
 # report
 mkdir -p reports && pytest -q --html=reports/current.html --self-contained-html --junitxml=reports/current.xml
