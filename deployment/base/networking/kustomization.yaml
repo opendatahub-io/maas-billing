@@ -7,4 +7,3 @@ metadata:
 resources:
 - kuadrant.yaml
 - gateway-api.yaml
-- httproute.yaml

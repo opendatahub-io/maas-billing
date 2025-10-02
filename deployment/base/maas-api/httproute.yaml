@@ -1,26 +1,24 @@
-# HTTPRoute for MaaS API Service
-# Provides external access via domain-based routing
----
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: maas-api-domain-route
+  name: maas-api-route
   namespace: maas-api
-  labels:
-    kuadrant.io/gateway: openshift-ai-inference
 spec:
   parentRefs:
     - name: openshift-ai-inference
       namespace: openshift-ingress
-  hostnames:
-    - "maas-api.${CLUSTER_DOMAIN}"
   rules:
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: /maas-api
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
         - name: maas-api
-          namespace: maas-api
           port: 8080
           weight: 100
