@@ -51,6 +51,53 @@ version_compare() {
   [ "$v1" -ge "$v2" ]
 }
 
+wait_for_validating_webhooks() {
+    local namespace="$1"
+    local timeout="${2:-60}"
+    local interval=2
+    local end=$((SECONDS+timeout))
+
+    echo "⏳ Waiting for validating webhooks in namespace $namespace (timeout: $timeout sec)..."
+
+    while [ $SECONDS -lt $end ]; do
+        local not_ready=0
+
+        local services
+        services=$(kubectl get validatingwebhookconfigurations \
+          -o jsonpath='{range .items[*].webhooks[*].clientConfig.service}{.namespace}/{.name}{"\n"}{end}' \
+          | grep "^$namespace/" | sort -u)
+
+        if [ -z "$services" ]; then
+            echo "⚠️  No validating webhooks found in namespace $namespace"
+            return 0
+        fi
+
+        for svc in $services; do
+            local ns name ready
+            ns=$(echo "$svc" | cut -d/ -f1)
+            name=$(echo "$svc" | cut -d/ -f2)
+
+            ready=$(kubectl get endpoints -n "$ns" "$name" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+            if [ -z "$ready" ]; then
+                echo "🔴 Webhook service $ns/$name not ready"
+                not_ready=1
+            else
+                echo "✅ Webhook service $ns/$name has ready endpoints"
+            fi
+        done
+
+        if [ "$not_ready" -eq 0 ]; then
+            echo "🎉 All validating webhook services in $namespace are ready"
+            return 0
+        fi
+
+        sleep $interval
+    done
+
+    echo "❌ Timed out waiting for validating webhooks in $namespace"
+    return 1
+}
+
 echo "========================================="
 echo "🚀 MaaS Platform OpenShift Deployment"
 echo "========================================="
@@ -66,7 +113,7 @@ fi
 echo "📋 Checking prerequisites..."
 echo ""
 echo "Required tools:"
-echo "  - kubectl: $(kubectl version --client --short 2>/dev/null | head -n1 || echo 'not found')"
+echo "  - oc: $(oc version --client --short 2>/dev/null | head -n1 || echo 'not found')"
 echo "  - jq: $(jq --version 2>/dev/null || echo 'not found')"
 echo "  - kustomize: $(kustomize version --short 2>/dev/null || echo 'not found')"
 echo ""
@@ -179,6 +226,7 @@ else
     if wait_for_crd "llminferenceservices.serving.kserve.io" "120s"; then
         
         wait_for_pods "opendatahub" 120 || true
+        wait_for_validating_webhooks opendatahub 90 || true
         
         echo "   Retrying deployment (attempt 2/2)..."
         kustomize build "$PROJECT_ROOT/deployment/components/odh/kserve" | kubectl apply --server-side=true --force-conflicts -f - && \
