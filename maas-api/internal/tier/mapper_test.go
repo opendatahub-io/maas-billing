@@ -41,9 +41,15 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 		},
 		{
 			name:         "inferred SA group - free tier",
-			groups:       []string{"system:serviceaccount:test-tenant-tier-free"},
+			groups:       []string{"system:serviceaccounts:test-tenant-tier-free"},
 			expectedTier: "free",
 			description:  "User belongs to only free tier group",
+		},
+		{
+			name:         "inferred SA group - premium tier",
+			groups:       []string{"system:serviceaccounts:test-tenant-tier-premium"},
+			expectedTier: "premium",
+			description:  "User belongs to only premium tier group",
 		},
 		{
 			name:         "single group - premium tier",
@@ -85,6 +91,12 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 			name:         "multiple groups - developer wins over premium",
 			groups:       []string{"premium-users", "developer-users"},
 			expectedTier: "developer",
+			description:  "User belongs to both premium and developer - developer has higher level (15 > 10)",
+		},
+		{
+			name:         "multiple groups - service account groups",
+			groups:       []string{"system:serviceaccounts", "system:serviceaccounts:test-tenant-tier-premium", "system:authenticated"},
+			expectedTier: "premium",
 			description:  "User belongs to both premium and developer - developer has higher level (15 > 10)",
 		},
 		{
