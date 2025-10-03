@@ -138,7 +138,7 @@ kustomize build ${PROJECT_DIR}/docs/samples/models/simulator | kubectl apply --s
 To see the token, you can use the following commands:
 
 ```shell
-HOST="$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+HOST="$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o jsonpath='{.items[0].status.addresses[0].value}')"
 
 TOKEN_RESPONSE=$(curl -sSk \
   -H "Authorization: Bearer $(oc whoami -t)" \
@@ -163,7 +163,7 @@ TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 Using model discovery:
 
 ```shell
-HOST="$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+HOST="$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o jsonpath='{.items[0].status.addresses[0].value}')"
 
 MODELS=$(curl ${HOST}/maas-api/v1/models  \
     -H "Content-Type: application/json" \

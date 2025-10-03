@@ -9,6 +9,11 @@ spec:
   replicas: 1
   router:
     route: { }
+    # Connect to MaaS-enabled gateway
+    gateway:
+      refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
   template:
     containers:
       - name: main

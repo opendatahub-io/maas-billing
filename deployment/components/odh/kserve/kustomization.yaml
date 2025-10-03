@@ -8,6 +8,6 @@ metadata:
 # For now, install only Model Serving pieces
 resources:
 - github.com/opendatahub-io/kserve/config/overlays/odh?ref=release-v0.15
-  
+
 namespace: opendatahub
 

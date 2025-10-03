@@ -257,13 +257,6 @@ else
   echo "   ✅ Kuadrant operator already configured"
 fi
 
-# Update KServe Ingress Domain
-echo "   Updating KServe configuration..."
-kubectl -n kserve patch configmap inferenceservice-config \
-  --type='json' \
-  -p="[{\"op\": \"replace\", \"path\": \"/data/ingress\", \"value\": \"{\\\"enableGatewayApi\\\": true, \\\"kserveIngressGateway\\\": \\\"openshift-ingress/openshift-ai-inference\\\", \\\"ingressGateway\\\": \\\"istio-system/istio-ingressgateway\\\", \\\"ingressDomain\\\": \\\"$CLUSTER_DOMAIN\\\"}\" }]" 2>/dev/null || \
-  echo "   KServe already configured"
-
 echo ""
 echo "8️⃣ Waiting for Gateway to be ready..."
 echo "   Note: This may take a few minutes if Service Mesh is being automatically installed..."
@@ -282,7 +275,7 @@ else
 fi
 
 echo "   Waiting for Gateway to become ready..."
-kubectl wait --for=condition=Programmed gateway openshift-ai-inference -n openshift-ingress --timeout=300s || \
+kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshift-ingress --timeout=300s || \
   echo "   ⚠️  Gateway is taking longer than expected, continuing..."
 
 echo ""
@@ -343,8 +336,8 @@ kubectl get pods -n opendatahub --no-headers | grep Running | wc -l | xargs echo
 
 echo ""
 echo "Gateway Status:"
-kubectl get gateway -n openshift-ingress openshift-ai-inference -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' | xargs echo "  Accepted:"
-kubectl get gateway -n openshift-ingress openshift-ai-inference -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' | xargs echo "  Programmed:"
+kubectl get gateway -n openshift-ingress maas-default-gateway -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' | xargs echo "  Accepted:"
+kubectl get gateway -n openshift-ingress maas-default-gateway -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' | xargs echo "  Programmed:"
 
 echo ""
 echo "Policy Status:"
