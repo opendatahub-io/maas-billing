@@ -170,7 +170,7 @@ func TestHandler_PostTierLookup_BadRequest(t *testing.T) {
 	}
 }
 
-func TestHandler_PostTierLookup_ConfigMapMissing_ShouldDefaultEveryUserToFreeTier(t *testing.T) {
+func TestHandler_PostTierLookup_ConfigMapMissing_ShouldError(t *testing.T) {
 	mapper := createTestMapper(false) // No ConfigMap
 	router := fixtures.SetupTierTestRouter(mapper)
 
@@ -182,16 +182,7 @@ func TestHandler_PostTierLookup_ConfigMapMissing_ShouldDefaultEveryUserToFreeTie
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
-	}
-
-	var response tier.LookupResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-	}
-
-	if response.Tier != "free" {
-		t.Errorf("expected tier 'free', got %s", response.Tier)
+	if w.Code == http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, w.Code)
 	}
 }

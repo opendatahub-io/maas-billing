@@ -17,14 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 
-var defaultTier = Tier{
-	Name:  "free",
-	Level: 0,
-	Groups: []string{
-		"system:authenticated",
-	},
-}
-
 // Mapper handles tier-to-group mapping lookups
 type Mapper struct {
 	tenantName      string
@@ -38,22 +30,19 @@ func NewMapper(clientset kubernetes.Interface, tenantName, namespace string) *Ma
 	}
 }
 
-func (m *Mapper) Namespaces(ctx context.Context) map[string]string {
+func (m *Mapper) Namespace(ctx context.Context, tier string) (string, error) {
 	tiers, err := m.loadTierConfig(ctx)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			tiers = []Tier{defaultTier}
+		return "", err
+	}
+
+	for i := range tiers {
+		if tiers[i].Name == tier {
+			return m.ProjectedNsName(&tiers[i]), nil
 		}
 	}
 
-	namespaces := make(map[string]string, len(tiers))
-
-	for i := range tiers {
-		tier := &tiers[i]
-		namespaces[tier.Name] = m.projectedNsName(tier)
-	}
-
-	return namespaces
+	return "", fmt.Errorf("tier %s not found", tier)
 }
 
 // GetTierForGroups returns the highest level tier for a user with multiple group memberships.
@@ -68,8 +57,7 @@ func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string
 	tiers, err := m.loadTierConfig(ctx)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Printf("tier mapping %s not found, defaulting to 'free' tier", constant.TierMappingConfigMap)
-			return "free", nil
+			return "", fmt.Errorf("tier mapping not found, provide configuration in %s", constant.TierMappingConfigMap)
 		}
 		log.Printf("Failed to load tier configuration from ConfigMap %s: %v", constant.TierMappingConfigMap, err)
 		return "", fmt.Errorf("failed to load tier configuration: %w", err)
@@ -88,6 +76,15 @@ func (m *Mapper) GetTierForGroups(ctx context.Context, groups ...string) (string
 	}
 
 	return "", &GroupNotFoundError{Group: fmt.Sprintf("groups [%s]", strings.Join(groups, ", "))}
+}
+
+// ProjectedSAGroup returns the projected SA group for a tier.
+func (m *Mapper) ProjectedSAGroup(tier *Tier) string {
+	return fmt.Sprintf("system:serviceaccounts:%s", m.ProjectedNsName(tier))
+}
+
+func (m *Mapper) ProjectedNsName(tier *Tier) string {
+	return fmt.Sprintf("%s-tier-%s", m.tenantName, tier.Name)
 }
 
 func (m *Mapper) loadTierConfig(ctx context.Context) ([]Tier, error) {
@@ -109,12 +106,8 @@ func (m *Mapper) loadTierConfig(ctx context.Context) ([]Tier, error) {
 
 	for i := range tiers {
 		tier := &tiers[i]
-		tier.Groups = append(tier.Groups, fmt.Sprintf("system:serviceaccounts:%s", m.projectedNsName(tier)))
+		tier.Groups = append(tier.Groups, m.ProjectedSAGroup(tier))
 	}
 
 	return tiers, nil
-}
-
-func (m *Mapper) projectedNsName(tier *Tier) string {
-	return fmt.Sprintf("%s-tier-%s", m.tenantName, tier.Name)
 }

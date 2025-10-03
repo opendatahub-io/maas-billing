@@ -84,7 +84,10 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 		return fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
-	namespace := m.tierMapper.Namespaces(ctx)[userTier]
+	namespace, errNS := m.tierMapper.Namespace(ctx, userTier)
+	if errNS != nil {
+		return fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
+	}
 
 	saName, errName := m.sanitizeServiceAccountName(user.Username)
 	if errName != nil {
@@ -117,9 +120,9 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
 // It takes a tier name, formats it as {instance}-tier-{tier}, and returns the namespace name.
 func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string, error) {
-	namespace := m.tierMapper.Namespaces(ctx)[tier]
-	if namespace == "" {
-		return "", fmt.Errorf("no namespace mapping found for tier %q", tier)
+	namespace, errNs := m.tierMapper.Namespace(ctx, tier)
+	if errNs != nil {
+		return "", fmt.Errorf("failed to determine namespace for tier %q: %w", tier, errNs)
 	}
 
 	_, err := m.namespaceLister.Get(namespace)
