@@ -15,7 +15,6 @@ spec:
             value: /v1/models
       backendRefs:
         - name: maas-api
-          namespace: platform-services
           port: 8080
           weight: 100
     # All other maas-api endpoints remain under /maas-api prefix
