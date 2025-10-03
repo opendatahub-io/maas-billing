@@ -155,17 +155,12 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
 	ctx := t.Context()
 
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewClientset()
 	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
-	// Should default to free mappedTier when ConfigMap is missing
-	mappedTier, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-
-	if mappedTier != "free" {
-		t.Errorf("expected default mappedTier 'free', got %s", mappedTier)
+	_, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
+	if err == nil {
+		t.Errorf("expected error")
 	}
 }
 
