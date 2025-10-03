@@ -6,9 +6,7 @@ metadata:
 
 namespace: llm
 
-# Note: namePrefix causes issues with KServe-generated service names
-# The LLMInferenceService creates services based on its own name, not the prefixed name
-# namePrefix: qwen3-
+namePrefix: qwen3-
 
 resources:
 - model.yaml
@@ -18,7 +16,7 @@ patches:
 - patch: |-
     - op: add
       path: /rules/0/resourceNames
-      value: ["single-node-no-scheduler-nvidia-gpu"]
+      value: ["qwen3-single-node-no-scheduler-nvidia-gpu"]
   target:
     kind: Role
     name: model-user

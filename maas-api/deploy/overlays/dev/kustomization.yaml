@@ -5,15 +5,7 @@ metadata:
   name: maas-api-dev
 
 resources:
-- ../../base/
-- ./infra/
-- ./resources/tier-mapping-configmap.yaml
-- ../../policies
-
-namespace: maas-api
-
-transformers:
-- transformers/namespace.yaml
+- ../../../../deployment/base/maas-api
 
 patches:
 - path: patches/debug-mode.yaml

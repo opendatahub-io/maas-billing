@@ -5,7 +5,7 @@ metadata:
   name: maas-auth
 
 resources:
-# Authentication and rate limiting policies for the gateway
+# Gateway policies - default for all models
 - gateway-auth-policy.yaml
 - token-limit-policy.yaml
 - rate-limit-policy.yaml

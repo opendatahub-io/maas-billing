@@ -191,18 +191,13 @@ AUD="$(kubectl create token default --duration=10m \
 
 echo "Patching AuthPolicy with audience: $AUD"
 
-# Note: Auth policy path may vary depending on your deployment
-# For consolidated deployment structure:
-
-# Patch MaaS API AuthPolicy
-kubectl patch --local -f ${PROJECT_DIR}/deployment/base/policies/maas-auth-policy.yaml \
+kubectl patch authpolicy maas-api-auth-policy -n maas-api \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
     path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
     value:$aud
-  }]')" \
-  -o yaml | kubectl apply -f -
+  }]')"
   
 ```
 ## Testing the Deployment

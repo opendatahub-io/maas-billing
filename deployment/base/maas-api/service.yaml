@@ -1,15 +1,13 @@
-# Service definition for MaaS API
----
 apiVersion: v1
 kind: Service
 metadata:
   name: maas-api
-  namespace: maas-api
 spec:
-  type: ClusterIP
   selector:
-    app: maas-api
+    app.kubernetes.io/name: maas-api
   ports:
-    - name: http
-      port: 8080
-      targetPort: 8080
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  type: ClusterIP

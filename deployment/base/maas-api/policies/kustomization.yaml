@@ -4,5 +4,6 @@ kind: Kustomization
 metadata:
   name: maas-api-policies
 
+# This requires Kuadrant/Red Hat Connectivity Link to be installed
 resources:
 - auth-policy.yaml
