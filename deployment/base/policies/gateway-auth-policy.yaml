@@ -8,7 +8,7 @@ spec:
   targetRef:
     group: gateway.networking.k8s.io
     kind: Gateway
-    name: openshift-ai-inference
+    name: maas-default-gateway
   rules:
     metadata:
       # Enriching identity metadata with a proper subscription tier based on user groups
@@ -29,7 +29,7 @@ spec:
       service-accounts:
         kubernetesTokenReview:
           audiences:
-            - openshift-ai-inference-sa
+            - maas-default-gateway-sa
         defaults:
           # token normalization - https://docs.kuadrant.io/1.2.x/authorino/docs/user-guides/token-normalization/
           # full username: system:serviceaccount:<ns>:<name>

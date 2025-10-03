@@ -23,7 +23,7 @@ if [ -z "${GATEWAY_URL:-}" ]; then
     
     # Fallback to gateway status address if route not available
     if [ -z "${GATEWAY_URL:-}" ]; then
-        HOST=$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
+        HOST=$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
         if [ -z "$HOST" ]; then
             echo "Failed to resolve gateway host; set GATEWAY_URL explicitly." >&2
             exit 1

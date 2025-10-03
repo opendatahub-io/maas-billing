@@ -16,4 +16,4 @@ spec:
         kubernetesTokenReview:
           audiences:
             - https://kubernetes.default.svc
-            - openshift-ai-inference-sa
+            - maas-default-gateway-sa

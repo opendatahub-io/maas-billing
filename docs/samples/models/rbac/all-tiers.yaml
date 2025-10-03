@@ -14,13 +14,13 @@ metadata:
   name: model-user-tier-binding
 subjects:
   - kind: Group
-    name: system:serviceaccounts:openshift-ai-inference-tier-free
+    name: system:serviceaccounts:maas-default-gateway-tier-free
     apiGroup: rbac.authorization.k8s.io
   - kind: Group
-    name: system:serviceaccounts:openshift-ai-inference-tier-premium
+    name: system:serviceaccounts:maas-default-gateway-tier-premium
     apiGroup: rbac.authorization.k8s.io
   - kind: Group
-    name: system:serviceaccounts:openshift-ai-inference-tier-enterprise
+    name: system:serviceaccounts:maas-default-gateway-tier-enterprise
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: Role

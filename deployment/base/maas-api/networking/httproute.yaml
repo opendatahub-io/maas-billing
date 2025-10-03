@@ -5,7 +5,7 @@ metadata:
   namespace: maas-api
 spec:
   parentRefs:
-    - name: openshift-ai-inference
+    - name: maas-default-gateway
       namespace: openshift-ingress
   rules:
     - matches:

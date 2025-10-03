@@ -134,7 +134,7 @@ kubectl -n kuadrant-system patch deployment kuadrant-operator-controller-manager
 Wait for Gateway to be ready:
 
 ```bash
-kubectl wait --for=condition=Programmed gateway openshift-ai-inference -n openshift-ingress --timeout=300s
+kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshift-ingress --timeout=300s
 ```
 
 Then restart Kuadrant operators:
@@ -157,17 +157,6 @@ kubectl patch csv kuadrant-operator.v0.0.0 -n kuadrant-system --type='json' -p='
     }
   }
 ]'
-```
-
-#### Update KServe Ingress Domain
-```bash
-kubectl -n kserve patch configmap inferenceservice-config \
-  --type='json' \
-  -p="[{
-    \"op\": \"replace\",
-    \"path\": \"/data/ingress\",
-    \"value\": \"{\\\"enableGatewayApi\\\": true, \\\"kserveIngressGateway\\\": \\\"openshift-ingress/openshift-ai-inference\\\", \\\"ingressGateway\\\": \\\"istio-system/istio-ingressgateway\\\", \\\"ingressDomain\\\": \\\"$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')\\\"}\"
-  }]"
 ```
 
 #### Update Limitador Image for Metrics (Optional but Recommended)
@@ -206,12 +195,12 @@ kubectl patch authpolicy maas-api-auth-policy -n maas-api \
 
 For OpenShift:
 ```bash
-HOST="$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+HOST="$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
 ```
 
 For Kubernetes with LoadBalancer:
 ```bash
-HOST="$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+HOST="$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
 ```
 
 ### 2. Get Authentication Token
@@ -276,7 +265,7 @@ kubectl get pods -n llm
 Check Gateway status:
 
 ```bash
-kubectl get gateway -n openshift-ingress openshift-ai-inference
+kubectl get gateway -n openshift-ingress maas-default-gateway
 ```
 
 Check that policies are enforced:
