@@ -118,6 +118,9 @@ kubectl -n $NS patch limitador limitador --type merge \
 
 ### Testing
 
+> [!IMPORTANT] 
+> You can also use automated script `scripts/verify-models-and-limits.sh` 
+
 #### Deploying the demo model
 
 ```shell

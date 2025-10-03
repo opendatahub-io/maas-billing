@@ -9,72 +9,136 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
+if ! command -v oc &> /dev/null; then
+    echo -e "${RED}Error: 'oc' command not found!${NC}"
+    echo "This script requires OpenShift CLI to obtain identity tokens."
+    exit 1
+fi
+
 if [ -z "${GATEWAY_URL:-}" ]; then
-    # For OpenShift, use the route instead of the AWS ELB
-    if command -v oc &> /dev/null; then
-        CLUSTER_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
-        if [ -n "$CLUSTER_DOMAIN" ]; then
-            GATEWAY_URL="https://gateway.${CLUSTER_DOMAIN}"
-        fi
+    ROUTE_HOST=$(oc get route gateway-route -n openshift-ingress -o jsonpath='{.spec.host}' 2>/dev/null)
+    if [ -n "$ROUTE_HOST" ]; then
+            GATEWAY_URL="https://${ROUTE_HOST}"
     fi
     
-    # Fallback to gateway status address if OpenShift route not available
+    # Fallback to gateway status address if route not available
     if [ -z "${GATEWAY_URL:-}" ]; then
         HOST=$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
         if [ -z "$HOST" ]; then
             echo "Failed to resolve gateway host; set GATEWAY_URL explicitly." >&2
             exit 1
         fi
-        GATEWAY_URL="https://${HOST}"
+        GATEWAY_URL="${HOST}"
     fi
 fi
+
+API_BASE="${GATEWAY_URL%/}"
 
 echo -e "${CYAN}======================================${NC}"
 echo -e "${CYAN}   Model Inference & Rate Limit Test  ${NC}"
 echo -e "${CYAN}======================================${NC}"
 echo ""
-echo -e "${BLUE}Gateway URL:${NC} $GATEWAY_URL"
+echo -e "${BLUE}Gateway URL:${NC} ${GATEWAY_URL}"
 echo ""
 
-# Step 1: Create a test service account and get token
-echo -e "${BLUE}Step 1: Creating test service account and obtaining token...${NC}"
-# Create service account in the free tier namespace so it gets the right group membership
-kubectl create serviceaccount model-test-user -n openshift-ai-inference-tier-free --dry-run=client -o yaml | kubectl apply -f - > /dev/null 2>&1
-TOKEN=$(kubectl create token model-test-user -n openshift-ai-inference-tier-free --audience=openshift-ai-inference-sa --duration=1h 2>/dev/null)
+echo -e "${BLUE}Obtaining token from MaaS API...${NC}"
 
-if [ -z "$TOKEN" ]; then
-    echo -e "${RED}Failed to obtain token!${NC}"
+OC_TOKEN=$(oc whoami -t 2>/dev/null)
+if [ -z "$OC_TOKEN" ]; then
+    echo -e "${RED}Failed to obtain OpenShift identity token!${NC}"
+    echo "Please ensure you are logged in: oc login"
     exit 1
 fi
-echo -e "${GREEN}✓ Token obtained successfully${NC}"
 
-# Check the user's tier (for debugging rate limits)
-SA_NAME=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.["kubernetes.io"].serviceaccount.name' 2>/dev/null || echo "unknown")
-SA_NAMESPACE=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.["kubernetes.io"].serviceaccount.namespace' 2>/dev/null || echo "unknown")
-echo -e "${CYAN}Service Account:${NC} $SA_NAME"
-echo -e "${CYAN}Namespace:${NC} $SA_NAMESPACE (tier: free)"
-echo -e "${CYAN}Note:${NC} Using free tier limits (5 requests per 2 minutes)"
+TOKEN_RESPONSE=$(curl -sSk \
+    -H "Authorization: Bearer $OC_TOKEN" \
+    -H "Content-Type: application/json" \
+    -X POST \
+    -d '{"expiration": "1h"}' \
+    -w "\nHTTP_STATUS:%{http_code}\n" \
+    "${API_BASE}/maas-api/v1/tokens" 2>&1)
+
+http_status=$(echo "$TOKEN_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
+response_body=$(echo "$TOKEN_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+if [ "$http_status" != "201" ]; then
+    echo -e "${RED}Failed to obtain token from MaaS API!${NC}"
+    echo -e "${RED}HTTP Status: $http_status${NC}"
+    echo -e "${RED}Response: $response_body${NC}"
+    exit 1
+fi
+
+TOKEN=$(echo "$response_body" | jq -r '.token' 2>/dev/null)
+if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+    echo -e "${RED}Failed to parse token from response!${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Token obtained successfully from MaaS API${NC}"
+
+TOKEN_PAYLOAD=$(echo "$TOKEN" | jq -R 'split(".") | .[1] | @base64d' 2>/dev/null)
+if [ -z "$TOKEN_PAYLOAD" ] || [ "$TOKEN_PAYLOAD" = "null" ]; then
+    echo -e "${YELLOW}Warning:${NC} Failed to decode MaaS token payload"
+    USER_NAME="unknown"
+else
+    USER_NAME=$(echo "$TOKEN_PAYLOAD" | jq -r '.sub // "unknown"' 2>/dev/null)
+fi
+
+echo -e "${BLUE}Discovering available models...${NC}"
+MODELS_RESPONSE=$(curl -sSk \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -w "\nHTTP_STATUS:%{http_code}\n" \
+    "${API_BASE}/maas-api/v1/models" 2>&1)
+
+http_status=$(echo "$MODELS_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
+response_body=$(echo "$MODELS_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+if [ "$http_status" != "200" ]; then
+    echo -e "${RED}Failed to discover models!${NC}"
+    echo -e "${RED}HTTP Status: $http_status${NC}"
+    echo -e "${RED}Response: $response_body${NC}"
+    exit 1
+fi
+
+MODEL_COUNT=$(echo "$response_body" | jq -r '.data | length' 2>/dev/null)
+if [ -z "$MODEL_COUNT" ] || [ "$MODEL_COUNT" = "0" ]; then
+    echo -e "${YELLOW}Warning: No models discovered!${NC}"
+    echo "Please ensure models are deployed. See DEV.md for deployment instructions."
+    exit 0
+fi
+
+echo -e "${GREEN}✓ Discovered $MODEL_COUNT model(s)${NC}"
+echo "$response_body" | jq -r '.data[] | "  • \(.id) at \(.url)"'
 echo ""
 
-# Function to test a model
-test_model() {
-    local model_name=$1
-    local model_path=$2
-    local model_id=$3
+echo -e "${BLUE}Testing discovered models...${NC}"
+echo ""
+
+mapfile -t MODEL_IDS < <(echo "$response_body" | jq -r '.data[].id')
+mapfile -t MODEL_URLS < <(echo "$response_body" | jq -r '.data[].url')
+
+prompts=(
+    "What is 2+2?"
+    "Say 'Hello World' in Python"
+    "What color is the sky?"
+)
+
+successful_models=0
+failed_models=0
+
+for idx in "${!MODEL_IDS[@]}"; do
+    model_id="${MODEL_IDS[$idx]}"
+    model_url="${MODEL_URLS[$idx]}"
     
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${MAGENTA}Testing Model: $model_name${NC}"
+    echo -e "${MAGENTA}Testing Model: $model_id${NC}"
+    echo -e "${MAGENTA}URL: $model_url${NC}"
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
-    # Test prompts
-    local prompts=(
-        "What is 2+2?"
-        "Say 'Hello World' in Python"
-        "What color is the sky?"
-    )
+    model_success=0
     
-    # Test single inference for each prompt
     echo -e "${BLUE}Testing inference with different prompts:${NC}"
     echo ""
     
@@ -83,7 +147,6 @@ test_model() {
         echo -e "${YELLOW}Request #$((i+1)):${NC}"
         echo -e "${CYAN}Prompt:${NC} \"$prompt\""
         
-        # Prepare request body
         REQUEST_BODY=$(cat <<EOF
 {
   "model": "$model_id",
@@ -97,22 +160,21 @@ test_model() {
 EOF
 )
         
-        # Make request
         response=$(curl -sSk \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -X POST \
             -d "$REQUEST_BODY" \
             -w "\nHTTP_STATUS:%{http_code}\n" \
-            "$GATEWAY_URL$model_path/v1/chat/completions" 2>&1)
+            "${model_url}/v1/chat/completions" 2>&1)
         
         http_status=$(echo "$response" | grep "HTTP_STATUS:" | cut -d':' -f2)
         response_body=$(echo "$response" | sed '/HTTP_STATUS:/d')
         
         if [ "$http_status" = "200" ]; then
             echo -e "${GREEN}Status: $http_status (Success)${NC}"
+            model_success=1
             
-            # Extract and display response
             answer=$(echo "$response_body" | jq -r '.choices[0].message.content // "No response"' 2>/dev/null)
             tokens_used=$(echo "$response_body" | jq -r '.usage.total_tokens // 0' 2>/dev/null)
             
@@ -127,26 +189,33 @@ EOF
         # Small delay between requests
         sleep 1
     done
-}
+    
+    if [ $model_success -eq 1 ]; then
+        ((successful_models++))
+    else
+        ((failed_models++))
+    fi
+    echo ""
+done
 
-# Test all models
-test_model "Facebook OPT-125M Simulator" "/llm/facebook-opt-125m-simulated" "facebook-opt-125m-simulated"
-test_model "Facebook OPT-125M CPU" "/llm/facebook-opt-125m-cpu-single-node-no-scheduler-cpu" "facebook/opt-125m"
-test_model "QWEN3-0.6B GPU" "/llm/single-node-no-scheduler-nvidia-gpu" "Qwen/Qwen3-0.6B"
-
-# Step 2: Test rate limiting
 echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${MAGENTA}Testing Token Rate Limiting${NC}"
 echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "${BLUE}Making rapid requests to trigger rate limit...${NC}"
-echo "(Using Facebook OPT-125M Simulator for rate limit test)"
-echo ""
 
-# Rapid fire requests to trigger rate limiting
-REQUEST_BODY_SIMPLE=$(cat <<EOF
+if [ ${#MODEL_IDS[@]} -eq 0 ]; then
+    echo -e "${YELLOW}Skipping rate limit test - no models available${NC}"
+else
+    model_id="${MODEL_IDS[0]}"
+    model_url="${MODEL_URLS[0]}"
+    
+    echo -e "${BLUE}Making rapid requests to trigger rate limit...${NC}"
+    echo "Using model: $model_id"
+    echo ""
+    
+    REQUEST_BODY_SIMPLE=$(cat <<EOF
 {
-  "model": "facebook-opt-125m-simulated",
+  "model": "$model_id",
   "messages": [
     {"role": "user", "content": "Count to 5"}
   ],
@@ -155,93 +224,103 @@ REQUEST_BODY_SIMPLE=$(cat <<EOF
 }
 EOF
 )
-
-total_success=0
-total_tokens=0
-rate_limited=false
-
-echo -n "Request status: "
-for i in {1..25}; do
-    response=$(curl -sSk \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        -X POST \
-        -d "$REQUEST_BODY_SIMPLE" \
-        -w "\nHTTP_STATUS:%{http_code}\n" \
-        "$GATEWAY_URL/llm/facebook-opt-125m-simulated/v1/chat/completions" 2>&1)
     
-    http_status=$(echo "$response" | grep "HTTP_STATUS:" | cut -d':' -f2)
+    total_success=0
+    total_tokens=0
+    rate_limited=false
     
-    if [ "$http_status" = "200" ]; then
-        ((total_success++))
-        tokens=$(echo "$response" | sed '/HTTP_STATUS:/d' | jq -r '.usage.total_tokens // 0' 2>/dev/null)
-        if [ "$tokens" != "0" ]; then
-            total_tokens=$((total_tokens + tokens))
+    echo -n "Request status: "
+    for i in {1..25}; do
+        response=$(curl -sSk \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "$REQUEST_BODY_SIMPLE" \
+            -w "\nHTTP_STATUS:%{http_code}\n" \
+            "${model_url}/v1/chat/completions" 2>&1)
+        
+        http_status=$(echo "$response" | grep "HTTP_STATUS:" | cut -d':' -f2)
+        
+        if [ "$http_status" = "200" ]; then
+            ((total_success++))
+            tokens=$(echo "$response" | sed '/HTTP_STATUS:/d' | jq -r '.usage.total_tokens // 0' 2>/dev/null)
+            if [ "$tokens" != "0" ]; then
+                total_tokens=$((total_tokens + tokens))
+            fi
+            echo -ne "${GREEN}✓${NC}"
+        elif [ "$http_status" = "429" ]; then
+            rate_limited=true
+            echo -ne "${RED}✗${NC}"
+            if [ $i -gt 5 ]; then
+                # If we've made enough requests, break on rate limit
+                echo ""
+                break
+            fi
+        else
+            echo -ne "${YELLOW}?${NC}"
         fi
-        echo -ne "${GREEN}✓${NC}"
-    elif [ "$http_status" = "429" ]; then
-        rate_limited=true
-        echo -ne "${RED}✗${NC}"
-        if [ $i -gt 5 ]; then
-            # If we've made enough requests, break on rate limit
-            echo ""
-            break
-        fi
+        
+        # Small delay to avoid overwhelming the system
+        sleep 0.5
+    done
+    
+    echo ""
+    echo ""
+    echo -e "${BLUE}Rate Limiting Test Results:${NC}"
+    echo -e "  • Successful requests: ${GREEN}$total_success${NC}"
+    echo -e "  • Total tokens consumed: ${CYAN}$total_tokens${NC}"
+    if [ "$rate_limited" = true ]; then
+        echo -e "  • Rate limiting: ${GREEN}✓ Working${NC} (429 responses received)"
     else
-        echo -ne "${YELLOW}?${NC}"
+        echo -e "  • Rate limiting: ${YELLOW}⚠ Not triggered${NC} (may need more requests or lower limits)"
     fi
-    
-    # Small delay to avoid overwhelming the system
-    sleep 0.2
-done
-
-echo ""
-echo ""
-echo -e "${BLUE}Rate Limiting Test Results:${NC}"
-echo -e "  • Successful requests: ${GREEN}$total_success${NC}"
-echo -e "  • Total tokens consumed: ${CYAN}$total_tokens${NC}"
-if [ "$rate_limited" = true ]; then
-    echo -e "  • Rate limiting: ${GREEN}✓ Working${NC} (429 responses received)"
-else
-    echo -e "  • Rate limiting: ${YELLOW}⚠ Not triggered${NC} (may need more requests or lower limits)"
 fi
 
-# Cleanup
-echo ""
-echo -e "${BLUE}Cleaning up test resources...${NC}"
-kubectl delete serviceaccount model-test-user -n openshift-ai-inference-tier-free > /dev/null 2>&1
-
-# Final summary
 echo ""
 echo -e "${CYAN}======================================${NC}"
 echo -e "${CYAN}           Test Summary                ${NC}"
 echo -e "${CYAN}======================================${NC}"
 echo ""
 
-# Check if models responded
-if [ "$http_status" = "200" ] || [ "$total_success" -gt 0 ]; then
-    echo -e "${GREEN}✓${NC} Models are accessible and responding"
-    echo -e "${GREEN}✓${NC} Token authentication is working"
-    echo -e "${GREEN}✓${NC} Inference endpoints are functional"
+echo -e "${BLUE}Authentication:${NC}"
+echo -e "  ${GREEN}✓${NC} MaaS API token endpoint is working"
+echo -e "  ${GREEN}✓${NC} Token authentication successful"
+echo ""
+
+echo -e "${BLUE}Model Discovery:${NC}"
+echo -e "  ${GREEN}✓${NC} Discovered ${MODEL_COUNT} model(s)"
+echo ""
+
+echo -e "${BLUE}Model Inference:${NC}"
+if [ "$successful_models" -gt 0 ]; then
+    echo -e "  ${GREEN}✓${NC} ${successful_models} model(s) responding successfully"
+    echo -e "  ${GREEN}✓${NC} Inference endpoints are functional"
+fi
+if [ "$failed_models" -gt 0 ]; then
+    echo -e "  ${RED}✗${NC} ${failed_models} model(s) failed to respond"
+fi
+echo ""
+
+echo -e "${BLUE}Rate Limiting:${NC}"
+if [ ${#MODEL_IDS[@]} -gt 0 ]; then
     if [ "$rate_limited" = true ]; then
-        echo -e "${GREEN}✓${NC} Token rate limiting is enforced"
+        echo -e "  ${GREEN}✓${NC} Token rate limiting is enforced"
     else
-        echo -e "${YELLOW}⚠${NC}  Token rate limiting not triggered (may need adjustment)"
+        echo -e "  ${YELLOW}⚠${NC}  Token rate limiting not triggered (may need adjustment)"
     fi
 else
-    if [ "$rate_limited" = true ]; then
-        echo -e "${YELLOW}⚠${NC}  Models are accessible but rate limits are very restrictive"
-        echo -e "${GREEN}✓${NC} Token authentication is working"
-        echo -e "${GREEN}✓${NC} Token rate limiting is enforced (very strict for service accounts)"
-    else
-        echo -e "${RED}✗${NC} There were issues accessing the models"
-    fi
+    echo -e "  ${YELLOW}⚠${NC}  Skipped (no models available)"
 fi
-
 echo ""
-echo -e "${BLUE}Gateway URL:${NC} $GATEWAY_URL"
-echo -e "${BLUE}Models tested:${NC}"
-echo "  • Facebook OPT-125M Simulator at /llm/facebook-opt-125m-simulated"
-echo "  • Facebook OPT-125M CPU at /llm/facebook-opt-125m-cpu-single-node-no-scheduler-cpu"
-echo "  • QWEN3-0.6B GPU at /llm/single-node-no-scheduler-nvidia-gpu"
-echo "" 
+
+echo -e "${BLUE}Gateway URL:${NC} ${HOST}"
+echo -e "${BLUE}User:${NC} $USER_NAME"
+echo ""
+
+if [ "$MODEL_COUNT" -gt 0 ]; then
+    echo -e "${BLUE}Models tested:${NC}"
+    for idx in "${!MODEL_IDS[@]}"; do
+        echo "  • ${MODEL_IDS[$idx]} at ${MODEL_URLS[$idx]}"
+    done
+    echo ""
+fi
