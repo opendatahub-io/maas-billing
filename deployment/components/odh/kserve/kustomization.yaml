@@ -8,6 +8,7 @@ metadata:
 # For now, install only Model Serving pieces
 resources:
 - github.com/opendatahub-io/kserve/config/overlays/odh?ref=release-v0.15
+- github.com/opendatahub-io/odh-model-controller/config/base?ref=incubating
 
 namespace: opendatahub
 
