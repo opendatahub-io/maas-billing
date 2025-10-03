@@ -109,7 +109,7 @@ func (m *Mapper) loadTierConfig(ctx context.Context) ([]Tier, error) {
 
 	for i := range tiers {
 		tier := &tiers[i]
-		tier.Groups = append(tier.Groups, fmt.Sprintf("system:serviceaccount:%s", m.projectedNsName(tier)))
+		tier.Groups = append(tier.Groups, fmt.Sprintf("system:serviceaccounts:%s", m.projectedNsName(tier)))
 	}
 
 	return tiers, nil
