@@ -1,7 +1,6 @@
 package token_test
 
 import (
-	"context"
 	"errors"
 	"slices"
 	"testing"
@@ -90,7 +89,7 @@ func TestResolver_ExtractUserInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeClient := fake.NewSimpleClientset()
+			fakeClient := fake.NewClientset()
 
 			if tt.tokenReviewResponse != nil || tt.tokenReviewError != nil {
 				fakeClient.PrependReactor("create", "tokenreviews", func(action ktesting.Action) (bool, runtime.Object, error) {
@@ -102,7 +101,7 @@ func TestResolver_ExtractUserInfo(t *testing.T) {
 			}
 
 			resolver := token.NewReviewer(fakeClient)
-			ctx := context.Background()
+			ctx := t.Context()
 
 			result, err := resolver.ExtractUserInfo(ctx, tt.token)
 
