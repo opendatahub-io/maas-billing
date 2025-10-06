@@ -31,6 +31,8 @@ See the comprehensive [Deployment Guide](deployment/README.md) for detailed inst
 - [MaaS API Documentation](maas-api/README.md) - Go API for key management
 - [OAuth Setup Guide](docs/OAUTH_SETUP.md) - Configure OAuth authentication
 
+Online Documentation: [https://opendatahub-io/maas-billing/](https://opendatahub-io/maas-billing/)
+
 ## 🤝 Contributing
 
 We welcome contributions! Please:
