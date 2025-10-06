@@ -13,9 +13,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o maas-api ./c
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
-# Install CA certificates for HTTPS requests
-RUN microdnf install -y ca-certificates && microdnf clean all
-
 WORKDIR /app
 
 COPY --from=builder /app/maas-api .
