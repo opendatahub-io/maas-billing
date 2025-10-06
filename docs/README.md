@@ -1,81 +1,79 @@
 # MaaS Platform Documentation
 
-Welcome to the Model-as-a-Service (MaaS) Platform documentation. This platform provides a comprehensive solution for deploying and managing AI models with policy-based access control, rate limiting, and tier-based subscriptions.
+This directory contains the documentation for the MaaS (Model-as-a-Service) Platform.
 
-## 📚 Documentation Overview
+## Building the Documentation Locally
 
-### 🚀 Getting Started
+To build and preview the documentation website locally, follow these steps:
 
-- **[Installation Guide](installation.md)** - Complete platform deployment instructions
-- **[Getting Started](getting-started.md)** - Quick start guide after installation
+### Prerequisites
 
-## Architecture and Components
+- Python 3.11 or higher
+- pip (Python package manager)
 
-- **[Architecture](architecture.md)** - Overview of the MaaS Platform architecture
-- **[Observability](observability.md)** - Overview of the MaaS Platform observability components
+### Installation
 
-### ⚙️ Configuration & Management
+1. Install MkDocs and required plugins:
 
-- **[Gateway Setup](gateway-setup.md)** - Setting up authentication and rate limiting
-- **[Tier Management](tier-management.md)** - Configuring subscription tiers and access control
-- **[Model Access Guide](model-access.md)** - Managing model access and policies
+```bash
+pip install mkdocs
+pip install mkdocs-material
+pip install mkdocs-git-revision-date-localized-plugin
+```
 
-### 🔧 Advanced Administration
+### Building and Serving
 
-- **[Observability](observability.md)** - Monitoring, metrics, and dashboards
+1. Navigate to the docs directory (where `mkdocs.yml` is located):
 
+```bash
+cd /path/to/maas-billing/docs
+```
 
-### 👥 End Users
+2. Start the development server:
 
-- **[User Guide](user-guide.md)** - How end users interact with the platform
+```bash
+mkdocs serve
+```
 
-## 🚀 Quick Start for Administrators
+3. Open your browser and navigate to `http://127.0.0.1:8000`
 
-### 📹 New to MaaS? Watch Our Installation Video
+The documentation will automatically reload when you make changes to the source files.
 
-For a visual guide to getting started, check out our [Installation Video Walkthrough](installation.md#-video-walkthrough) that covers the complete deployment process.
+### Building for Production
 
-### Administrator Getting Started Steps
+To build the static site files:
 
-1. **Deploy the platform**: Follow the [Installation Guide](installation.md) to set up MaaS in your cluster
-2. **Configure authentication**: Set up [Gateway authentication](gateway-setup.md) for your organization
-3. **Configure tiers**: Set up [Tier Management](tier-management.md) for access control
-4. **Test the deployment**: Follow [Getting Started](getting-started.md) to verify everything works
+```bash
+mkdocs build
+```
 
-## 📋 Prerequisites for Administrators
+This will create a `site/` directory with the generated HTML files.
 
-- **OpenShift cluster** (4.19.9+) with kubectl/oc access
-- **ODH/RHOAI** with KServe enabled
-- **Cluster admin** permissions for initial setup
-- **Basic Kubernetes knowledge** for troubleshooting
+### Configuration
 
-## 🏗️ Platform Components
+The documentation is configured using `mkdocs.yml` in this directory. This file contains:
 
-- **Gateway API**: Traffic routing and management
-- **Kuadrant/Authorino/Limitador**: Authentication, authorization, and rate limiting
-- **KServe**: Model serving platform
-- **MaaS API**: Token management and tier resolution
-- **React Frontend**: Web-based management interface
+- Site metadata and navigation
+- Theme configuration (Material Design with Red Hat branding)
+- Markdown extensions and plugins
+- Build settings
 
-## 👥 For End Users
+### File Structure
 
-If you're an end user looking to use AI models through the MaaS platform, your administrator should provide you with:
+- `index.md` - Homepage
+- `*.md` - Individual documentation pages
+- `mkdocs.yml` - MkDocs configuration
+- `assets/` - Images and other static assets
 
-- **Access credentials** (tokens or OAuth setup)
-- **Available models** and their capabilities
-- **Usage guidelines** and rate limits
-- **API endpoints** for model interaction
+### Contributing
 
-For detailed end-user documentation, see the [User Guide](user-guide.md) (coming soon).
+When adding new documentation:
 
-## 📞 Support
+1. Create or edit Markdown files in this directory
+2. Update the navigation in `mkdocs.yml` if adding new pages
+3. Test locally with `mkdocs serve`
+4. Commit your changes
 
-For questions or issues:
+### Deployment
 
-- **Administrators**: Open an issue on GitHub or check the [Installation Guide](installation.md) for troubleshooting
-- **End Users**: Contact your platform administrator for access and usage questions
-- **General**: Review the [Samples](samples/) for examples
-
-## 📝 License
-
-This project is licensed under the Apache 2.0 License.
+The documentation is automatically deployed to GitHub Pages when changes are pushed to the main branch. The deployment is handled by the GitHub Actions workflow in `.github/workflows/docs.yml`.

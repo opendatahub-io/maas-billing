@@ -32,34 +32,22 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          node-version: '18'
+          python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install MkDocs and plugins
         run: |
-          npm install -g @antora/cli@3.1.1 @antora/site-generator-default@3.1.1
-          npm install -g asciidoctor
+          pip install mkdocs
+          pip install mkdocs-material
+          pip install mkdocs-git-revision-date-localized-plugin
 
       - name: Build documentation
         run: |
-          # Convert markdown files to asciidoc for better Antora support
-          find docs -name "*.md" -exec sh -c '
-            file="$1"
-            dir=$(dirname "$file")
-            base=$(basename "$file" .md)
-            asciidoc_file="$dir/$base.adoc"
-            
-            # Convert markdown to asciidoc
-            pandoc "$file" -f markdown -t asciidoc -o "$asciidoc_file"
-            
-            # Add front matter for Antora
-            sed -i "1i\\:page-layout: article\\n:page-partial: true\\n" "$asciidoc_file"
-          ' _ {} \;
-
-          # Build the site using docs.yaml
-          antora docs.yaml
+          # Build with MkDocs using the configuration in docs/mkdocs.yml
+          cd docs
+          mkdocs build --site-dir ../build/site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

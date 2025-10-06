@@ -274,4 +274,4 @@ After deploying the infrastructure:
 
 1. **Configure tiers**: See [Tier Management](tier-management.md) for access control setup
 2. **Set up monitoring**: Enable observability components in overlays
-3. **Start development**: See the main [README](../README.md) for frontend/backend setup
+3. **Start development**: See the main [README](https://github.com/redhat-ai-ml/maas-billing/blob/main/README.md) github page setup
