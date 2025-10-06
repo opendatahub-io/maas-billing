@@ -189,7 +189,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 		},
 	}
 
-	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
+	clientset := fake.NewClientset([]runtime.Object{configMap}...)
 	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	// When levels are equal, first tier found should win
