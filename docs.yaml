@@ -1,0 +1,14 @@
+site:
+  title: MaaS Platform Documentation
+  url: https://redhat-ai-ml.github.io/maas-billing
+  start_page: README.adoc
+content:
+  sources:
+    - url: .
+      branches: [main, master]
+      start_path: docs
+      edit_url: '{web_url}/edit/{refname}/{path}'
+ui:
+  bundle:
+    url: https://github.com/antora/antora-ui-default/archive/refs/heads/main.zip
+    snapshot: true

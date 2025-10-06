@@ -1,0 +1,79 @@
+name: Deploy Documentation to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master, docs-inital-commit]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm install -g @antora/cli@3.1.1 @antora/site-generator-default@3.1.1
+          npm install -g asciidoctor
+
+      - name: Build documentation
+        run: |
+          # Convert markdown files to asciidoc for better Antora support
+          find docs -name "*.md" -exec sh -c '
+            file="$1"
+            dir=$(dirname "$file")
+            base=$(basename "$file" .md)
+            asciidoc_file="$dir/$base.adoc"
+            
+            # Convert markdown to asciidoc
+            pandoc "$file" -f markdown -t asciidoc -o "$asciidoc_file"
+            
+            # Add front matter for Antora
+            sed -i "1i\\:page-layout: article\\n:page-partial: true\\n" "$asciidoc_file"
+          ' _ {} \;
+
+          # Build the site using docs.yaml
+          antora docs.yaml
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./build/site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
