@@ -173,10 +173,7 @@ kubectl -n kuadrant-system patch limitador limitador --type merge \
 Patch `AuthPolicy` with the correct audience for Openshift Identities:
 
 ```shell
-PROJECT_DIR=$(git rev-parse --show-toplevel)
-AUD="$(kubectl create token default --duration=10m \
-  | jwt decode --json - \
-  | jq -r '.payload.aud[0]')"
+AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
 
 echo "Patching AuthPolicy with audience: $AUD"
 
@@ -187,7 +184,7 @@ kubectl patch authpolicy maas-api-auth-policy -n maas-api \
     path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
     value:$aud
   }]')"
-  
+
 ```
 ## Testing the Deployment
 
