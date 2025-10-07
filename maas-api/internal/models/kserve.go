@@ -89,7 +89,7 @@ func toModels(list *unstructured.UnstructuredList) ([]Model, error) {
 		if name, found, err := unstructured.NestedString(item.Object, "spec", "model", "name"); err != nil {
 			log.Printf("DEBUG: Error reading spec.model.name for %s %s/%s: %v",
 				item.GetKind(), item.GetNamespace(), item.GetName(), err)
-		} else if found {
+		} else if found && name != "" {
 			modelID = name
 		}
 
