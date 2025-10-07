@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/pagination"
@@ -13,6 +14,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"knative.dev/pkg/apis"
 )
 
@@ -50,6 +52,33 @@ func TestListingModels(t *testing.T) {
 		},
 	}
 	llmInferenceServices := fixtures.CreateLLMInferenceServices(llmTestScenarios...)
+
+	//Add a model where .spec.model.name is unset; should default to metadata.name
+	unsetSpecModelName := "unset-spec-model-name"
+	unsetSpecModelNameNamespace := fixtures.TestNamespace
+
+	unsetSpecModelNameISVC := unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "serving.kserve.io/v1beta1",
+			"kind":       "InferenceService",
+			"metadata": map[string]any{
+				"name":              unsetSpecModelName,
+				"namespace":         unsetSpecModelNameNamespace,
+				"creationTimestamp": time.Now().UTC().Format(time.RFC3339),
+			},
+			"spec": map[string]any{
+				"model": map[string]any{
+					//left out the "name" key
+				},
+			},
+			"status": map[string]any{
+				"url": "http://" + unsetSpecModelName + "." + unsetSpecModelNameNamespace + ".acme.com/v1",
+			},
+		},
+	}
+
+	// Append the model to the objects used by the fake server
+	llmInferenceServices = append(llmInferenceServices, unsetSpecModelNameISVC)
 
 	config := fixtures.TestServerConfig{
 		Objects: llmInferenceServices,
@@ -101,6 +130,20 @@ func TestListingModels(t *testing.T) {
 			},
 		})
 	}
+
+	//After loop that builds testCases from llmTestScenarios completes, append an expectedModel for the unsetSpecModelName case:
+	testCases = append(testCases, expectedModel{
+		name: unsetSpecModelName, // key used to pull from modelsByName
+		expectedModel: models.Model{
+			Model: openai.Model{
+				ID:      unsetSpecModelName, // should equal metadata.name because spec.model.name is missing
+				Object:  "model",
+				OwnedBy: unsetSpecModelNameNamespace,
+			},
+			URL:   mustParseURL("http://" + unsetSpecModelName + "." + unsetSpecModelNameNamespace + ".acme.com/v1"),
+			Ready: false,
+		},
+	})
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
