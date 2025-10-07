@@ -57,7 +57,7 @@ func TestListingModels(t *testing.T) {
 	unsetSpecModelName := "unset-spec-model-name"
 	unsetSpecModelNameNamespace := fixtures.TestNamespace
 
-	unsetSpecModelNameISVC := unstructured.Unstructured{
+	unsetSpecModelNameISVC := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "serving.kserve.io/v1beta1",
 			"kind":       "LLMInferenceService",
