@@ -8,6 +8,16 @@ spec:
     - name: maas-default-gateway
       namespace: openshift-ingress
   rules:
+    # OpenAI-compatible /v1/models endpoint at top level
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1/models
+      backendRefs:
+        - name: maas-api
+          port: 8080
+          weight: 100
+    # All other maas-api endpoints remain under /maas-api prefix
     - matches:
         - path:
             type: PathPrefix

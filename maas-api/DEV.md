@@ -165,7 +165,7 @@ Using model discovery:
 ```shell
 HOST="$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o jsonpath='{.items[0].status.addresses[0].value}')"
 
-MODELS=$(curl ${HOST}/maas-api/v1/models  \
+MODELS=$(curl ${HOST}/v1/models  \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" | jq . -r)
 
