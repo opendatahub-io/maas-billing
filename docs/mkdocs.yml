@@ -1,7 +1,7 @@
-site_name: MaaS Platform Documentation
-site_url: https://redhat-ai-ml.github.io/maas-billing
-repo_url: https://github.com/redhat-ai-ml/maas-billing
-repo_name: redhat-ai-ml/maas-billing
+site_name: ODH Model-as-a-Service Documentation
+site_url: https://opendatahub-io.github.io/maas-billing
+repo_url: https://opendatahub-io/maas-billing
+repo_name: opendatahub-io/maas-billing
 
 # Set the docs directory to the content subdirectory
 docs_dir: content

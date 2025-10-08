@@ -376,36 +376,3 @@ make_request_with_backoff() {
   return 1
 }
 ```
-
-## Best Practices
-
-### Security
-- Store tokens securely and never commit them to version control
-- Use short-lived tokens for production applications
-- Implement token refresh logic for long-running applications
-- Revoke tokens if compromised
-
-### Performance
-- Use appropriate `max_tokens` values to avoid unnecessary token consumption
-- Implement connection pooling for high-throughput applications
-- Cache responses when appropriate
-- Use streaming for real-time user experiences
-
-### Error Handling
-- Always check for errors in responses
-- Implement retry logic with exponential backoff
-- Log errors for debugging and monitoring
-- Provide meaningful error messages to users
-
-### Resource Management
-- Monitor token usage to stay within tier limits
-- Implement request queuing for high-volume applications
-- Use appropriate timeouts for requests
-- Clean up resources properly
-
-## Related Documentation
-
-- [Getting Started](getting-started.md) - Quick start guide
-- [Token Management](token-management.md) - Detailed token information
-- [Tier Management](tier-management.md) - Understanding subscription tiers
-

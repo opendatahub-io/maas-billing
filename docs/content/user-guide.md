@@ -32,37 +32,38 @@ Contact your platform administrator to obtain:
 All requests follow this pattern:
 
 ```bash
-curl -X POST "https://your-maas-endpoint.com/v1/models/{model-name}/infer" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "inputs": "Your input text here"
-  }'
+curl -X POST "https://your-maas-endpoint.com/{model-name}/v1/chat/completions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{
+        \"model\": \"${MODEL_NAME}\",
+        \"prompt\": \"Input Text Here\",
+        \"max_prompts\": 40
+    }"
 ```
 
 ### Example: Text Generation
 
 ```bash
-curl -X POST "https://your-maas-endpoint.com/v1/models/facebook-opt-125m-cpu/infer" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "inputs": "The future of artificial intelligence is"
-  }'
+curl -X POST "https://your-maas-endpoint.com/facebook-opt-125m-cpu/v1/chat/completions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{
+        \"model\": \"facebook-opt-125m-cpu\",
+        \"prompt\": \"Not really understood prompt\",
+        \"max_prompts\": 40
+    }"
 ```
 
 ### Example: Question Answering
 
 ```bash
-curl -X POST "https://your-maas-endpoint.com/v1/models/qwen3/infer" \
+curl -X POST "https://your-maas-endpoint.com/qwen3/v1/chat/completions" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "inputs": "What is machine learning?",
-    "parameters": {
-      "max_tokens": 100
-    }
-  }'
+  -d "{
+        \"model\": \"qwen3\",
+        \"prompt\": \"Not really understood prompt\",
+        \"max_prompts\": 40
+    }"
 ```
 
 ## 🔧 Understanding Your Access Level
@@ -79,22 +80,6 @@ Your access is determined by your **tier**, which controls:
 - **Basic**: Limited models, lower request limits
 - **Premium**: More models, higher limits
 - **Enterprise**: All models, highest limits
-
-## 📊 Monitoring Your Usage
-
-### Check Your Limits
-
-```bash
-curl -X GET "https://your-maas-endpoint.com/v1/usage" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-### View Available Models
-
-```bash
-curl -X GET "https://your-maas-endpoint.com/v1/models" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
 
 ## ⚠️ Common Issues
 
@@ -135,30 +120,3 @@ curl -X GET "https://your-maas-endpoint.com/v1/models" \
 2. **Use appropriate token limits** for your needs
 3. **Cache responses** when appropriate
 4. **Monitor your usage** to stay within limits
-
-### Error Handling
-
-Always implement proper error handling in your applications:
-
-```python
-import requests
-
-def call_maas_api(prompt, model, token):
-    try:
-        response = requests.post(
-            f"https://your-maas-endpoint.com/v1/models/{model}/infer",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"inputs": prompt}
-        )
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 429:
-            print("Rate limit exceeded. Please wait.")
-        elif e.response.status_code == 401:
-            print("Authentication failed. Check your token.")
-        else:
-            print(f"API error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-```
