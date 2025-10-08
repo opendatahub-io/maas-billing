@@ -100,11 +100,9 @@ install_component() {
     
     # Inline handler for Kuadrant (installed via Helm)
     if [[ "$component" == "kuadrant" ]]; then
-
-        NAMESPACE=${NAMESPACE:-kuadrant-system}
         # Check if the CatalogSource already exists before applying
-        if kubectl get catalogsource kuadrant-operator-catalog -n "$NAMESPACE" &>/dev/null; then
-            echo "✅ Kuadrant CatalogSource already exists in namespace $NAMESPACE, skipping creation."
+        if kubectl get catalogsource kuadrant-operator-catalog -n kuadrant-system &>/dev/null; then
+            echo "✅ Kuadrant CatalogSource already exists in namespace kuadrant-system, skipping creation."
         else
             kubectl apply -f - <<EOF
 apiVersion: operators.coreos.com/v1alpha1
@@ -142,7 +140,7 @@ EOF
         MAX_ATTEMPTS=5
         while true; do
         
-            if kubectl get deployment/kuadrant-operator-controller-manager -n "$NAMESPACE" &>/dev/null; then
+            if kubectl get deployment/kuadrant-operator-controller-manager -n kuadrant-system &>/dev/null; then
                 break
             else
                 ATTEMPTS=$((ATTEMPTS+1))
@@ -156,9 +154,9 @@ EOF
         done
 
         echo "⏳ Waiting for operators to be ready..."
-        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n "$NAMESPACE" --timeout=300s
-        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n "$NAMESPACE" --timeout=300s
-        kubectl wait --for=condition=Available deployment/authorino-operator -n "$NAMESPACE" --timeout=300s
+        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s
+        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
+        kubectl wait --for=condition=Available deployment/authorino-operator -n kuadrant-system --timeout=300s
 
         echo "✅ Successfully installed kuadrant"
         echo ""
