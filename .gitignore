@@ -38,3 +38,7 @@ htmlcov/
 apps/frontend/.env.local
 apps/backend/.env
 CLAUDE.md
+
+# Docs build and site directories
+docs/build/
+docs/site/

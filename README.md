@@ -1,4 +1,4 @@
-# MaaS Platform - Models as a Service with Policy Management
+# # ODH - Models as a Service with Policy Management
 
 Our goal is to create a comprehensive platform for **Models as a Service** with real-time policy management.
 
@@ -7,217 +7,47 @@ Our goal is to create a comprehensive platform for **Models as a Service** with 
 
 ## 📦 Technology Stack
 
+- **OpenShift**: Kubernetes platform
+- **Gateway API**: Traffic routing and management (OpenShift native implementation)
 - **Kuadrant/Authorino/Limitador**: API gateway and policy engine
-- **Istio**: Service mesh and traffic management
-- **Gateway API**: Traffic routing and management
+- **KServe**: Model serving platform
 - **React**: Frontend framework
 - **Go**: Backend frameworks
 
-## 🚀 Features
-
-- **🎯 Policy Management**: Drag-and-drop interface for creating and managing authentication and rate-limiting policies
-- **📊 Real-time Metrics**: Live dashboard showing policy enforcement decisions with filtering and analytics
-- **🧪 Request Simulation**: Test policies before deployment with comprehensive simulation tools
-- **🔐 Authentication**: API key-based auth with team-based access control
-- **⚡ Rate Limiting**: Configurable request quotas with time-based restrictions
-- **📈 Observability**: Prometheus metrics and real-time monitoring
-- **🌐 Domain Routing**: Model-specific subdomains for clean API organization
-
-## 🏗️ Architecture
-
-### Backend Components
-- **API Gateway**: Istio/Envoy with Gateway API support and Kuadrant integration
-- **Policy Engine**: Real-time policy enforcement through Kuadrant (Authorino + Limitador)
-- **Model Serving**: KServe-based AI model deployment with vLLM runtime
-- **Model Discovery**: Automatic model listing model resources
-- **Key Manager**: API key management and authentication
-- **Metrics Collection**: Live data from Kuadrant components
-
-### Frontend Components  
-- **Policy Manager**: Create, edit, and manage policies with intuitive drag-and-drop interface
-- **Live Metrics Dashboard**: Real-time view of policy enforcement with filtering capabilities
-- **Request Simulator**: Test policies against simulated traffic patterns
-
 ## 📋 Prerequisites
 
-- **Kubernetes cluster** (1.25+) with kubectl access
-- **Node.js** (18+) and npm
-- **Docker** (for local development)
+- **Openshift cluster** (4.19.9+) with kubectl/oc access
 
 ## 🚀 Quick Start
 
-For deployment instructions, see the READMEs in the deployment directory:
+### Deploy Infrastructure
 
-- **[Infrastructure](deployment/infrastructure/README.md)** - Base platform components (Istio, KServe, Kuadrant operators)
-- **[Example Usage](deployment/examples/README.md)** - Complete deployment examples with models, authentication, and observability
+See the comprehensive [Deployment Guide](deployment/README.md) for detailed instructions.
 
-## Development Setup
+## 📚 Documentation
 
-After deploying the infrastructure, start the frontend and backend:
+- [Deployment Guide](deployment/README.md) - Complete deployment instructions
+- [Local Deployment](docs/LOCAL_DEPLOYMENT.md) - Deployment guide for local development
+- [MaaS API Documentation](maas-api/README.md) - Go API for key management
+- [OAuth Setup Guide](docs/OAUTH_SETUP.md) - Configure OAuth authentication
 
-#### Option A: One-Command Start (Recommended)
-```bash
-# From the repository root
-./start-dev.sh
-```
-
-This will:
-- Check prerequisites (infrastructure deployment)
-- Start backend API server on http://localhost:3001
-- Start frontend UI on http://localhost:3000
-- Provide monitoring and logging
-
-#### Option B: Manual Start
-```bash
-# Terminal 1: Start Backend
-./start-backend.sh
-
-# Terminal 2: Start Frontend  
-./start-frontend.sh
-```
-
-## Access the Platform
-
-- **Frontend UI**: http://localhost:3000
-- **Backend API**: http://localhost:3001
-- **API Health**: http://localhost:3001/health
-- **Live Metrics**: http://localhost:3001/api/v1/metrics/live-requests
-
-## 🖥️ Using the Platform
-
-### Policy Manager
-1. Navigate to **Policy Manager** in the sidebar
-2. Click **Create Policy** to open the policy builder
-3. Use drag-and-drop to add teams and models
-4. Configure rate limits and time restrictions
-5. Save to apply policies to Kuadrant
-
-### Live Metrics Dashboard
-1. Go to **Live Metrics** to see real-time enforcement
-2. Filter by decision type (Accept/Reject) or policy type
-3. View detailed policy enforcement reasons
-4. Monitor request patterns and policy effectiveness
-
-### Request Simulator
-1. Access **Request Simulator** to test policies
-2. Select team, model, and configure request parameters
-3. Run simulations to see how policies would handle traffic
-4. Validate policy configurations before deployment
-
-## 🔧 Development
-
-### Project Structure
-```
-maas-billing/
-├── apps/
-│   ├── frontend/          # React frontend with Material-UI
-│   │   ├── src/
-│   │   │   ├── components/    # Policy Manager, Metrics Dashboard, etc.
-│   │   │   ├── hooks/         # API integration hooks
-│   │   │   └── services/      # API client
-│   │   └── package.json
-│   └── backend/           # Node.js/Express API server
-│       ├── src/
-│       │   ├── routes/        # API endpoints
-│       │   ├── services/      # Kuadrant integration
-│       │   └── utils/         # Logging and utilities
-│       └── package.json
-├── deployment/kuadrant/   # Kuadrant infrastructure
-└── start-*.sh           # Development scripts
-```
-
-### API Endpoints
-- `GET /api/v1/policies` - List all policies
-- `POST /api/v1/policies` - Create new policy
-- `PUT /api/v1/policies/:id` - Update policy
-- `DELETE /api/v1/policies/:id` - Delete policy
-- `GET /api/v1/metrics/live-requests` - Real-time metrics
-- `GET /api/v1/metrics/dashboard` - Dashboard statistics
-
-### Environment Variables
-```bash
-# Backend (.env)
-PORT=3001
-FRONTEND_URL=http://localhost:3000
-```
-
-## 🛑 Stopping the Platform
-
-```bash
-# Stop all services
-./stop-dev.sh
-
-# Or manually stop individual components
-pkill -f "npm start"    # Stop frontend
-pkill -f "npm run dev"  # Stop backend
-```
-
-## 📊 Monitoring & Logs
-
-### Application Logs
-```bash
-# Real-time logs
-tail -f backend.log     # Backend API logs
-tail -f frontend.log    # Frontend build logs
-
-# Service logs
-kubectl logs -n kuadrant-system -l app=limitador
-kubectl logs -n kuadrant-system -l app=authorino
-```
-
-### Metrics and Health Checks
-- Backend health: `curl http://localhost:3001/health`
-- Kuadrant status: `kubectl get pods -n kuadrant-system`
-- Live metrics: `curl http://localhost:3001/api/v1/metrics/live-requests`
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-**Port Already in Use**
-```bash
-# Kill processes on ports 3000/3001
-lsof -ti:3000 | xargs kill -9
-lsof -ti:3001 | xargs kill -9
-```
-
-**Kuadrant Not Ready**
-```bash
-# Check Kuadrant deployment
-kubectl get pods -n kuadrant-system
-kubectl get gateways -A
-```
-
-**Frontend Not Loading**
-```bash
-# Clear browser cache and restart frontend
-rm -rf apps/frontend/node_modules/.cache
-./start-frontend.sh
-```
-
-**No Metrics Data**
-```bash
-# Check Kuadrant components
-kubectl port-forward -n kuadrant-system svc/limitador 8080:8080
-curl http://localhost:8080/metrics
-```
+Online Documentation: [https://opendatahub-io.github.io/maas-billing/](https://opendatahub-io.github.io/maas-billing/)
 
 ## 🤝 Contributing
 
+We welcome contributions! Please:
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-## 📄 License
+## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License.
 
----
+## 📞 Support
 
-## 📚 Additional Resources
-
-- **Kuadrant Documentation**: https://kuadrant.io/
-- **KServe Documentation**: https://kserve.github.io/website/
-- **Istio Gateway API**: https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/
+For questions or issues:
+- Open an issue on GitHub
+- Check the [deployment guide](deployment/README.md) for troubleshooting
+- Review the [samples](docs/samples/models) for examples

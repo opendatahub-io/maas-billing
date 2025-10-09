@@ -8,6 +8,10 @@ on:
     paths:
       - 'maas-api/**'
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -53,4 +57,6 @@ jobs:
       
       - name: Push image to Quay.io
         if: github.event_name == 'push'
-        run: make push-image
+        run: | 
+          make build-push-image
+          make build-push-image -e TAG=${{ github.sha }}

@@ -6,7 +6,6 @@
 - jq
 - kustomize 5.7
 - OCP 4.19.9+ (for GW API)
-- [jwt](https://github.com/mike-engel/jwt-cli) CLI tool (for inspecting tokens)
 
 ### Setup
 
@@ -31,14 +30,14 @@ for ns in opendatahub kuadrant-system llm maas-api; do kubectl create ns $ns || 
 
 ```shell
 PROJECT_DIR=$(git rev-parse --show-toplevel)
-kustomize build ${PROJECT_DIR}/maas-api/deploy/infra/openshift-gateway-api | kubectl apply --server-side=true --force-conflicts -f -
+kustomize build ${PROJECT_DIR}/deployment/base/networking | kubectl apply --server-side=true --force-conflicts -f -
 ```
 
 ### Deploying Opendatahub KServe
 
 ```shell
 PROJECT_DIR=$(git rev-parse --show-toplevel)
-kustomize build ${PROJECT_DIR}/maas-api/deploy/infra/odh | kubectl apply --server-side=true --force-conflicts -f -
+kustomize build ${PROJECT_DIR}/deployment/components/odh/kserve | kubectl apply --server-side=true --force-conflicts -f -
 ```
 
 > [!NOTE]
@@ -52,8 +51,8 @@ make deploy-dev
 ```
 
 This will:
-- Deploy MaaS API component with Service Account Token provider
-- Set up demo policies (see `deploy/policies`)
+- Deploy MaaS API component with Service Account Token provider in debug mode
+
 
 #### Patch Kuadrant deployment
 
@@ -84,26 +83,32 @@ kubectl patch csv kuadrant-operator.v0.0.0 -n kuadrant-system --type='json' -p='
 ]'
 ```
 
+#### Apply Gateway Policies
+
+```shell
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+kustomize build ${PROJECT_DIR}/deployment/base/policies | kubectl apply --server-side=true --force-conflicts -f -
+```
+
 #### Ensure the correct audience is set for AuthPolicy
 
 Patch `AuthPolicy` with the correct audience for Openshift Identities:
 
 ```shell
-PROJECT_DIR=$(git rev-parse --show-toplevel)
 AUD="$(kubectl create token default --duration=10m \
-  | jwt decode --json - \
-  | jq -r '.payload.aud[0]')"
+  | cut -d. -f2 \
+  | base64 -d 2>/dev/null \
+  | jq -r '.aud[0]')"
 
 echo "Patching AuthPolicy with audience: $AUD"
 
-kubectl patch --local -f ${PROJECT_DIR}/maas-api/deploy/policies/maas-api/auth-policy.yaml \
+kubectl patch authpolicy maas-api-auth-policy -n maas-api \
   --type='json' \
   -p "$(jq -nc --arg aud "$AUD" '[{
     op:"replace",
     path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
     value:$aud
-  }]')" \
-  -o yaml | kubectl apply -f -
+  }]')"
 ```
 
 #### Update Limitador image to expose metrics
@@ -118,11 +123,14 @@ kubectl -n $NS patch limitador limitador --type merge \
 
 ### Testing
 
+> [!IMPORTANT] 
+> You can also use automated script `scripts/verify-models-and-limits.sh` 
+
 #### Deploying the demo model
 
 ```shell
 PROJECT_DIR=$(git rev-parse --show-toplevel)
-kustomize build ${PROJECT_DIR}/maas-api/deploy/models/simulator | kubectl apply --server-side=true --force-conflicts -f -
+kustomize build ${PROJECT_DIR}/docs/samples/models/simulator | kubectl apply --server-side=true --force-conflicts -f -
 ```
 
 #### Getting the token
@@ -130,7 +138,7 @@ kustomize build ${PROJECT_DIR}/maas-api/deploy/models/simulator | kubectl apply 
 To see the token, you can use the following commands:
 
 ```shell
-HOST="$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+HOST="$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o jsonpath='{.items[0].status.addresses[0].value}')"
 
 TOKEN_RESPONSE=$(curl -sSk \
   -H "Authorization: Bearer $(oc whoami -t)" \
@@ -142,7 +150,8 @@ TOKEN_RESPONSE=$(curl -sSk \
   "${HOST}/maas-api/v1/tokens")
 
 echo $TOKEN_RESPONSE | jq -r .
-echo $TOKEN_RESPONSE | jq -r .token | jwt decode --json -
+
+echo $TOKEN_RESPONSE | jq -r .token | cut -d. -f2 | base64 -d 2>/dev/null | jq .
 
 TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 ```
@@ -154,9 +163,9 @@ TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 Using model discovery:
 
 ```shell
-HOST="$(kubectl get gateway openshift-ai-inference -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+HOST="$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o jsonpath='{.items[0].status.addresses[0].value}')"
 
-MODELS=$(curl ${HOST}/maas-api/v1/models  \
+MODELS=$(curl ${HOST}/v1/models  \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" | jq . -r)
 

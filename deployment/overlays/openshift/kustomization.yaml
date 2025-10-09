@@ -6,6 +6,22 @@ metadata:
 
 # Base configuration
 resources:
-  - ../../examples/gpu-deployment
+  # Core gateway routes and networking
+  - ../../base/networking
+  
+  # Core MaaS API components
+  - ../../base/maas-api
+
+  # Policies
+  - ../../base/policies
+
+  # Observability (optional, can be commented out if not needed)
+  # - ../../components/observability
+  
+  # Sample models (optional, can be commented out if not needed)
+  # - ../../samples/models/simulator
+  # - ../../samples/models/qwen3
+  
   # OpenShift-specific additions
   - openshift-routes.yaml
+  - gateway-route.yaml  # Route to gateway for rate-limited model access

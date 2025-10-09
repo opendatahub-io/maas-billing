@@ -6,8 +6,7 @@ metadata:
   
 # Overlay to be used by OpenDataHub Operator to install MaaS component itself.
 resources:
-- ../../base
-- ../../policies/maas-api
+- ../../../../deployment/base/maas-api
 
 namespace: opendatahub
 

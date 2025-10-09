@@ -3,6 +3,7 @@ package tier_test
 import (
 	"testing"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	corev1 "k8s.io/api/core/v1"
@@ -40,9 +41,15 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 		},
 		{
 			name:         "inferred SA group - free tier",
-			groups:       []string{"system:serviceaccount:test-tenant-tier-free"},
+			groups:       []string{"system:serviceaccounts:test-tenant-tier-free"},
 			expectedTier: "free",
 			description:  "User belongs to only free tier group",
+		},
+		{
+			name:         "inferred SA group - premium tier",
+			groups:       []string{"system:serviceaccounts:test-tenant-tier-premium"},
+			expectedTier: "premium",
+			description:  "User belongs to only premium tier group",
 		},
 		{
 			name:         "single group - premium tier",
@@ -84,6 +91,12 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 			name:         "multiple groups - developer wins over premium",
 			groups:       []string{"premium-users", "developer-users"},
 			expectedTier: "developer",
+			description:  "User belongs to both premium and developer - developer has higher level (15 > 10)",
+		},
+		{
+			name:         "multiple groups - service account groups",
+			groups:       []string{"system:serviceaccounts", "system:serviceaccounts:test-tenant-tier-premium", "system:authenticated"},
+			expectedTier: "premium",
 			description:  "User belongs to both premium and developer - developer has higher level (15 > 10)",
 		},
 		{
@@ -142,17 +155,12 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
 	ctx := t.Context()
 
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewClientset()
 	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
-	// Should default to free mappedTier when ConfigMap is missing
-	mappedTier, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-
-	if mappedTier != "free" {
-		t.Errorf("expected default mappedTier 'free', got %s", mappedTier)
+	_, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
+	if err == nil {
+		t.Errorf("expected error")
 	}
 }
 
@@ -162,7 +170,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	// Test case where two tiers have the same level
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      tier.MappingConfigMap,
+			Name:      constant.TierMappingConfigMap,
 			Namespace: testNamespace,
 		},
 		Data: map[string]string{
@@ -181,7 +189,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 		},
 	}
 
-	clientset := fake.NewSimpleClientset([]runtime.Object{configMap}...)
+	clientset := fake.NewClientset([]runtime.Object{configMap}...)
 	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
 
 	// When levels are equal, first tier found should win

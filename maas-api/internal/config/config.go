@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"k8s.io/utils/env"
 )
 
@@ -40,8 +41,8 @@ func Load() *Config {
 	defaultTeam, _ := env.GetBool("CREATE_DEFAULT_TEAM", true)
 
 	c := &Config{
-		Name:      env.GetString("INSTANCE_NAME", "openshift-ai-inference"),
-		Namespace: env.GetString("NAMESPACE", "maas-api"),
+		Name:      env.GetString("INSTANCE_NAME", constant.DefaultGatewayName),
+		Namespace: env.GetString("NAMESPACE", constant.DefaultNamespace),
 		Port:      env.GetString("PORT", "8080"),
 		Provider:  ProviderType(env.GetString("PROVIDER", string(SATokens))),
 		DebugMode: debugMode,
@@ -54,7 +55,6 @@ func Load() *Config {
 		CreateDefaultTeam:        defaultTeam,
 		AdminAPIKey:              env.GetString("ADMIN_API_KEY", ""),
 	}
-
 	c.bindFlags(flag.CommandLine)
 
 	return c
