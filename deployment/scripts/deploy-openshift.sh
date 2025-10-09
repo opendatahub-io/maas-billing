@@ -246,16 +246,6 @@ kustomize build deployment/base/maas-api | envsubst | kubectl apply -f -
 echo ""
 echo "7️⃣ Applying OpenShift-specific configurations..."
 
-# Patch Kuadrant for OpenShift Gateway Controller
-echo "   Patching Kuadrant operator..."
-if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
-  kubectl get csv kuadrant-operator.v1.3.0-rc2 -n kuadrant-system -o json | \
-  jq '.spec.install.spec.deployments[0].spec.template.spec.containers[0].env |= map(if .name == "ISTIO_GATEWAY_CONTROLLER_NAMES" then . + {"value": "istio.io/gateway-controller,openshift.io/gateway-controller/v1"} else . end)' | \
-  kubectl apply -f -
-  echo "   ✅ Kuadrant operator patched"
-else
-  echo "   ✅ Kuadrant operator already configured"
-fi
 
 echo ""
 echo "8️⃣ Waiting for Gateway to be ready..."

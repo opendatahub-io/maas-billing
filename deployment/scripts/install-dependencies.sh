@@ -173,6 +173,26 @@ EOF
         kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
         kubectl wait --for=condition=Available deployment/authorino-operator -n kuadrant-system --timeout=300s
 
+        sleep 5
+
+        # Patch Kuadrant for OpenShift Gateway Controller
+        echo "   Patching Kuadrant operator..."
+        if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
+          kubectl patch csv kuadrant-operator.v1.3.0-rc2 -n kuadrant-system --type='json' -p='[
+            {
+              "op": "add",
+              "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/-",
+              "value": {
+                "name": "ISTIO_GATEWAY_CONTROLLER_NAMES",
+                "value": "istio.io/gateway-controller,openshift.io/gateway-controller/v1"
+              }
+            }
+          ]'
+          echo "   ✅ Kuadrant operator patched"
+        else
+          echo "   ✅ Kuadrant operator already configured"
+        fi
+
         echo "✅ Successfully installed kuadrant"
         echo ""
         return 0
