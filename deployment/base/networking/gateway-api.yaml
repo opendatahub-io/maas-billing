@@ -36,6 +36,7 @@ spec:
   gatewayClassName: openshift-default
   listeners:
    - name: http
+     hostname: maas-api.${CLUSTER_DOMAIN}
      port: 80
      protocol: HTTP
      allowedRoutes:

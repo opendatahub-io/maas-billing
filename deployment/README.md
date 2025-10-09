@@ -14,6 +14,26 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
 - KServe components are expected to be provided by ODH/RHOAI, not installed separately
 - For non-ODH/RHOAI deployments, KServe can be optionally installed from `deployment/components/kserve`
 
+> [!NOTE]
+> **Important:** For the KServe section of the ODH operator, you must set `defaultDeploymentMode: RawDeployment` and ensure that the serving management state is set to `Removed`.  
+>  
+> Example configuration:
+> 
+> ```yaml
+> kserve:
+>   nim:
+>     managementState: Managed
+>   rawDeploymentServiceConfig: Headless
+>   serving:
+>     ingressGateway:
+>       certificate:
+>         type: OpenshiftDefaultIngress
+>     managementState: Removed
+>     name: knative-serving
+>   managementState: Managed
+>   defaultDeploymentMode: RawDeployment
+> ```
+
 ## Quick Start
 
 ### Automated OpenShift Deployment (Recommended)
@@ -190,14 +210,10 @@ kubectl patch authpolicy maas-api-auth-policy -n maas-api \
 
 ### 1. Get Gateway Endpoint
 
-For OpenShift:
-```bash
-HOST="$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
-```
 
-For Kubernetes with LoadBalancer:
 ```bash
-HOST="$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+HOST="maas-api.${CLUSTER_DOMAIN}"
 ```
 
 ### 2. Get Authentication Token
@@ -224,8 +240,8 @@ MODELS=$(curl ${HOST}/maas-api/v1/models  \
     -H "Authorization: Bearer $TOKEN" | jq . -r)
 
 echo $MODELS | jq .
-MODEL_URL=$(echo $MODELS | jq -r '.data[0].url')
 MODEL_NAME=$(echo $MODELS | jq -r '.data[0].id')
+MODEL_URL=${HOST}/llm/${MODEL_NAME}/v1/chat/completions
 
 echo $MODEL_URL
 ```
@@ -244,7 +260,7 @@ curl -sSk -o /dev/null -w "%{http_code}\n" \
         \"prompt\": \"Not really understood prompt\",
         \"max_prompts\": 40
     }" \
-  "${MODEL_URL}/v1/chat/completions";
+  "${MODEL_URL}";
 done
 ```
 
