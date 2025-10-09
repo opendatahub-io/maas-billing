@@ -12,6 +12,8 @@ COMPONENTS=("istio" "cert-manager" "odh" "kserve" "prometheus" "kuadrant"  "graf
 # OpenShift flag
 OCP=false
 
+KUADRANT_VERSION="v1.3.0-rc2"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLERS_DIR="$SCRIPT_DIR/installers"
 
@@ -41,7 +43,7 @@ get_component_description() {
                 echo "Dashboard visualization platform (not implemented for vanilla Kubernetes)"
             fi
             ;;
-        kuadrant) echo "API gateway operators via Helm (Kuadrant, Authorino, Limitador)" ;;
+        kuadrant) echo "API gateway operators via OLM (Kuadrant, Authorino, Limitador)" ;;
         *) echo "Unknown component" ;;
     esac
 }
@@ -59,7 +61,7 @@ usage() {
     echo "  --kserve                 Install KServe model serving platform"
     echo "  --prometheus             Install Prometheus operator"
     echo "  --grafana                Install Grafana dashboard platform"
-    echo "  --kuadrant               Install Kuadrant operators via Helm"
+    echo "  --kuadrant               Install Kuadrant operators via OLM"
     echo "  --ocp                    Use OpenShift-specific handling (validate instead of install)"
     echo "  -h, --help               Show this help message"
     echo ""
@@ -98,41 +100,63 @@ install_component() {
     
     # Inline handler for Kuadrant (installed via Helm)
     if [[ "$component" == "kuadrant" ]]; then
-        echo "🚀 Installing kuadrant (via Helm)..."
-        NAMESPACE=${NAMESPACE:-kuadrant-system}
-        KUADRANT_CHART_VERSION=${KUADRANT_CHART_VERSION:-1.3.0-alpha2}
-        AUTHORINO_CHART_VERSION=${AUTHORINO_CHART_VERSION:-0.21.0}
-        LIMITADOR_CHART_VERSION=${LIMITADOR_CHART_VERSION:-0.15.0}
-        HELM_REPO_NAME=${HELM_REPO_NAME:-kuadrant}
-        HELM_REPO_URL=${HELM_REPO_URL:-https://kuadrant.io/helm-charts/}
-
-        if ! command -v helm &> /dev/null; then
-            echo "❌ helm not found. Please install helm first."
-            return 1
-        fi
-
-        if helm repo list | awk '{print $1}' | grep -qx "$HELM_REPO_NAME"; then
-            echo "🔄 Updating Helm repo $HELM_REPO_NAME..."
-            helm repo update
+        # Check if the CatalogSource already exists before applying
+        if kubectl get catalogsource kuadrant-operator-catalog -n kuadrant-system &>/dev/null; then
+            echo "✅ Kuadrant CatalogSource already exists in namespace kuadrant-system, skipping creation."
         else
-            echo "➕ Adding Helm repo $HELM_REPO_NAME -> $HELM_REPO_URL..."
-            helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL" --force-update
+            kubectl apply -f - <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: kuadrant-operator-catalog
+  namespace: kuadrant-system
+spec:
+  displayName: Kuadrant Operators
+  grpcPodConfig:
+    securityContextConfig: restricted
+  image: 'quay.io/kuadrant/kuadrant-operator-catalog:v1.3.0-rc2'
+  publisher: grpc
+  sourceType: grpc
+EOF
         fi
 
-        echo "📦 Installing kuadrant-operator chart ($KUADRANT_CHART_VERSION)"
-        # Add --devel flag if version contains alpha, beta, or rc
-        if [[ "$KUADRANT_CHART_VERSION" =~ (alpha|beta|rc) ]]; then
-            helm upgrade -i kuadrant-operator "$HELM_REPO_NAME/kuadrant-operator" \
-              --version "$KUADRANT_CHART_VERSION" --devel -n "$NAMESPACE" --create-namespace --wait
-        else
-            helm upgrade -i kuadrant-operator "$HELM_REPO_NAME/kuadrant-operator" \
-              --version "$KUADRANT_CHART_VERSION" -n "$NAMESPACE" --create-namespace --wait
-        fi
+
+        echo "🚀 Installing kuadrant (via OLM Subscription)..."
+        kubectl apply -f - <<EOF
+  apiVersion: operators.coreos.com/v1alpha1
+  kind: Subscription
+  metadata:
+    name: kuadrant-operator
+    namespace: kuadrant-system
+  spec:
+    channel: stable
+    installPlanApproval: Automatic
+    name: kuadrant-operator
+    source: kuadrant-operator-catalog
+    sourceNamespace: kuadrant-system
+EOF
+        # Wait for kuadrant-operator-controller-manager deployment to exist before waiting for Available condition
+        ATTEMPTS=0
+        MAX_ATTEMPTS=5
+        while true; do
+        
+            if kubectl get deployment/kuadrant-operator-controller-manager -n kuadrant-system &>/dev/null; then
+                break
+            else
+                ATTEMPTS=$((ATTEMPTS+1))
+                if [[ $ATTEMPTS -ge $MAX_ATTEMPTS ]]; then
+                    echo "❌ kuadrant-operator-controller-manager deployment not found after $MAX_ATTEMPTS attempts."
+                    return 1
+                fi
+                echo "⏳ Waiting for kuadrant-operator-controller-manager deployment to be created... (attempt $ATTEMPTS/$MAX_ATTEMPTS)"
+                sleep $((10 + 10 * $ATTEMPTS))
+            fi
+        done
 
         echo "⏳ Waiting for operators to be ready..."
-        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n "$NAMESPACE" --timeout=300s
-        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n "$NAMESPACE" --timeout=300s
-        kubectl wait --for=condition=Available deployment/authorino-operator -n "$NAMESPACE" --timeout=300s
+        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s
+        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
+        kubectl wait --for=condition=Available deployment/authorino-operator -n kuadrant-system --timeout=300s
 
         echo "✅ Successfully installed kuadrant"
         echo ""

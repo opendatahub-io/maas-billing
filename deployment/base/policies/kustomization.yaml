@@ -9,3 +9,4 @@ resources:
 - gateway-auth-policy.yaml
 - token-limit-policy.yaml
 - rate-limit-policy.yaml
+- telemetry-policy.yaml
