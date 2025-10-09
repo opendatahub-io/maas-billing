@@ -100,10 +100,25 @@ install_component() {
     
     # Inline handler for Kuadrant (installed via Helm)
     if [[ "$component" == "kuadrant" ]]; then
+        # Ensure kuadrant-system namespace exists
+        kubectl create namespace kuadrant-system 2>/dev/null || echo "✅ Namespace kuadrant-system already exists"
+        
+
+        echo "🚀 Creating Kuadrant OperatorGroup..."
+        kubectl apply -f - <<EOF
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: kuadrant-operator-group
+  namespace: kuadrant-system
+spec: {}
+EOF
+        
         # Check if the CatalogSource already exists before applying
         if kubectl get catalogsource kuadrant-operator-catalog -n kuadrant-system &>/dev/null; then
             echo "✅ Kuadrant CatalogSource already exists in namespace kuadrant-system, skipping creation."
         else
+            echo "🚀 Creating Kuadrant CatalogSource..."
             kubectl apply -f - <<EOF
 apiVersion: operators.coreos.com/v1alpha1
 kind: CatalogSource
