@@ -111,7 +111,9 @@ kind: OperatorGroup
 metadata:
   name: kuadrant-operator-group
   namespace: kuadrant-system
-spec: {}
+spec:
+  targetNamespaces:
+  - kuadrant-system
 EOF
         
         # Check if the CatalogSource already exists before applying
