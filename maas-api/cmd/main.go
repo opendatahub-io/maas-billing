@@ -16,12 +16,9 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/auth"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/keys"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/teams"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
@@ -101,15 +98,7 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	router.GET("/models", modelsHandler.ListModels)
 	router.GET("/v1/models", modelsHandler.ListLLMs)
 
-	switch cfg.Provider {
-	case config.Secrets:
-		configureSecretsProvider(cfg, router, clusterConfig)
-	case config.SATokens:
-		configureSATokenProvider(ctx, cfg, router, clusterConfig)
-	default:
-		log.Fatalf("Invalid provider: %s. Available providers: [secrets, sa-tokens]", cfg.Provider)
-	}
-
+	configureSATokenProvider(ctx, cfg, router, clusterConfig)
 }
 
 func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {
@@ -147,49 +136,4 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	tokenRoutes := v1Routes.Group("/tokens", token.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
-}
-
-func configureSecretsProvider(cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {
-	policyMgr := teams.NewPolicyManager(
-		clusterConfig.DynClient,
-		clusterConfig.ClientSet,
-		cfg.KeyNamespace,
-		cfg.TokenRateLimitPolicyName,
-		cfg.AuthPolicyName,
-	)
-
-	teamMgr := teams.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, policyMgr)
-	keyMgr := keys.NewManager(clusterConfig.ClientSet, cfg.KeyNamespace, teamMgr)
-
-	usageHandler := handlers.NewUsageHandler(clusterConfig.ClientSet, clusterConfig.RestConfig, cfg.KeyNamespace)
-	teamsHandler := handlers.NewTeamsHandler(teamMgr)
-	keysHandler := handlers.NewKeysHandler(keyMgr, teamMgr)
-
-	if cfg.CreateDefaultTeam {
-		if err := teamMgr.CreateDefaultTeam(); err != nil {
-			log.Printf("Warning: Failed to create default team: %v", err)
-		} else {
-			log.Printf("Default team created successfully")
-		}
-	}
-
-	// Team management endpoints
-	teamRoutes := router.Group("/teams", auth.AdminAuthMiddleware())
-	teamRoutes.POST("", teamsHandler.CreateTeam)
-	teamRoutes.GET("", teamsHandler.ListTeams)
-	teamRoutes.GET("/:team_id", teamsHandler.GetTeam)
-	teamRoutes.PATCH("/:team_id", teamsHandler.UpdateTeam)
-	teamRoutes.DELETE("/:team_id", teamsHandler.DeleteTeam)
-	teamRoutes.POST("/:team_id/keys", keysHandler.CreateTeamKey)
-	teamRoutes.GET("/:team_id/keys", keysHandler.ListTeamKeys)
-	teamRoutes.GET("/:team_id/usage", usageHandler.GetTeamUsage)
-
-	// User management endpoints
-	userRoutes := router.Group("/users", auth.AdminAuthMiddleware())
-	userRoutes.GET("/:user_id/keys", keysHandler.ListUserKeys)
-	userRoutes.GET("/:user_id/usage", usageHandler.GetUserUsage)
-
-	// Key management endpoints
-	keyRoutes := router.Group("/keys", auth.AdminAuthMiddleware())
-	keyRoutes.DELETE("/:key_name", keysHandler.DeleteTeamKey)
 }

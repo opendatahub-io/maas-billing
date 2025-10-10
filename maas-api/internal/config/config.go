@@ -3,8 +3,9 @@ package config
 import (
 	"flag"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"k8s.io/utils/env"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 )
 
 // Config holds application configuration
@@ -17,9 +18,6 @@ type Config struct {
 	DebugMode bool
 	// Server configuration
 	Port string
-
-	// Provider config
-	Provider ProviderType
 
 	// Kubernetes configuration
 	KeyNamespace        string
@@ -44,7 +42,6 @@ func Load() *Config {
 		Name:      env.GetString("INSTANCE_NAME", constant.DefaultGatewayName),
 		Namespace: env.GetString("NAMESPACE", constant.DefaultNamespace),
 		Port:      env.GetString("PORT", "8080"),
-		Provider:  ProviderType(env.GetString("PROVIDER", string(SATokens))),
 		DebugMode: debugMode,
 		// Secrets provider configuration
 		KeyNamespace:             env.GetString("KEY_NAMESPACE", "llm"),
@@ -66,5 +63,4 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.Namespace, "namespace", c.Namespace, "Namespace")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
-	fs.Var(&c.Provider, "provider", "Provider type to use for API keys")
 }
