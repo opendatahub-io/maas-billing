@@ -55,7 +55,7 @@ func TestListingModels(t *testing.T) {
 			Namespace:     fixtures.TestNamespace,
 			URL:           fixtures.PublicURL("http://empty-spec-model-name." + fixtures.TestNamespace + ".acme.com/v1"),
 			Ready:         true,
-			SpecModelName: strptr(""),
+			SpecModelName: strptr("my-model-name"),
 		},
 	}
 	llmInferenceServices := fixtures.CreateLLMInferenceServices(llmTestScenarios...)
