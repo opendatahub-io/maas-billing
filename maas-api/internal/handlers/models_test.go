@@ -17,6 +17,8 @@ import (
 )
 
 func TestListingModels(t *testing.T) {
+	strptr := func(s string) *string { return &s }
+
 	llmTestScenarios := []fixtures.LLMTestScenario{
 		{
 			Name:      "llama-7b",
@@ -47,6 +49,13 @@ func TestListingModels(t *testing.T) {
 			Namespace: fixtures.TestNamespace,
 			URL:       fixtures.PublicURL(""),
 			Ready:     false,
+		},
+		{
+			Name:          "fallback-model-name",
+			Namespace:     fixtures.TestNamespace,
+			URL:           fixtures.PublicURL("http://fallback-model-name." + fixtures.TestNamespace + ".acme.com/v1"),
+			Ready:         true,
+			SpecModelName: strptr("fallback-model-name"),
 		},
 	}
 	llmInferenceServices := fixtures.CreateLLMInferenceServices(llmTestScenarios...)
@@ -88,11 +97,17 @@ func TestListingModels(t *testing.T) {
 	var testCases []expectedModel
 
 	for _, llmTestScenario := range llmTestScenarios {
+		// expected ID mirrors toModels(): fallback to metadata.name unless spec.model.name is non-empty
+		expectedModelID := llmTestScenario.Name
+		if llmTestScenario.SpecModelName != nil && *llmTestScenario.SpecModelName != "" {
+			expectedModelID = *llmTestScenario.SpecModelName
+		}
+
 		testCases = append(testCases, expectedModel{
-			name: llmTestScenario.Name,
+			name: expectedModelID,
 			expectedModel: models.Model{
 				Model: openai.Model{
-					ID:      llmTestScenario.Name,
+					ID:      expectedModelID,
 					Object:  "model",
 					OwnedBy: llmTestScenario.Namespace,
 				},

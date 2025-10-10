@@ -78,12 +78,24 @@ func toModels(list *unstructured.UnstructuredList) ([]Model, error) {
 	for _, item := range list.Items {
 		url, errURL := findURL(item)
 		if errURL != nil {
-			log.Printf("DEBUG: Failed to find URL for %s: %v", item.GetKind(), errURL)
+			log.Printf("DEBUG: Failed to find URL for %s %s/%s: %v",
+				item.GetKind(), item.GetNamespace(), item.GetName(), errURL)
+		}
+
+		// Default to metadata.name
+		modelID := item.GetName()
+
+		// Check if .spec.model.name exists
+		if name, found, err := unstructured.NestedString(item.Object, "spec", "model", "name"); err != nil {
+			log.Printf("DEBUG: Error reading spec.model.name for %s %s/%s: %v",
+				item.GetKind(), item.GetNamespace(), item.GetName(), err)
+		} else if found && name != "" {
+			modelID = name
 		}
 
 		models = append(models, Model{
 			Model: openai.Model{
-				ID:      item.GetName(),
+				ID:      modelID,
 				Object:  "model",
 				OwnedBy: item.GetNamespace(),
 				Created: item.GetCreationTimestamp().Unix(),

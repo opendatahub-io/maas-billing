@@ -42,8 +42,17 @@ func (i AddressEntry) AddTo(obj *unstructured.Unstructured) {
 	}, "status", "addresses")
 }
 
+type LLMInferenceServiceOption func(*unstructured.Unstructured)
+
+// WithSpecModelName sets .spec.model.name (can be an empty string "" to test fallback logic).
+func WithSpecModelName(name string) LLMInferenceServiceOption {
+	return func(obj *unstructured.Unstructured) {
+		_ = unstructured.SetNestedField(obj.Object, name, "spec", "model", "name")
+	}
+}
+
 // CreateLLMInferenceService creates a test LLMInferenceService unstructured object
-func CreateLLMInferenceService(name, namespace string, url ModelURL, ready bool) *unstructured.Unstructured {
+func CreateLLMInferenceService(name, namespace string, url ModelURL, ready bool, opts ...LLMInferenceServiceOption) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.Object = map[string]any{}
 	obj.SetAPIVersion("serving.kserve.io/v1alpha1")
@@ -114,22 +123,40 @@ func CreateLLMInferenceService(name, namespace string, url ModelURL, ready bool)
 
 	_ = unstructured.SetNestedSlice(obj.Object, conditions, "status", "conditions")
 
+	// Apply options (e.g., WithSpecModelName)
+	for _, opt := range opts {
+		opt(obj)
+	}
+
 	return obj
 }
 
 // LLMTestScenario defines a test scenario for LLM models
 type LLMTestScenario struct {
-	Name      string
-	Namespace string
-	URL       ModelURL
-	Ready     bool
+	Name          string
+	Namespace     string
+	URL           ModelURL
+	Ready         bool
+	SpecModelName *string
 }
 
 // CreateLLMInferenceServices creates a set of test LLM objects for testing
 func CreateLLMInferenceServices(scenarios ...LLMTestScenario) []runtime.Object {
 	var objects []runtime.Object
 	for _, scenario := range scenarios {
-		obj := CreateLLMInferenceService(scenario.Name, scenario.Namespace, scenario.URL, scenario.Ready)
+		var opts []LLMInferenceServiceOption
+		if scenario.SpecModelName != nil {
+			opts = append(opts, WithSpecModelName(*scenario.SpecModelName))
+		}
+
+		obj := CreateLLMInferenceService(
+			scenario.Name,
+			scenario.Namespace,
+			scenario.URL,
+			scenario.Ready,
+			opts..., // apply any options (e.g., WithSpecModelName)
+		)
+
 		objects = append(objects, obj)
 	}
 
