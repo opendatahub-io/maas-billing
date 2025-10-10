@@ -7,7 +7,8 @@ spec:
     uri: hf://facebook/opt-125m
     name: facebook/opt-125m
   replicas: 1
-  router:
+  router: 
+    route: {}
     # Connect to MaaS-enabled gateway
     gateway:
       refs:
