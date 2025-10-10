@@ -16,7 +16,7 @@ metadata:
     app: maas
     gateway: maas-default-gateway
 spec:
-  host: gateway.apps.test-maas-v1.eh5f.s1.devshift.org
+  host: gateway.${CLUSTER_DOMAIN} 
   port:
     targetPort: 80
   tls:
@@ -26,4 +26,5 @@ spec:
     kind: Service
     name: maas-default-gateway-openshift-default
     weight: 100
-  wildcardPolicy: None 
+  wildcardPolicy: None
+
