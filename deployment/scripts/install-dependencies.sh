@@ -98,11 +98,11 @@ install_component() {
         return 0
     fi
     
-    # Inline handler for Kuadrant (installed via Helm)
+    # Inline handler for Kuadrant (installed via OLM)
     if [[ "$component" == "kuadrant" ]]; then
         # Ensure kuadrant-system namespace exists
         kubectl create namespace kuadrant-system 2>/dev/null || echo "✅ Namespace kuadrant-system already exists"
-        
+
 
         echo "🚀 Creating Kuadrant OperatorGroup..."
         kubectl apply -f - <<EOF
@@ -115,7 +115,7 @@ spec:
   targetNamespaces:
   - kuadrant-system
 EOF
-        
+
         # Check if the CatalogSource already exists before applying
         if kubectl get catalogsource kuadrant-operator-catalog -n kuadrant-system &>/dev/null; then
             echo "✅ Kuadrant CatalogSource already exists in namespace kuadrant-system, skipping creation."
@@ -156,7 +156,7 @@ EOF
         ATTEMPTS=0
         MAX_ATTEMPTS=5
         while true; do
-        
+
             if kubectl get deployment/kuadrant-operator-controller-manager -n kuadrant-system &>/dev/null; then
                 break
             else
@@ -362,3 +362,4 @@ if [[ "$COMPONENT_SELECTED" == true ]]; then
         echo "🎉 Selected components installed successfully!"
     fi
 fi
+

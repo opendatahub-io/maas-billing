@@ -8,16 +8,62 @@ set -e
 # Helper function to wait for CRD to be established
 wait_for_crd() {
   local crd="$1"
-  local timeout="${2:-60s}"
+  local timeout="${2:-60}"  # timeout in seconds
+  local interval=2
+  local elapsed=0
 
-  echo "⏳ Waiting for CRD ${crd} to appear (timeout: ${timeout})…"
-  if ! timeout "$timeout" bash -c 'until kubectl get crd "$1" &>/dev/null; do sleep 2; done' _ "$crd"; then
-    echo "❌ Timed out after $timeout waiting for CRD $crd to appear." >&2
-    return 1
-  fi
+  echo "⏳ Waiting for CRD ${crd} to appear (timeout: ${timeout}s)…"
+  while [ $elapsed -lt $timeout ]; do
+    if kubectl get crd "$crd" &>/dev/null; then
+      echo "✅ CRD ${crd} detected, waiting for it to become Established..."
+      kubectl wait --for=condition=Established --timeout="${timeout}s" "crd/$crd" 2>/dev/null
+      return 0
+    fi
+    sleep $interval
+    elapsed=$((elapsed + interval))
+  done
 
-  echo "⏳ CRD ${crd} detected — waiting for it to become Established (timeout: ${timeout})…"
-  kubectl wait --for=condition=Established --timeout="$timeout" "crd/$crd"
+  echo "❌ Timed out after ${timeout}s waiting for CRD $crd to appear." >&2
+  return 1
+}
+
+# Helper function to wait for CSV to reach Succeeded state
+wait_for_csv() {
+  local csv_name="$1"
+  local namespace="${2:-kuadrant-system}"
+  local timeout="${3:-180}"  # timeout in seconds
+  local interval=5
+  local elapsed=0
+  local last_status_print=0
+
+  echo "⏳ Waiting for CSV ${csv_name} to succeed (timeout: ${timeout}s)..."
+  while [ $elapsed -lt $timeout ]; do
+    local phase=$(kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+
+    case "$phase" in
+      "Succeeded")
+        echo "✅ CSV ${csv_name} succeeded"
+        return 0
+        ;;
+      "Failed")
+        echo "❌ CSV ${csv_name} failed" >&2
+        kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.message}' 2>/dev/null
+        return 1
+        ;;
+      *)
+        if [ $((elapsed - last_status_print)) -ge 30 ]; then
+          echo "   CSV ${csv_name} status: ${phase} (${elapsed}s elapsed)"
+          last_status_print=$elapsed
+        fi
+        ;;
+    esac
+
+    sleep $interval
+    elapsed=$((elapsed + interval))
+  done
+
+  echo "❌ Timed out after ${timeout}s waiting for CSV ${csv_name}" >&2
+  return 1
 }
 
 # Helper function to wait for pods in a namespace to be ready
@@ -158,34 +204,33 @@ echo "3️⃣ Installing dependencies..."
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Only clean up leftover CRDs if Kuadrant operators are NOT already installed
+echo "   Checking for existing Kuadrant installation..."
+if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0-rc2 &>/dev/null 2>&1; then
+    echo "   No existing installation found, checking for leftover CRDs..."
+    LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
+    if [ -n "$LEFTOVER_CRDS" ]; then
+        echo "   Found leftover CRDs, cleaning up before installation..."
+        echo "$LEFTOVER_CRDS" | xargs -r kubectl delete crd --timeout=30s 2>/dev/null || true
+        sleep 5  # Brief wait for cleanup to complete
+    fi
+else
+    echo "   ✅ Kuadrant operator already installed, skipping CRD cleanup"
+fi
+
 echo "   Installing cert-manager..."
 "$SCRIPT_DIR/install-dependencies.sh" --cert-manager
 
 # Wait for cert-manager CRDs to be ready
 echo "   Waiting for cert-manager CRDs to be established..."
-wait_for_crd "certificates.cert-manager.io" "120s" || \
+wait_for_crd "certificates.cert-manager.io" 120 || \
     echo "   ⚠️  Certificate CRD not yet available"
-
-# Clean up any leftover Kuadrant CRDs from previous installations
-echo "   Checking for leftover Kuadrant CRDs..."
-LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
-if [ -n "$LEFTOVER_CRDS" ]; then
-    echo "   Found leftover CRDs, cleaning up..."
-    echo "$LEFTOVER_CRDS" | xargs -r kubectl delete crd --timeout=30s 2>/dev/null || true
-fi
 
 echo "   Installing Kuadrant..."
 "$SCRIPT_DIR/install-dependencies.sh" --kuadrant
 
-# Wait for Kuadrant CRDs to be ready
-echo "   Waiting for Kuadrant CRDs to be established..."
-wait_for_crd "authpolicies.kuadrant.io" "120s" || \
-    echo "   ⚠️  AuthPolicy CRD not yet available"
-wait_for_crd "ratelimitpolicies.kuadrant.io" "120s" || \
-    echo "   ⚠️  RateLimitPolicy CRD not yet available"
-
 echo ""
-echo "4️⃣ Deploying Gateway and networking infrastructure..."
+echo "4️⃣ Deploying Gateway infrastructure..."
 CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
 if [ -z "$CLUSTER_DOMAIN" ]; then
     echo "❌ Failed to retrieve cluster domain from OpenShift"
@@ -194,14 +239,14 @@ fi
 export CLUSTER_DOMAIN
 echo "   Cluster domain: $CLUSTER_DOMAIN"
 
-echo "   Deploying Gateway API and Kuadrant configuration..."
+echo "   Deploying Gateway and GatewayClass..."
 cd "$PROJECT_ROOT"
-kustomize build deployment/base/networking | envsubst | kubectl apply --server-side=true --force-conflicts -f -
+envsubst < deployment/base/networking/gateway-api.yaml | kubectl apply --server-side=true --force-conflicts -f -
 
 # Wait for Gateway API CRDs if not already present
 if ! kubectl get crd gateways.gateway.networking.k8s.io &>/dev/null 2>&1; then
     echo "   Waiting for Gateway API CRDs..."
-    wait_for_crd "gateways.gateway.networking.k8s.io" "120s" || \
+    wait_for_crd "gateways.gateway.networking.k8s.io" 120 || \
         echo "   ⚠️  Gateway API CRDs not yet available"
 fi
 
@@ -223,7 +268,7 @@ else
     
     # Wait for CRDs and operator pods, then retry
     echo "   Waiting for KServe CRDs to be established..."
-    if wait_for_crd "llminferenceservices.serving.kserve.io" "120s"; then
+    if wait_for_crd "llminferenceservices.serving.kserve.io" 120; then
         
         wait_for_pods "opendatahub" 120 || true
         wait_for_validating_webhooks opendatahub 90 || true
@@ -239,16 +284,53 @@ else
 fi
 
 echo ""
-echo "6️⃣ Deploying MaaS API..."
+echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
+# Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
+wait_for_csv "kuadrant-operator.v1.3.0-rc2" "kuadrant-system" 300 || \
+    echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
+
+wait_for_csv "authorino-operator.v0.22.0" "kuadrant-system" 60 || \
+    echo "   ⚠️  Authorino operator CSV did not succeed"
+
+wait_for_csv "limitador-operator.v0.16.0" "kuadrant-system" 60 || \
+    echo "   ⚠️  Limitador operator CSV did not succeed"
+
+wait_for_csv "dns-operator.v0.15.0" "kuadrant-system" 60 || \
+    echo "   ⚠️  DNS operator CSV did not succeed"
+
+# Verify CRDs are present
+echo "   Verifying Kuadrant CRDs are available..."
+wait_for_crd "kuadrants.kuadrant.io" 30 || echo "   ⚠️  kuadrants.kuadrant.io CRD not found"
+wait_for_crd "authpolicies.kuadrant.io" 10 || echo "   ⚠️  authpolicies.kuadrant.io CRD not found"
+wait_for_crd "ratelimitpolicies.kuadrant.io" 10 || echo "   ⚠️  ratelimitpolicies.kuadrant.io CRD not found"
+wait_for_crd "tokenratelimitpolicies.kuadrant.io" 10 || echo "   ⚠️  tokenratelimitpolicies.kuadrant.io CRD not found"
+
+echo ""
+echo "7️⃣ Deploying Kuadrant configuration (now that CRDs exist)..."
+cd "$PROJECT_ROOT"
+kubectl apply -f deployment/base/networking/kuadrant.yaml
+
+echo ""
+echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
 kustomize build deployment/base/maas-api | envsubst | kubectl apply -f -
 
 echo ""
-echo "7️⃣ Applying OpenShift-specific configurations..."
+echo "9️⃣ Applying OpenShift-specific configurations..."
 
+# Patch Kuadrant for OpenShift Gateway Controller
+echo "   Patching Kuadrant operator..."
+if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
+  kubectl get csv kuadrant-operator.v1.3.0-rc2 -n kuadrant-system -o json | \
+  jq '.spec.install.spec.deployments[0].spec.template.spec.containers[0].env |= map(if .name == "ISTIO_GATEWAY_CONTROLLER_NAMES" then . + {"value": "istio.io/gateway-controller,openshift.io/gateway-controller/v1"} else . end)' | \
+  kubectl apply -f -
+  echo "   ✅ Kuadrant operator patched"
+else
+  echo "   ✅ Kuadrant operator already configured"
+fi
 
 echo ""
-echo "8️⃣ Waiting for Gateway to be ready..."
+echo "🔟 Waiting for Gateway to be ready..."
 echo "   Note: This may take a few minutes if Service Mesh is being automatically installed..."
 
 # Wait for Service Mesh CRDs to be established
@@ -256,7 +338,7 @@ if kubectl get crd istios.sailoperator.io &>/dev/null 2>&1; then
     echo "   ✅ Service Mesh operator already detected"
 else
     echo "   Waiting for automatic Service Mesh installation..."
-    if wait_for_crd "istios.sailoperator.io" "300s"; then
+    if wait_for_crd "istios.sailoperator.io" 300; then
         echo "   ✅ Service Mesh operator installed"
     else
         echo "   ⚠️  Service Mesh CRD not detected within timeout"
@@ -269,24 +351,18 @@ kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshif
   echo "   ⚠️  Gateway is taking longer than expected, continuing..."
 
 echo ""
-echo "9️⃣ Applying Gateway Policies..."
+echo "1️⃣1️⃣ Applying Gateway Policies..."
 cd "$PROJECT_ROOT"
 kustomize build deployment/base/policies | kubectl apply --server-side=true --force-conflicts -f -
 
 echo ""
-echo "🔟 Restarting Kuadrant operators for policy enforcement..."
-kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system
-kubectl rollout restart deployment/authorino-operator -n kuadrant-system
-kubectl rollout restart deployment/limitador-operator-controller-manager -n kuadrant-system
-
-# Wait for rollouts to complete
-echo "   Waiting for operators to restart..."
-kubectl rollout status deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=120s
-kubectl rollout status deployment/authorino-operator -n kuadrant-system --timeout=120s
-kubectl rollout status deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=120s
+echo "1️⃣2️⃣ Deploying OpenShift Routes..."
+cd "$PROJECT_ROOT"
+envsubst < deployment/overlays/openshift/openshift-routes.yaml | kubectl apply -f -
+envsubst < deployment/overlays/openshift/gateway-route.yaml | kubectl apply -f -
 
 echo ""
-echo "1️⃣1️⃣ Patching AuthPolicy with correct audience..."
+echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
 AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
 if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
     echo "   Detected audience: $AUD"
@@ -303,7 +379,7 @@ else
 fi
 
 echo ""
-echo "1️⃣2️⃣ Updating Limitador image for metrics exposure..."
+echo "1️⃣4️⃣ Updating Limitador image for metrics exposure..."
 kubectl -n kuadrant-system patch limitador limitador --type merge \
   -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}' 2>/dev/null && \
   echo "   ✅ Limitador image updated" || \
@@ -342,14 +418,20 @@ echo ""
 echo "1. Deploy a sample model:"
 echo "   kustomize build docs/samples/models/simulator | kubectl apply -f -"
 echo ""
-echo "2. Test the API:"
-echo "   Access the MaaS API at: https://maas-api.$CLUSTER_DOMAIN"
-echo "   Access models through: https://gateway.$CLUSTER_DOMAIN"
+echo "2. Get Gateway endpoint:"
+echo "   CLUSTER_DOMAIN=\$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
+echo "   HOST=\"maas-api.\${CLUSTER_DOMAIN}\""
 echo ""
-echo "3. Get a token:"
-echo "   curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" \\"
-echo "     -H \"Content-Type: application/json\" -X POST \\"
-echo "     -d '{\"expiration\": \"10m\"}' \\"
-echo "     \"https://maas-api.$CLUSTER_DOMAIN/v1/tokens\""
+echo "3. Get authentication token:"
+echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"\${HOST}/maas-api/v1/tokens\")"
+echo "   TOKEN=\$(echo \$TOKEN_RESPONSE | jq -r .token)"
 echo ""
-echo "For troubleshooting, check the deployment guide at deployment/README.md" 
+echo "4. Test model endpoint:"
+echo "   MODELS=\$(curl \${HOST}/maas-api/v1/models -H \"Content-Type: application/json\" -H \"Authorization: Bearer \$TOKEN\" | jq -r .)"
+echo "   MODEL_NAME=\$(echo \$MODELS | jq -r '.data[0].id')"
+echo "   MODEL_URL=\"\${HOST}/llm/\${MODEL_NAME}/v1/chat/completions\""
+echo "   curl -sSk -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d '{\"model\": \"\${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}' \"\${MODEL_URL}\""
+echo ""
+echo "5. Test rate limiting:"
+echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d '{\"model\": \"\${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}' \"\${MODEL_URL}\"; done"
+
