@@ -213,7 +213,7 @@ kubectl patch authpolicy maas-api-auth-policy -n maas-api \
 
 ```bash
 CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
-HOST="maas-api.${CLUSTER_DOMAIN}"
+HOST="maas.${CLUSTER_DOMAIN}"
 ```
 
 ### 2. Get Authentication Token

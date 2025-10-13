@@ -385,6 +385,42 @@ kubectl -n kuadrant-system patch limitador limitador --type merge \
   echo "   ✅ Limitador image updated" || \
   echo "   ⚠️  Could not update Limitador image (may not be critical)"
 
+echo ""
+echo "========================================="
+echo "⚠️  TEMPORARY WORKAROUNDS (TO BE REMOVED)"
+echo "========================================="
+echo ""
+echo "Applying temporary workarounds for known issues..."
+
+echo "   🔧 Removing overly restrictive NetworkPolicy for ODH model controller..."
+kubectl delete networkpolicy odh-model-controller -n opendatahub 2>/dev/null && \
+  echo "   ✅ NetworkPolicy removed" || \
+  echo "   ⚠️  NetworkPolicy not found or already removed"
+
+echo "   🔧 Restarting Kuadrant, Authorino, and Limitador operators to refresh webhook configurations..."
+kubectl rollout restart deployment kuadrant-operator-controller-manager -n kuadrant-system 2>/dev/null && \
+  echo "   ✅ Kuadrant operator restarted" || \
+  echo "   ⚠️  Could not restart Kuadrant operator"
+
+kubectl rollout restart deployment authorino-controller-manager -n kuadrant-system 2>/dev/null && \
+  echo "   ✅ Authorino operator restarted" || \
+  echo "   ⚠️  Could not restart Authorino operator"
+
+kubectl rollout restart deployment limitador-operator-controller-manager -n kuadrant-system 2>/dev/null && \
+  echo "   ✅ Limitador operator restarted" || \
+  echo "   ⚠️  Could not restart Limitador operator"
+
+echo "   Waiting for operators to be ready..."
+kubectl rollout status deployment kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
+  echo "   ⚠️  Kuadrant operator taking longer than expected"
+kubectl rollout status deployment authorino-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
+  echo "   ⚠️  Authorino operator taking longer than expected"
+kubectl rollout status deployment limitador-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
+  echo "   ⚠️  Limitador operator taking longer than expected"
+
+echo ""
+echo "========================================="
+
 # Verification
 echo ""
 echo "========================================="
@@ -420,18 +456,21 @@ echo "   kustomize build docs/samples/models/simulator | kubectl apply -f -"
 echo ""
 echo "2. Get Gateway endpoint:"
 echo "   CLUSTER_DOMAIN=\$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
-echo "   HOST=\"maas-api.\${CLUSTER_DOMAIN}\""
+echo "   HOST=\"maas.\${CLUSTER_DOMAIN}\""
 echo ""
 echo "3. Get authentication token:"
 echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"\${HOST}/maas-api/v1/tokens\")"
 echo "   TOKEN=\$(echo \$TOKEN_RESPONSE | jq -r .token)"
 echo ""
 echo "4. Test model endpoint:"
-echo "   MODELS=\$(curl \${HOST}/maas-api/v1/models -H \"Content-Type: application/json\" -H \"Authorization: Bearer \$TOKEN\" | jq -r .)"
+echo "   MODELS=\$(curl -sSk \${HOST}/maas-api/v1/models -H \"Content-Type: application/json\" -H \"Authorization: Bearer \$TOKEN\" | jq -r .)"
 echo "   MODEL_NAME=\$(echo \$MODELS | jq -r '.data[0].id')"
-echo "   MODEL_URL=\"\${HOST}/llm/\${MODEL_NAME}/v1/chat/completions\""
-echo "   curl -sSk -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d '{\"model\": \"\${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}' \"\${MODEL_URL}\""
+echo "   MODEL_URL=\"\${HOST}/llm/facebook-opt-125m-simulated/v1/chat/completions\" # Note: This may be different for your model"
+echo "   curl -sSk -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\""
 echo ""
-echo "5. Test rate limiting:"
-echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d '{\"model\": \"\${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}' \"\${MODEL_URL}\"; done"
+echo "5. Test authorization limiting (no token 401 error):"
+echo "   curl -sSk -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\" -v"
+echo ""
+echo "6. Test rate limiting (200 OK followed by 429 Rate Limit Exceeded after about 4 requests):"
+echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\"; done"
 

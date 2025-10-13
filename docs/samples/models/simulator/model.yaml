@@ -24,7 +24,7 @@ spec:
         - --port
         - "8000" 
         - --model
-        - facebook-opt-125m-simulated
+        - facebook/opt-125m
         - --mode
         - random
         - --ssl-certfile
