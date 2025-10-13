@@ -1,31 +1,14 @@
 # Installation Guide
 
-This guide provides complete instructions for deploying the MaaS Platform infrastructure and applications on OpenShift.
-
-## 📹 Video Walkthrough
-
-> [!TIP]
-> **Watch the installation process in action!**
-> 
-> For a visual guide to the installation process, watch our step-by-step video walkthrough:
-> 
-> <!-- TODO: Add video embed once uploaded -->
-> **[Installation Video Walkthrough]** _(Coming Soon)_
-> 
-> The video covers:
-> - Prerequisites verification
-> - Automated deployment using the deploy-openshift.sh script
-> - Manual deployment steps
-> - Testing and verification
-> - Common troubleshooting scenarios
+This guide provides complete instructions for deploying the MaaS Platform infrastructure.
 
 ## Prerequisites
 
 - **OpenShift cluster** (4.19.9+) with kubectl/oc access
   - **Reccomended** 16 vCPUs, 32GB RAM, 100GB storage
 - **ODH/RHOAI requirements**:
-  - KServe enabled in DataScienceCluster (RawDeployment mode enabled)
-  - Service Mesh installed (automatically installed with ODH/RHOAI)
+    - KServe enabled in DataScienceCluster (RawDeployment mode enabled)
+    - Service Mesh installed (automatically installed with ODH/RHOAI)
 - **Cluster admin** or equivalent permissions
 - **Required tools**:
   - `oc` (OpenShift CLI)
@@ -43,29 +26,57 @@ For OpenShift clusters, use the automated deployment script:
 ./deployment/scripts/deploy-openshift.sh
 ```
 
-This script handles all steps including feature gates, dependencies, and OpenShift-specific configurations.
+### Verify Deployment
 
-> [!NOTE]
-> **If you encounter authentication errors when testing the deployment, you may need to patch the `AuthPolicy` with the correct audience for OpenShift Identities.**
-> 
-> Run the following commands to retrieve the correct audience and patch the `AuthPolicy`:
-> 
-> ```bash
-> PROJECT_DIR=$(git rev-parse --show-toplevel)
-> AUD="$(kubectl create token default --duration=10m \
->   | jwt decode --json - \
->   | jq -r '.payload.aud[0]')"
-> 
-> echo "Patching AuthPolicy with audience: $AUD"
-> 
-> kubectl patch authpolicy maas-api-auth-policy -n maas-api \
->   --type='json' \
->   -p "$(jq -nc --arg aud "$AUD" '[{
->     op:"replace",
->     path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
->     value:$aud
->   }]')"
-> ```
+The deployment script creates the following core resources:
+
+- **Namespaces**: `maas-api`, `kuadrant-system`, `kserve`, `opendatahub`, `llm`
+- **Gateway**: `maas-default-gateway` in `openshift-ingress` namespace
+- **Policies**: `AuthPolicy`, `TokenRateLimitPolicy`, `RateLimitPolicy`, `TelemetryPolicy`
+- **MaaS API**: Deployment and service in `maas-api` namespace
+- **Operators**: Kuadrant, Authorino, Limitador in `kuadrant-system` namespace
+
+Check deployment status:
+
+```bash
+# Check all namespaces
+kubectl get ns | grep -E "maas-api|kuadrant|kserve|opendatahub|llm"
+
+# Check Gateway status
+kubectl get gateway -n openshift-ingress maas-default-gateway
+
+# Check policies
+kubectl get authpolicy -A
+kubectl get tokenratelimitpolicy -A
+kubectl get ratelimitpolicy -A
+
+# Check MaaS API
+kubectl get pods -n maas-api
+kubectl get svc -n maas-api
+
+# Check Kuadrant operators
+kubectl get pods -n kuadrant-system
+
+# Check KServe (if deployed)
+kubectl get pods -n kserve
+kubectl get pods -n opendatahub
+```
+
+### 📹 Video Walkthrough of Automated Deployment
+
+!!! tip "Watch the installation process in action!"
+    For a visual guide to the installation process, watch our step-by-step video walkthrough:
+    
+    <!-- TODO: Add video embed once uploaded -->
+    **[Installation Video Walkthrough]** _(Coming Soon)_
+    
+    The video covers:
+    
+    - Prerequisites verification
+    - Automated deployment using the deploy-openshift.sh script
+    - Manual deployment steps
+    - Testing and verification
+    - Common troubleshooting scenarios
 
 For manual deployment, see the [Manual Deployment Steps](deployment/README.md#manual-deployment-steps) in the deployment README.
 
@@ -88,8 +99,8 @@ kustomize build ${PROJECT_DIR}/docs/samples/models/facebook-opt-125m-cpu/ | kube
 
 **Qwen3 Model (GPU Required)**
 
-> [!WARNING]
-> This model requires GPU nodes with `nvidia.com/gpu` resources available in your cluster.
+!!! warning
+    This model requires GPU nodes with `nvidia.com/gpu` resources available in your cluster.
 
 ```bash
 PROJECT_DIR=$(git rev-parse --show-toplevel)
@@ -103,6 +114,35 @@ kubectl get llminferenceservices -n llm
 
 # Check pods
 kubectl get pods -n llm
+```
+
+#### Update Existing Models (Optional)
+
+To update an existing model, modify the `LLMInferenceService` to use the newly created `maas-default-gateway` gateway.
+
+```bash
+kubectl patch llminferenceservice my-production-model -n llm --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/gateway/refs/-",
+    "value": {
+      "name": "maas-default-gateway",
+      "namespace": "openshift-ingress"
+    }
+  }
+]'
+```
+
+```yaml
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: my-production-model
+spec:
+  gateway:
+    refs:
+      - name: maas-default-gateway
+        namespace: openshift-ingress
 ```
 
 ## Testing the Deployment

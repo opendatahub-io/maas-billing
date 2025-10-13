@@ -1,6 +1,14 @@
 # MaaS Platform Documentation
 
-This directory contains the documentation for the MaaS (Model-as-a-Service) Platform.
+This directory contains the documentation for the MaaS (Model-as-a-Service) Platform. This is build automatically using GitHub Actions when changes are pushed to the main branch.
+
+## Styling Notes
+
+The documentation is styled using the [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) theme.
+
+### Important Differences from Github Markdown Styling
+
+Admonitions are styled using the `!!! note` syntax, more info [here](https://squidfunk.github.io/mkdocs-material/reference/admonitions/).
 
 ## Building the Documentation Locally
 
