@@ -27,7 +27,6 @@ See the comprehensive [Deployment Guide](deployment/README.md) for detailed inst
 ## 📚 Documentation
 
 - [Deployment Guide](deployment/README.md) - Complete deployment instructions
-- [Local Deployment](docs/LOCAL_DEPLOYMENT.md) - Deployment guide for local development
 - [MaaS API Documentation](maas-api/README.md) - Go API for key management
 - [OAuth Setup Guide](docs/OAUTH_SETUP.md) - Configure OAuth authentication
 
