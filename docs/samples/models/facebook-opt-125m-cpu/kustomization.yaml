@@ -10,20 +10,3 @@ namePrefix: facebook-opt-125m-cpu-
 
 resources:
 - model.yaml
-- ../rbac/
-
-patches:
-- patch: |-
-    - op: add
-      path: /rules/0/resourceNames
-      value: ["facebook-opt-125m-cpu-single-node-no-scheduler-cpu"]
-  target:
-    kind: Role
-    name: model-user
-- patch: |-
-    - op: replace
-      path: /roleRef/name
-      value: facebook-opt-125m-cpu-model-user
-  target:
-    kind: RoleBinding
-    name: model-user-tier-binding 

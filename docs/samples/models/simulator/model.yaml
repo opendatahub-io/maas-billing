@@ -2,6 +2,8 @@ apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
   name: simulated
+  annotations:
+    alpha.maas.opendatahub.io/tiers: '[]'
 spec:
   model:
     uri: hf://facebook/opt-125m
