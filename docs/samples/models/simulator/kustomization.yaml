@@ -10,20 +10,3 @@ namePrefix: facebook-opt-125m-
 
 resources:
 - model.yaml
-- ../rbac/
-
-patches:
-  - patch: |-
-      - op: add
-        path: /rules/0/resourceNames
-        value: ["facebook-opt-125m-simulated"]
-    target:
-      kind: Role
-      name: model-user
-  - patch: |-
-      - op: replace
-        path: /roleRef/name
-        value: facebook-opt-125m-model-user
-    target:
-      kind: RoleBinding
-      name: model-user-tier-binding

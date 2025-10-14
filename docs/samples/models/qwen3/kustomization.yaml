@@ -10,21 +10,3 @@ namePrefix: qwen3-
 
 resources:
 - model.yaml
-- ../rbac/
-
-patches:
-- patch: |-
-    - op: add
-      path: /rules/0/resourceNames
-      value: ["qwen3-single-node-no-scheduler-nvidia-gpu"]
-  target:
-    kind: Role
-    name: model-user
-- patch: |-
-    - op: replace
-      path: /roleRef/name
-      value: model-user
-  target:
-    kind: RoleBinding
-    name: model-user-tier-binding
-
