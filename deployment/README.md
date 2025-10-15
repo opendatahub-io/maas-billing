@@ -45,6 +45,17 @@ For OpenShift clusters, use the automated deployment script:
 
 This script handles all steps including feature gates, dependencies, and OpenShift-specific configurations.
 
+### 📊 Monitoring Dashboard
+
+After deployment, you can import the Grafana dashboard for monitoring:
+
+1. **Dashboard Location:** `docs/samples/dashboards/maas-token-metrics-dashboard.json`
+2. **Import into Grafana:** Upload the JSON file to your Grafana instance
+3. **Configure Prometheus:** Ensure your Prometheus datasource is configured
+4. **View Metrics:** Monitor token usage, rate limiting, and tier-based analytics
+
+See [Dashboard Documentation](../../docs/samples/dashboards/README.md) for detailed setup instructions.
+
 ### Manual Deployment Steps
 
 ### Step 0: Enable Gateway API Features (OpenShift Only)
