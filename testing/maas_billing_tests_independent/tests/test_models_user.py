@@ -1,3 +1,8 @@
+# Smoke-check: catalog endpoint is reachable and shaped correctly.
+# - Calls /v1/models with a valid token.
+# - Expects HTTP 200 and a JSON body that has either "data" or "models".
+# If this fails, the MaaS API or its model catalog is unavailable/misconfigured.
+
 from conftest import bearer
 
 def test_models_user(http, base_url, maas_key):

@@ -16,7 +16,6 @@ Example:
 If both tiers allow ≥ N, you'll see free_ok = prem_ok = N → PASS (still correct).
 If Premium were lower than Free, prem_ok < free_ok → FAIL.
 """
-"""
 
 import os, pytest, time
 from conftest import bearer, ensure_free_key, ensure_premium_key, get_limit

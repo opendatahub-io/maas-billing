@@ -26,7 +26,6 @@ pip install -r requirements.txt
 # (optional) pretty HTML report
 pip install pytest-html
 ```
-
 ---
 
 ## 1) Login & environment (run in every new shell)
@@ -38,24 +37,23 @@ oc login https://api.<cluster>:6443 --token '<your-user-token>'
 oc whoami
 ```
 
-Get Gateway Endpoint and set base URLs:
+Resolve Route host and set base URLs:
 
 ```bash
-HOST=$(oc -n openshift-ingress get gateway openshift-ai-inference -o jsonpath='{.status.addresses[0].value}')
-export MAAS_API_BASE_URL="http://${HOST}/maas-api"
-export USAGE_API_BASE="${MAAS_API_BASE_URL}"     # used by usage tests
-```
-Export the **current user’s** OpenShift token into `FREE_OC_TOKEN`
-(the tests use this name for “who you are right now”):
+CLUSTER_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+HOST="maas.${CLUSTER_DOMAIN}"                          # note: no "-api" here
+export MAAS_API_BASE_URL="http://${HOST}/maas-api"    # point directly to /maas-api
+export USAGE_API_BASE="$MAAS_API_BASE_URL"
 
-```bash
 export FREE_OC_TOKEN="$(oc whoami -t)"
+
 ```
 Pick a **MODEL_NAME** from the catalog (`id` field):
 
 ```bash
 curl -s -H "Authorization: Bearer ${FREE_OC_TOKEN}" "${MAAS_API_BASE_URL}/v1/models" | jq -r '.data[] | [.id,.name,.url] | @tsv'
-export MODEL_NAME="<paste-id-from-output>"     # e.g., facebook-opt-125m-simulated
+export MODEL_NAME="<paste-id-from-output>"     # e.g., facebook/opt-125m
+export MODEL_URL="<paste-url-from-output>"     # direct model URL, e.g. maas.apps.ci-ln-t6jfcg2-76ef8.aws-2.ci.openshift.org/llm/facebook-opt-125m-simulated/v1/chat/completions
 ```
 ---
 
@@ -200,16 +198,39 @@ By shaping traffic as above (many *cheap* calls vs few *expensive* calls), you c
 
 ## 4) Reports (HTML & JUnit)
 
-```bash
-mkdir -p testing/maas_billing_tests_independent/reports
+# Create a timestamped artifacts folder
+REP_ROOT=testing/maas_billing_tests_independent/artifacts
+TS=$(date +%Y-%m-%d_%H-%M-%S)
+OUT="$REP_ROOT/$TS"
+mkdir -p "$OUT"
 
 # Example: run everything for the current user and produce reports
 pytest -q testing/maas_billing_tests_independent/tests \
-  --html=testing/maas_billing_tests_independent/reports/current.html --self-contained-html \
-  --junitxml=testing/maas_billing_tests_independent/reports/current.xml
-```
+  --html="$OUT/maas-test-report.html" --self-contained-html \
+  --junitxml="$OUT/maas-test-report.xml"
 
-Open `reports/current.html` in your browser.
+echo "Reports saved in: $OUT"
+#Note - The artifacts/ folder is kept in Git but its contents are ignored, so reports don’t show in PRs
+
+## Smoke tests & single test (saved under artifacts/)
+
+# 3 smoke tests → one report
+REP_ROOT=testing/maas_billing_tests_independent/artifacts
+TS=$(date +%Y-%m-%d_%H-%M-%S)
+OUT="$REP_ROOT/$TS"
+mkdir -p "$OUT"
+
+pytest -q \
+  testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt \
+  testing/maas_billing_tests_independent/tests/test_models_user.py \
+  testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works \
+  --html="$OUT/smoke.html" --self-contained-html \
+  --junitxml="$OUT/smoke.xml"
+
+# Single test → its own report
+pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works \
+  --html="$OUT/chat.html" --self-contained-html \
+  --junitxml="$OUT/chat.xml"
 
 ---
 
@@ -242,13 +263,14 @@ pip install -r requirements.txt
 # login (role of your choice)
 oc login https://api.<cluster>:6443 --token '<token>'
 
-# resolve gateway (avoid $HOST, which is reserved in PS)
-$GATEWAY_HOST = oc -n openshift-ingress `
-  get gateway openshift-ai-inference -o jsonpath='{.status.addresses[0].value}'
+# resolve Route host (avoid $HOST which is reserved in PS)
+$CLUSTER_DOMAIN = oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'
+$ROUTE_HOST = "maas-api.$CLUSTER_DOMAIN"
 
-# env
-$env:MAAS_API_BASE_URL = "http://$GATEWAY_HOST/maas-api"
+# MaaS API base URL (route-based)
+$env:MAAS_API_BASE_URL = "https://$ROUTE_HOST"
 $env:USAGE_API_BASE    = $env:MAAS_API_BASE_URL
+
 $env:FREE_OC_TOKEN     = oc whoami -t
 $env:MODEL_NAME        = "<model-id>"        # from /v1/models
 
@@ -266,11 +288,20 @@ pytest -q tests/test_models_user.py
 pytest -q tests/test_gateway_endpoints.py::test_chat_completion_works
 pytest -q tests/test_quota_global.py::test_rate_limit_burst
 
-# report
-pytest -q --html=reports\current.html --self-contained-html --junitxml=reports\current.xml
+# report (timestamped artifacts folder)
+$REP_ROOT = "testing\maas_billing_tests_independent\artifacts"
+$TS = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$OUT = "$REP_ROOT\$TS"
+New-Item -ItemType Directory -Force -Path $OUT | Out-Null
+
+pytest -q testing/maas_billing_tests_independent/tests `
+  --html="$OUT\maas-test-report.html" --self-contained-html `
+  --junitxml="$OUT\maas-test-report.xml"
+
+Write-Host "Reports saved in: $OUT"
 ```
 
-> In PowerShell, **do not** use `$HOST`; use `$GATEWAY_HOST`.
+> In PowerShell, **do not** use `$HOST`; use `$ROUTE_HOST`.
 
 ---
 
@@ -282,8 +313,11 @@ python3 -m venv .venv && source .venv/bin/activate && pip install -r requirement
 
 # login & env
 oc login https://api.<cluster>:6443 --token '<token>'
-HOST=$(oc -n openshift-ingress get gateway openshift-ai-inference -o jsonpath='{.status.addresses[0].value}')
-export MAAS_API_BASE_URL="http://${HOST}/maas-api"
+
+CLUSTER_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+HOST="maas-api.${CLUSTER_DOMAIN}"
+export MAAS_API_BASE_URL="https://${HOST}"
+
 export USAGE_API_BASE="$MAAS_API_BASE_URL"
 export FREE_OC_TOKEN="$(oc whoami -t)"
 
@@ -305,6 +339,12 @@ pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
 pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
 pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 
-# report
-mkdir -p reports && pytest -q --html=reports/current.html --self-contained-html --junitxml=reports/current.xml
+# report (timestamped artifacts folder)
+REP_ROOT=testing/maas_billing_tests_independent/artifacts
+TS=$(date +%Y-%m-%d_%H-%M-%S)
+OUT="$REP_ROOT/$TS"
+mkdir -p "$OUT"
+pytest -q testing/maas_billing_tests_independent/tests \
+  --html="$OUT/maas-test-report.html" --self-contained-html \
+  --junitxml="$OUT/maas-test-report.xml"
 ```

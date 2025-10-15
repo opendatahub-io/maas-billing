@@ -1,3 +1,12 @@
+# ============================
+# What this file tests (short)
+# ============================
+# - We can mint MaaS tokens and they look like real JWTs.
+# - The minted token actually works to call /v1/models.
+# - Bad TTL input is rejected with 400.
+# - After we revoke a token, it stops working.
+# - Model responses include usage headers (token counts).
+
 from conftest import bearer, parse_usage_headers, USAGE_HEADERS, ensure_free_key
 import json, base64
 
