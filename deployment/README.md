@@ -206,17 +206,45 @@ kubectl patch authpolicy maas-api-auth-policy -n maas-api \
   }]')"
 
 ```
-## Testing the Deployment
 
-### 1. Get Gateway Endpoint
+## Validation Steps
 
+### Automated Validation (Recommended)
+
+The easiest way to validate your deployment is to use the automated validation script:
+
+```bash
+./deployment/scripts/validate-deployment.sh
+```
+
+This script will automatically check:
+- ✅ All component pods are running
+- ✅ Gateway is configured and ready
+- ✅ Policies are enforced (AuthPolicy, TokenRateLimitPolicy)
+- ✅ API endpoints are accessible
+- ✅ Authentication is working
+- ✅ Rate limiting is enforced
+- ✅ Authorization is enforced (401 without token)
+
+The script provides detailed feedback with specific suggestions for fixing any issues found.
+
+### Manual Validation Steps
+
+If you prefer to validate manually or troubleshoot specific components, follow these steps:
+
+#### 1. Get Gateway Endpoint
 
 ```bash
 CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
-HOST="maas.${CLUSTER_DOMAIN}"
+HOST="https://maas.${CLUSTER_DOMAIN}"
 ```
 
-### 2. Get Authentication Token
+**Note:** If you haven't created the `maas-default-gateway` yet, you can use the fallback:
+```bash
+HOST="https://gateway.${CLUSTER_DOMAIN}"
+```
+
+#### 2. Get Authentication Token
 
 For OpenShift:
 ```bash
@@ -230,41 +258,57 @@ TOKEN_RESPONSE=$(curl -sSk \
 TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 ```
 
-### 3. Test Model Endpoints
-
-For OpenShift deployments, first get the gateway route:
+#### 3. List Available Models
 
 ```bash
-MODELS=$(curl ${HOST}/maas-api/v1/models  \
+MODELS=$(curl -sSk ${HOST}/maas-api/v1/models \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" | jq . -r)
+    -H "Authorization: Bearer $TOKEN" | jq -r .)
 
 echo $MODELS | jq .
 MODEL_NAME=$(echo $MODELS | jq -r '.data[0].id')
-MODEL_URL=${HOST}/llm/${MODEL_NAME}/v1/chat/completions
+# Get the full URL which includes the LLMInferenceService resource name in the path
+MODEL_URL=$(echo $MODELS | jq -r '.data[0].url')
 
-echo $MODEL_URL
+echo "Model URL: $MODEL_URL"
 ```
 
-### 4. Test Rate Limiting
+#### 4. Test Model Inference Endpoint
 
-Send multiple requests to trigger rate limit:
+Send a request to the model endpoint (should get a 200 OK response):
 
 ```bash
-for i in {1..16}
-do
-curl -sSk -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d "{
-        \"model\": \"${MODEL_NAME}\",
-        \"prompt\": \"Not really understood prompt\",
-        \"max_prompts\": 40
-    }" \
-  "${MODEL_URL}";
+curl -sSk -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
+  "${MODEL_URL}"
+```
+
+#### 5. Test Authorization Enforcement
+
+Send a request to the model endpoint without a token (should get a 401 Unauthorized response):
+
+```bash
+curl -sSk -H "Content-Type: application/json" \
+  -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
+  "${MODEL_URL}" -v
+```
+
+#### 6. Test Rate Limiting
+
+Send multiple requests to trigger rate limit (should get 200 OK followed by 429 Rate Limit Exceeded after about 4 requests):
+
+```bash
+for i in {1..16}; do
+  curl -sSk -o /dev/null -w "%{http_code}\n" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
+    "${MODEL_URL}"
 done
 ```
 
-### 5. Verify Complete Deployment
+#### 7. Verify Component Status
 
 Check that all components are running:
 
@@ -291,101 +335,23 @@ kubectl get tokenratelimitpolicy -A
 kubectl get llminferenceservices -n llm
 ```
 
-## Services Exposed
+---
 
-After deployment, the following services are available:
-
-### OpenShift Access (with Rate Limiting)
-
-Access models through the gateway route for proper token rate limiting:
-
-1. **MaaS API**: `https://maas-api.${CLUSTER_DOMAIN}`
-   - For token generation and management
-   - Direct route to MaaS API service
-
-2. **Gateway (for Models)**: `https://gateway.${CLUSTER_DOMAIN}`
-   - **Simulator**: `https://gateway.${CLUSTER_DOMAIN}/simulator/v1/chat/completions`
-   - **Qwen3**: `https://gateway.${CLUSTER_DOMAIN}/qwen3/v1/chat/completions`
-   - All model access MUST go through the gateway for rate limiting
-
-**⚠️ IMPORTANT**: Direct routes to models bypass TokenRateLimitPolicy. Always use the gateway route for production.
-
-## Troubleshooting
-
-### Check Component Status
-
-Check all relevant pods:
+**💡 Tip:** Instead of running these manual validation steps, you can use the automated validation script which performs all these checks and more:
 
 ```bash
-kubectl get pods -A | grep -E "maas-api|kserve|kuadrant|simulator|qwen"
+./deployment/scripts/validate-deployment.sh
 ```
 
-Check services:
+The script provides detailed feedback with color-coded results and specific suggestions for fixing any issues found. See [deployment/scripts/README.md](scripts/README.md) for more information.
 
-```bash
-kubectl get svc -A | grep -E "maas-api|simulator|qwen"
-```
-
-Check HTTPRoutes and Gateway:
-
-```bash
-kubectl get httproute -A
-kubectl get gateway -A
-```
-
-### View Logs
-
-View MaaS API logs:
-
-```bash
-kubectl logs -n maas-api -l app=maas-api --tail=50
-```
-
-View Kuadrant logs:
-
-```bash
-kubectl logs -n kuadrant-system -l app=kuadrant --tail=50
-```
-
-View Model logs:
-
-```bash
-kubectl logs -n llm -l component=predictor --tail=50
-```
+---
 
 ### Common Issues
 
-1. **OOMKilled during model download**: Increase storage initializer memory limits
-2. **GPU models not scheduling**: Ensure nodes have `nvidia.com/gpu` resources
-3. **Rate limiting not working**: Verify AuthPolicy and TokenRateLimitPolicy are applied
-4. **Routes not accessible**: Check Gateway status and HTTPRoute configuration
-5. **Kuadrant installation fails with CRD errors**: The deployment script now automatically cleans up leftover CRDs from previous installations
-6. **TokenRateLimitPolicy MissingDependency error**: 
-   - **Symptom**: TokenRateLimitPolicy shows status "token rate limit policy validation has not finished"
-   - **Fix**: Run `./scripts/fix-token-rate-limit-policy.sh` or manually restart:
-     ```bash
-     kubectl rollout restart deployment kuadrant-operator-controller-manager -n kuadrant-system
-     kubectl rollout restart deployment/authorino -n kuadrant-system
-     ```
-   - **Note**: This is a known Kuadrant issue that may occur after initial deployment
-6. **Gateway stuck in "Waiting for controller" on OpenShift**:
-   - **Symptom**: Gateway shows "Waiting for controller" indefinitely
-   - **Expected behavior**: Creating the GatewayClass should automatically trigger Service Mesh installation
-   - **If automatic installation doesn't work**:
-     1. Install Red Hat OpenShift Service Mesh operator from OperatorHub manually
-     2. Create a Service Mesh control plane (Istio instance):
-        ```bash
-        cat <<EOF | kubectl apply -f -
-        apiVersion: sailoperator.io/v1
-        kind: Istio
-        metadata:
-          name: openshift-gateway
-        spec:
-          version: v1.26.4
-          namespace: openshift-ingress
-        EOF
-        ```
-   - **Note**: This is typically only needed on non-RHOAI OpenShift clusters
+1. **Rate limiting not working**: Verify AuthPolicy and TokenRateLimitPolicy exist and are enforce
+2. **Routes not accessible (503 errors)**: Check Maas Default Gateway status and HTTPRoute configuration
+3. **Kuadrant installation fails with CRD errors**: The deployment script now automatically cleans up leftover CRDs from previous installations
 
 ## Next Steps
 

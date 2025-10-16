@@ -6,8 +6,8 @@ This document covers the observability stack for the MaaS Platform, including me
 
 As part of Dev Preview MaaS Platform includes a basic observability stack that provides insights into system performance, usage patterns, and operational health. The observability stack consists of:
 
-> [!NOTE]
-> The observability stack will be enhanced in the future.
+!!! note
+    The observability stack will be enhanced in the future.
 
 - **Limitador**: Rate limiting service that exposes metrics
 - **Prometheus**: Metrics collection and storage

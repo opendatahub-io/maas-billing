@@ -3,9 +3,9 @@
 This guide explains how to obtain and use tokens to access models in the tier-based access control system. 
 It covers the token issuance mechanism, service account integration, and token lifecycle management.
 
-> [!NOTE]
-> **Prerequisites**: This document assumes you have already configured tiers, RBAC, and rate limits. 
-> See [Configuring Subscription Tiers](tiers.md) for setup instructions.
+!!! note
+    **Prerequisites**: This document assumes you have already configured tiers, RBAC, and rate limits. 
+    See [Configuring Subscription Tiers](tiers.md) for setup instructions.
 
 ---
 
@@ -129,8 +129,8 @@ ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 echo $ACCESS_TOKEN
 ```
 
-> [!NOTE]
-> Replace with the actual route to your `maas-api` instance.
+!!! note
+    Replace with the actual route to your `maas-api` instance.
 
 ### Step 3: Use the Access Token to Call the Model
 
@@ -191,10 +191,10 @@ curl -sSk -X DELETE "${MAAS_API_URL}/v1/tokens" \
 This action immediately deletes your underlying Service Account, which invalidates all tokens that have ever been issued for it. 
 The Service Account will be automatically recreated the next time you request a token.
 
-> [!IMPORTANT]
-> **For Platform Administrators**: Admins can manually revoke a user's tokens by finding and deleting their Service Account 
-> in the appropriate tier namespace (e.g., `<instance-name>-tier-premium`). This is an effective way to immediately cut 
-> off access for a specific user in response to a security event.
+!!! important "For Platform Administrators"
+    Admins can manually revoke a user's tokens by finding and deleting their Service Account 
+    in the appropriate tier namespace (e.g., `<instance-name>-tier-premium`). This is an effective way to immediately cut 
+    off access for a specific user in response to a security event.
 
 ---
 

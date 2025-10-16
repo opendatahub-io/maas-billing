@@ -71,6 +71,8 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.superfences
+  - pymdownx.tasklist:
+      clickable_checkbox: true
   - pymdownx.tilde
   - pymdownx.caret
   - pymdownx.mark

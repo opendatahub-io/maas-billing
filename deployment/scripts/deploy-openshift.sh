@@ -398,7 +398,7 @@ kubectl delete networkpolicy odh-model-controller -n opendatahub 2>/dev/null && 
   echo "   ⚠️  NetworkPolicy not found or already removed"
 
 echo "   🔧 Restarting Kuadrant, Authorino, and Limitador operators to refresh webhook configurations..."
-kubectl rollout restart deployment kuadrant-operator-controller-manager -n kuadrant-system 2>/dev/null && \
+kubectl delete pod -n kuadrant-system -l control-plane=controller-manager 2>/dev/null && \
   echo "   ✅ Kuadrant operator restarted" || \
   echo "   ⚠️  Could not restart Kuadrant operator"
 
@@ -446,6 +446,8 @@ echo "Policy Status:"
 kubectl get authpolicy -n openshift-ingress gateway-auth-policy -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null | xargs echo "  AuthPolicy:"
 kubectl get tokenratelimitpolicy -n openshift-ingress gateway-token-rate-limits -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null | xargs echo "  TokenRateLimitPolicy:"
 
+
+
 echo ""
 echo "========================================="
 echo "📝 Next Steps:"
@@ -473,4 +475,7 @@ echo "   curl -sSk -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\
 echo ""
 echo "6. Test rate limiting (200 OK followed by 429 Rate Limit Exceeded after about 4 requests):"
 echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\"; done"
-
+echo ""
+echo "7. Run validation script (Runs all the checks again):"
+echo "   ./deployment/scripts/validate-deployment.sh"
+echo ""

@@ -5,9 +5,9 @@ including tier-to-group mappings, authorization policies, and rate limiting.
 
 Tiers enable differentiated service levels (e.g., free, premium, enterprise) with varying access permissions and quotas.
 
-> [!NOTE]
-> **For token management**: This guide covers tier configuration from an operator perspective. 
-> For information on how users obtain and use tokens, see [Token Management](token-management.md).
+!!! note
+    **For token management**: This guide covers tier configuration from an operator perspective. 
+    For information on how users obtain and use tokens, see [Token Management](token-management.md).
 
 ---
 
@@ -365,16 +365,16 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-> [!IMPORTANT]
-> **Why only `post` verb?**  
-> The `post` verb grants permission to send inference requests without giving users broader access to the Kubernetes resources. 
-> With only `post`, users **cannot**:
-> - Inspect model configurations (`get`)
-> - Modify resource definitions (`update`, `patch`)
-> - Delete model deployments (`delete`)
-> - Enumerate available models (`list`)
-> 
-> This strict confinement ensures that users can consume the AI service via the gateway without having any direct management access to the underlying resources.
+!!! important "Why only `post` verb?"
+    The `post` verb grants permission to send inference requests without giving users broader access to the Kubernetes resources. 
+    With only `post`, users **cannot**:
+    
+    - Inspect model configurations (`get`)
+    - Modify resource definitions (`update`, `patch`)
+    - Delete model deployments (`delete`)
+    - Enumerate available models (`list`)
+    
+    This strict confinement ensures that users can consume the AI service via the gateway without having any direct management access to the underlying resources.
 
 **Apply:**
 ```bash
@@ -419,9 +419,9 @@ spec:
         - expression: auth.identity.userid
 ```
 
-> [!NOTE]
-> This policy is applied to the `HTTPRoute` resource that handles the model inference requests, so it is specific to the particular model.
-> It can also be applied to the `Gateway` resource, and so it would apply to all models attached to this gateway.
+!!! note
+    This policy is applied to the `HTTPRoute` resource that handles the model inference requests, so it is specific to the particular model.
+    It can also be applied to the `Gateway` resource, and so it would apply to all models attached to this gateway.
 
 **Token-based limits** track LLM token consumption. Configure similarly with token counters.
 

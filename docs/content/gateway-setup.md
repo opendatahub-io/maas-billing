@@ -58,15 +58,15 @@ Before setting up the MaaS gateway, ensure you have:
 - **Cluster admin** or equivalent permissions
 - **MaaS API** deployed (for tier lookup functionality)
 
-> [!NOTE] 
-> For complete deployment prerequisites and platform-specific requirements, see the [Deployment Guide](../deployment/README.md).
+!!! note
+    For complete deployment prerequisites and platform-specific requirements, see the [Deployment Guide](../deployment/README.md).
 
 ## Step 1: Create GatewayClass
 
 The GatewayClass defines which controller will manage the Gateway. On OpenShift, use the built-in gateway controller:
 
-> [!NOTE] 
-> On OpenShift 4.19.9+, the GatewayClass is automatically available. On earlier versions, you may need to enable Gateway API feature gates first.
+!!! note
+    On OpenShift 4.19.9+, the GatewayClass is automatically available. On earlier versions, you may need to enable Gateway API feature gates first.
 
 ```bash
 kubectl apply -f - <<EOF
@@ -142,8 +142,8 @@ kubectl apply -f deployment/base/policies/gateway-auth-policy.yaml
 - **Access Control**: Uses Kubernetes RBAC to verify users have permission to access specific models
 - **Identity Enrichment**: Injects user ID and tier information into requests for downstream policies
 
-> [!NOTE]
-> User tiers are determined by namespace membership. Service accounts in `maas-default-gateway-tier-{free|premium|enterprise}` namespaces automatically inherit the corresponding tier. See [Tiers Documentation](./tiers.md) for complete tier management details.
+!!! note
+    User tiers are determined by namespace membership. Service accounts in `maas-default-gateway-tier-{free|premium|enterprise}` namespaces automatically inherit the corresponding tier. See [Tiers Documentation](./tiers.md) for complete tier management details.
 
 ### RateLimitPolicy - Request Rate Limiting
 
