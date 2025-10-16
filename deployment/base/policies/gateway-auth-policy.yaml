@@ -2,6 +2,8 @@
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
+  annotations:
+    opendatahub.io/managed: "false"
   name: gateway-auth-policy
   namespace: openshift-ingress
 spec:
