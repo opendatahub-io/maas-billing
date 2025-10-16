@@ -162,6 +162,7 @@ echo "Required tools:"
 echo "  - oc: $(oc version --client --short 2>/dev/null | head -n1 || echo 'not found')"
 echo "  - jq: $(jq --version 2>/dev/null || echo 'not found')"
 echo "  - kustomize: $(kustomize version --short 2>/dev/null || echo 'not found')"
+echo "  - git: $(git --version 2>/dev/null || echo 'not found')"
 echo ""
 echo "ℹ️  Note: OpenShift Service Mesh should be automatically installed when GatewayClass is created."
 echo "   If the Gateway gets stuck in 'Waiting for controller', you may need to manually"
@@ -243,44 +244,13 @@ echo "   Deploying Gateway and GatewayClass..."
 cd "$PROJECT_ROOT"
 envsubst < deployment/base/networking/gateway-api.yaml | kubectl apply --server-side=true --force-conflicts -f -
 
-# Wait for Gateway API CRDs if not already present
-if ! kubectl get crd gateways.gateway.networking.k8s.io &>/dev/null 2>&1; then
-    echo "   Waiting for Gateway API CRDs..."
-    wait_for_crd "gateways.gateway.networking.k8s.io" 120 || \
-        echo "   ⚠️  Gateway API CRDs not yet available"
-fi
-
 echo ""
 echo "5️⃣ Checking for OpenDataHub/RHOAI KServe..."
 if kubectl get crd llminferenceservices.serving.kserve.io &>/dev/null 2>&1; then
     echo "   ✅ KServe CRDs already present (ODH/RHOAI detected)"
 else
     echo "   ⚠️  KServe not detected. Deploying ODH KServe components..."
-    echo "   Note: This may require multiple attempts as CRDs need to be established first."
-    
-    # First attempt
-    echo "   Attempting ODH KServe deployment (attempt 1/2)..."
-    if kustomize build "$PROJECT_ROOT/deployment/components/odh/kserve" | kubectl apply --server-side=true --force-conflicts -f - 2>/dev/null; then
-        echo "   ✅ Initial deployment successful"
-    else
-        echo "   ⚠️  First attempt failed (expected if CRDs not yet ready)"
-    fi
-    
-    # Wait for CRDs and operator pods, then retry
-    echo "   Waiting for KServe CRDs to be established..."
-    if wait_for_crd "llminferenceservices.serving.kserve.io" 120; then
-        
-        wait_for_pods "opendatahub" 120 || true
-        wait_for_validating_webhooks opendatahub 90 || true
-        
-        echo "   Retrying deployment (attempt 2/2)..."
-        kustomize build "$PROJECT_ROOT/deployment/components/odh/kserve" | kubectl apply --server-side=true --force-conflicts -f - && \
-            echo "   ✅ ODH KServe components deployed successfully" || \
-            echo "   ⚠️  ODH KServe deployment failed. This may be expected if ODH operator manages these resources."
-    else
-        echo "   ⚠️  CRDs did not become ready in time. Continuing anyway..."
-        echo "   Run: kustomize build $PROJECT_ROOT/deployment/components/odh/kserve | kubectl apply --server-side=true --force-conflicts -f -"
-    fi
+    "$SCRIPT_DIR/install-dependencies.sh" --odh
 fi
 
 echo ""
