@@ -1,5 +1,18 @@
 # e2e Smoke Tests
 
+## Setup (one-time per workspace)
+
+**Prereqs:** Python 3.11+, `oc`, `kubectl`, `kustomize`, `jq` (and `yq` optional).
+
+```bash
+# create & activate a virtualenv
+python3.11 -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+
+# install Python deps used by the tests
+pip install --upgrade pip
+pip install -r testing/e2e/requirements.txt
+
 ## What Prow needs to provide (exports)
 - `CLUSTER_DOMAIN` – from cluster (e.g., `oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'`)
 - `HOST` – maas.${CLUSTER_DOMAIN}
