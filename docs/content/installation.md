@@ -67,9 +67,6 @@ kubectl get pods -n opendatahub
 
 #### Deploy Sample Models (Optional)
 
-!!! note
-    These models use KServe's `LLMInferenceService` custom resource, which requires ODH/RHOAI with KServe enabled.
-
 **Simulator Model (CPU)**
 ```bash
 PROJECT_DIR=$(git rev-parse --show-toplevel)
@@ -148,14 +145,13 @@ If you prefer to test manually or troubleshoot specific components, follow these
 
 #### 1. Get Gateway Endpoint
 
-For OpenShift:
 ```bash
-HOST="$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')"
+CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+HOST="maas.${CLUSTER_DOMAIN}"
 ```
 
 #### 2. Get Authentication Token
 
-For OpenShift:
 ```bash
 TOKEN_RESPONSE=$(curl -sSk \
   -H "Authorization: Bearer $(oc whoami -t)" \
