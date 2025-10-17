@@ -12,6 +12,7 @@
 REQUESTED_MODEL=""
 CUSTOM_REQUEST_PAYLOAD=""
 INFERENCE_ENDPOINT="chat/completions"  # Default to chat completions
+CUSTOM_MODEL_PATH=""  # Custom path for model endpoint (overrides --endpoint)
 
 # Show help if requested
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
@@ -33,6 +34,8 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo "                            Default (Chat): '{\"model\": \"\${MODEL_NAME}\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}], \"max_tokens\": 5}'"
     echo "  --endpoint ENDPOINT       API endpoint to use: 'chat/completions' or 'completions'"
     echo "                            Default: 'chat/completions'"
+    echo "  --model-path PATH         Custom path for model endpoint (e.g., '/v1/responses')"
+    echo "                            Overrides --endpoint if provided"
     echo ""
     echo "Examples:"
     echo "  # Basic validation"
@@ -40,7 +43,10 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo "  $0 llm-simulator                                # Validate using llm-simulator model"
     echo ""
     echo "  # For base models like granite (use completions endpoint with 'prompt')"
-    echo "  $0 granite-8b-base --endpoint completions --request-payload '{\"model\": \"\${MODEL_NAME}\", \"messages\": \"Hello, how are you?\", \"max_tokens\": 50}'"
+    echo "  $0 granite-8b-base --endpoint responses --request-payload '{\"model\": \"\${MODEL_NAME}\", \"input\": \"Hello\", \"max_tokens\": 50}'"
+    echo ""
+    echo "  # For custom model paths (e.g., special inference endpoints)"
+    echo "  $0 my-model --model-path /v1/responses --request-payload '{\"input\": \"test\"}'"
     echo ""
     echo "  # For instruction/chat models (default format works)"
     echo "  $0 qwen3-instruct"
@@ -446,7 +452,12 @@ else
                 
                 # Set the inference endpoint if we have a valid model
                 if [ -n "$MODEL_CHAT" ] && [ "$MODEL_CHAT" != "null" ]; then
-                    MODEL_CHAT_ENDPOINT="${MODEL_CHAT}/v1/${INFERENCE_ENDPOINT}"
+                    # Use custom model path if provided, otherwise use endpoint
+                    if [ -n "$CUSTOM_MODEL_PATH" ]; then
+                        MODEL_CHAT_ENDPOINT="${MODEL_CHAT}${CUSTOM_MODEL_PATH}"
+                    else
+                        MODEL_CHAT_ENDPOINT="${MODEL_CHAT}/v1/${INFERENCE_ENDPOINT}"
+                    fi
                 elif [ -n "$MODEL_NAME" ]; then
                     print_warning "Model endpoint not found" "Model endpoint not found for $MODEL_NAME" "Check model HTTPRoute configuration: kubectl get httproute -n llm"
                     MODEL_NAME=""
@@ -520,6 +531,7 @@ else
             print_warning "Rate limiting (HTTP 429)" "Response: $(echo $RESPONSE_BODY | head -c 200)" "wait a minute and try again"
         else
             print_fail "Model inference failed (HTTP $HTTP_CODE)" "Response: $(echo $RESPONSE_BODY | head -c 200)" "Check model pod logs and HTTPRoute configuration, this model may also have a different response format"
+          
         fi
     fi
     
