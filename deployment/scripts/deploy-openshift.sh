@@ -409,7 +409,7 @@ kubectl rollout restart deployment kuadrant-operator-controller-manager -n kuadr
   echo "   ✅ Kuadrant operator restarted" || \
   echo "   ⚠️  Could not restart Kuadrant operator"
 
-kubectl rollout restart deployment authorino-controller-manager -n kuadrant-system 2>/dev/null && \
+kubectl rollout restart deployment authorino-operator -n kuadrant-system 2>/dev/null && \
   echo "   ✅ Authorino operator restarted" || \
   echo "   ⚠️  Could not restart Authorino operator"
 
@@ -420,7 +420,7 @@ kubectl rollout restart deployment limitador-operator-controller-manager -n kuad
 echo "   Waiting for operators to be ready..."
 kubectl rollout status deployment kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Kuadrant operator taking longer than expected"
-kubectl rollout status deployment authorino-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
+kubectl rollout status deployment authorino-operator -n kuadrant-system --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Authorino operator taking longer than expected"
 kubectl rollout status deployment limitador-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Limitador operator taking longer than expected"
@@ -475,7 +475,7 @@ echo "   kubectl describe authpolicy gateway-auth-policy -n openshift-ingress | 
 echo ""
 echo "2. If Gateway API provider is not installed, restart all Kuadrant operators:"
 echo "   kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system"
-echo "   kubectl rollout restart deployment/authorino-controller-manager -n kuadrant-system"
+echo "   kubectl rollout restart deployment/authorino-operator -n kuadrant-system"
 echo "   kubectl rollout restart deployment/limitador-operator-controller-manager -n kuadrant-system"
 echo ""
 echo "3. Check if OpenShift Gateway Controller is available:"
