@@ -302,7 +302,7 @@ else
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${TOKEN}" \
             "${ENDPOINT}" 2>/dev/null || echo "")
-        
+        echo "$MODELS_RESPONSE"
         HTTP_CODE=$(echo "$MODELS_RESPONSE" | tail -n1)
         RESPONSE_BODY=$(echo "$MODELS_RESPONSE" | sed '$d')
         
@@ -312,51 +312,56 @@ else
                 "The endpoint is not reachable (VPN/firewall/DNS issue)" \
                 "Check Gateway and HTTPRoute configuration"
             MODEL_NAME=""
-            MODEL_URL=""
+            MODEL_CHAT_ENDPOINT=""
         elif [ "$HTTP_CODE" = "200" ]; then
             MODEL_COUNT=$(echo "$RESPONSE_BODY" | jq -r '.data | length' 2>/dev/null || echo "0")
             if [ "$MODEL_COUNT" -gt 0 ]; then
-                print_success "Models endpoint accessible, found $MODEL_COUNT model(s)"
                 MODEL_NAME=$(echo "$RESPONSE_BODY" | jq -r '.data[0].id' 2>/dev/null || echo "")
-                MODEL_URL=$(echo "$RESPONSE_BODY" | jq -r '.data[0].url' 2>/dev/null || echo "")
+                MODEL_CHAT=$(echo "$RESPONSE_BODY" | jq -r '.data[0].url' 2>/dev/null || echo "")
+                if [ -n "$MODEL_CHAT" ]; then
+                    MODEL_CHAT_ENDPOINT="${MODEL_CHAT}/v1/chat/completions"
+                else
+                    print_warning "Model chat endpoint not found" "Model chat endpoint not found for $MODEL_NAME" "Check model HTTPRoute configuration: kubectl get httproute -n llm"
+                fi
+                print_success "Models endpoint accessible, found $MODEL_COUNT model(s) using $MODEL_NAME for validation"
             else
                 print_warning "Models endpoint accessible but no models found" "You may need to deploy a model a simulated model can be deployed with the following command:" "kustomize build docs/samples/models/simulator | kubectl apply --server-side=true --force-conflicts -f -"
                 MODEL_NAME=""
-                MODEL_URL=""
+                MODEL_CHAT_ENDPOINT=""
             fi
         elif [ "$HTTP_CODE" = "404" ]; then
             print_fail "Endpoint not found (HTTP 404)" \
                 "Path is incorrect - traffic reaching pods but wrong path" \
                 "Check HTTPRoute: kubectl describe httproute maas-api-route -n maas-api"
             MODEL_NAME=""
-            MODEL_URL=""
+            MODEL_CHAT_ENDPOINT=""
         elif [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ]; then
             print_fail "Gateway/Service error (HTTP $HTTP_CODE)" \
                 "Gateway cannot reach backend service" \
                 "Check MaaS API pods and service: kubectl get pods,svc -n maas-api"
             MODEL_NAME=""
-            MODEL_URL=""
+            MODEL_CHAT_ENDPOINT=""
         else
             print_fail "Models endpoint failed (HTTP $HTTP_CODE)" "Response: $(echo $RESPONSE_BODY | head -c 100)" "Check MaaS API service and logs"
             MODEL_NAME=""
-            MODEL_URL=""
+            MODEL_CHAT_ENDPOINT=""
         fi
     else
         print_warning "Skipping models endpoint test" "No authentication token available"
         MODEL_NAME=""
-        MODEL_URL=""
+        MODEL_CHAT_ENDPOINT=""
     fi
     
     # Test model inference endpoint (if model exists)
-    if [ -n "$TOKEN" ] && [ -n "$MODEL_NAME" ] && [ -n "$MODEL_URL" ]; then
+    if [ -n "$TOKEN" ] && [ -n "$MODEL_NAME" ] && [ -n "$MODEL_CHAT_ENDPOINT" ]; then
         print_check "Model inference endpoint"
-        print_info "Testing: curl -sSk -X POST ${MODEL_URL} -H 'Authorization: Bearer \$TOKEN' -H 'Content-Type: application/json' -d '{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 5}'"
+        print_info "Testing: curl -sSk -X POST ${MODEL_CHAT_ENDPOINT} -H 'Authorization: Bearer \$TOKEN' -H 'Content-Type: application/json' -d '{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 5}'"
         
         INFERENCE_RESPONSE=$(curl -sSk --connect-timeout 10 --max-time 30 -w "\n%{http_code}" \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 5}" \
-            "${MODEL_URL}" 2>/dev/null || echo "")
+            "${MODEL_CHAT_ENDPOINT}" 2>/dev/null || echo "")
         
         HTTP_CODE=$(echo "$INFERENCE_RESPONSE" | tail -n1)
         RESPONSE_BODY=$(echo "$INFERENCE_RESPONSE" | sed '$d')
@@ -382,7 +387,7 @@ else
     fi
     
     # Test rate limiting
-    if [ -n "$TOKEN" ] && [ -n "$MODEL_NAME" ] && [ -n "$MODEL_URL" ]; then
+    if [ -n "$TOKEN" ] && [ -n "$MODEL_NAME" ] && [ -n "$MODEL_CHAT_ENDPOINT" ]; then
         print_check "Rate limiting"
         print_info "Sending 10 rapid requests to test rate limiting..."
         
@@ -394,7 +399,7 @@ else
                 -H "Authorization: Bearer ${TOKEN}" \
                 -H "Content-Type: application/json" \
                 -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Test\", \"max_tokens\": 1}" \
-                "${MODEL_URL}" 2>/dev/null || echo "000")
+                "${MODEL_CHAT_ENDPOINT}" 2>/dev/null || echo "000")
             
             if [ "$HTTP_CODE" = "200" ]; then
                 ((SUCCESS_COUNT++))
@@ -414,11 +419,11 @@ else
     
     # Test unauthorized access
     print_check "Authorization enforcement (401 without token)"
-    if [ -n "$MODEL_NAME" ] && [ -n "$MODEL_URL" ]; then
+    if [ -n "$MODEL_NAME" ] && [ -n "$MODEL_CHAT_ENDPOINT" ]; then
         UNAUTH_CODE=$(curl -sSk --connect-timeout 5 --max-time 15 -o /dev/null -w "%{http_code}" \
             -H "Content-Type: application/json" \
             -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Test\", \"max_tokens\": 1}" \
-            "${MODEL_URL}" 2>/dev/null || echo "000")
+            "${MODEL_CHAT_ENDPOINT}" 2>/dev/null || echo "000")
         
         if [ "$UNAUTH_CODE" = "401" ]; then
             print_success "Authorization is enforced (got 401 without token)"
