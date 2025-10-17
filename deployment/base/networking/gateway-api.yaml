@@ -34,6 +34,7 @@ metadata:
     app.kubernetes.io/name: maas
     app.kubernetes.io/instance: maas-default-gateway
     app.kubernetes.io/component: gateway
+    opendatahub.io/managed: "false"
 spec:
   gatewayClassName: openshift-default
   listeners:
