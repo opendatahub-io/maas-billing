@@ -2,8 +2,103 @@
 
 # MaaS Platform Deployment Validation Script
 # This script validates that the MaaS platform is correctly deployed and functional
+#
+# Usage: ./validate-deployment.sh [MODEL_NAME]
+#   MODEL_NAME: Optional. If provided, the script will validate using this specific model
 
 # Note: We don't use 'set -e' because we want to continue validation even if some checks fail
+
+# Parse command line arguments
+REQUESTED_MODEL=""
+CUSTOM_REQUEST_PAYLOAD=""
+INFERENCE_ENDPOINT="chat/completions"  # Default to chat completions
+
+# Show help if requested
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    echo "MaaS Platform Deployment Validation Script"
+    echo ""
+    echo "Usage: $0 [OPTIONS] [MODEL_NAME]"
+    echo ""
+    echo "This script validates that the MaaS platform is correctly deployed and functional."
+    echo "It performs checks on components, gateway status, policies, and API endpoints."
+    echo ""
+    echo "Arguments:"
+    echo "  MODEL_NAME    Optional. Name of a specific model to use for validation."
+    echo "                If not provided, the first available model will be used."
+    echo ""
+    echo "Options:"
+    echo "  -h, --help                Show this help message and exit"
+    echo "  --request-payload JSON    Custom JSON request payload for model inference tests."
+    echo "                            Use \${MODEL_NAME} as a placeholder for the model name."
+    echo "                            Default (Chat): '{\"model\": \"\${MODEL_NAME}\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}], \"max_tokens\": 5}'"
+    echo "  --endpoint ENDPOINT       API endpoint to use: 'chat/completions' or 'completions'"
+    echo "                            Default: 'chat/completions'"
+    echo ""
+    echo "Examples:"
+    echo "  # Basic validation"
+    echo "  $0                                              # Validate using first available model (default chat format)"
+    echo "  $0 llm-simulator                                # Validate using llm-simulator model"
+    echo ""
+    echo "  # For base models like granite (use completions endpoint with 'prompt')"
+    echo "  $0 granite-8b-base --endpoint completions --request-payload '{\"model\": \"\${MODEL_NAME}\", \"messages\": \"Hello, how are you?\", \"max_tokens\": 50}'"
+    echo ""
+    echo "  # For instruction/chat models (default format works)"
+    echo "  $0 qwen3-instruct"
+    echo ""
+    echo "Exit Codes:"
+    echo "  0    All critical checks passed"
+    echo "  1    Some checks failed"
+    echo ""
+    exit 0
+fi
+
+# Parse arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --request-payload)
+            CUSTOM_REQUEST_PAYLOAD="$2"
+            shift 2
+            ;;
+        --endpoint)
+            INFERENCE_ENDPOINT="$2"
+            shift 2
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+        *)
+            if [ -z "$REQUESTED_MODEL" ]; then
+                REQUESTED_MODEL="$1"
+            else
+                echo "Error: Multiple model names provided"
+                echo "Use --help for usage information"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Set default request payload if not provided (OpenAI Chat Completions format)
+if [ -z "$CUSTOM_REQUEST_PAYLOAD" ]; then
+    DEFAULT_REQUEST_PAYLOAD='{"model": "${MODEL_NAME}", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 5}'
+else
+    DEFAULT_REQUEST_PAYLOAD="$CUSTOM_REQUEST_PAYLOAD"
+fi
+
+if [ -n "$REQUESTED_MODEL" ]; then
+    echo "Requested model for validation: $REQUESTED_MODEL"
+fi
+
+if [ -n "$CUSTOM_REQUEST_PAYLOAD" ]; then
+    echo "Using custom request payload: $CUSTOM_REQUEST_PAYLOAD"
+fi
+
+if [ "$INFERENCE_ENDPOINT" != "chat/completions" ]; then
+    echo "Using custom endpoint: /v1/$INFERENCE_ENDPOINT"
+fi
 
 # Color codes for output
 RED='\033[0;31m'
@@ -71,6 +166,10 @@ if ! kubectl api-resources | grep -q "route.openshift.io"; then
 fi
 
 print_header "🚀 MaaS Platform Deployment Validation"
+
+if [ -n "$REQUESTED_MODEL" ]; then
+    print_info "Validation will use model: $REQUESTED_MODEL"
+fi
 
 # ==========================================
 # 1. Component Status Checks
@@ -302,7 +401,6 @@ else
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${TOKEN}" \
             "${ENDPOINT}" 2>/dev/null || echo "")
-        echo "$MODELS_RESPONSE"
         HTTP_CODE=$(echo "$MODELS_RESPONSE" | tail -n1)
         RESPONSE_BODY=$(echo "$MODELS_RESPONSE" | sed '$d')
         
@@ -316,14 +414,44 @@ else
         elif [ "$HTTP_CODE" = "200" ]; then
             MODEL_COUNT=$(echo "$RESPONSE_BODY" | jq -r '.data | length' 2>/dev/null || echo "0")
             if [ "$MODEL_COUNT" -gt 0 ]; then
-                MODEL_NAME=$(echo "$RESPONSE_BODY" | jq -r '.data[0].id' 2>/dev/null || echo "")
-                MODEL_CHAT=$(echo "$RESPONSE_BODY" | jq -r '.data[0].url' 2>/dev/null || echo "")
-                if [ -n "$MODEL_CHAT" ]; then
-                    MODEL_CHAT_ENDPOINT="${MODEL_CHAT}/v1/chat/completions"
+                print_success "Models endpoint accessible, found $MODEL_COUNT model(s)"
+                
+                # Print list of available models
+                print_info "Available models:"
+                echo "$RESPONSE_BODY" | jq -r '.data[] | "  • \(.id) - \(.url)"' 2>/dev/null || echo "  Could not parse model list"
+                echo ""
+                
+                # Check if a specific model was requested
+                if [ -n "$REQUESTED_MODEL" ]; then
+                    # Look for the requested model in the response
+                    MODEL_INDEX=$(echo "$RESPONSE_BODY" | jq -r ".data | map(.id) | index(\"$REQUESTED_MODEL\")" 2>/dev/null || echo "null")
+                    
+                    if [ "$MODEL_INDEX" != "null" ] && [ -n "$MODEL_INDEX" ]; then
+                        MODEL_NAME=$(echo "$RESPONSE_BODY" | jq -r ".data[$MODEL_INDEX].id" 2>/dev/null || echo "")
+                        MODEL_CHAT=$(echo "$RESPONSE_BODY" | jq -r ".data[$MODEL_INDEX].url" 2>/dev/null || echo "")
+                        print_info "Using requested model: $MODEL_NAME for validation"
+                    else
+                        # Requested model not found
+                        print_fail "Requested model '$REQUESTED_MODEL' not found" "See available models above" "Use one of the available models or deploy the requested model"
+                        MODEL_NAME=""
+                        MODEL_CHAT=""
+                        MODEL_CHAT_ENDPOINT=""
+                    fi
                 else
-                    print_warning "Model chat endpoint not found" "Model chat endpoint not found for $MODEL_NAME" "Check model HTTPRoute configuration: kubectl get httproute -n llm"
+                    # No specific model requested, use the first one (default behavior)
+                    MODEL_NAME=$(echo "$RESPONSE_BODY" | jq -r '.data[0].id' 2>/dev/null || echo "")
+                    MODEL_CHAT=$(echo "$RESPONSE_BODY" | jq -r '.data[0].url' 2>/dev/null || echo "")
+                    print_info "Using first available model: $MODEL_NAME for validation"
                 fi
-                print_success "Models endpoint accessible, found $MODEL_COUNT model(s) using $MODEL_NAME for validation"
+                
+                # Set the inference endpoint if we have a valid model
+                if [ -n "$MODEL_CHAT" ] && [ "$MODEL_CHAT" != "null" ]; then
+                    MODEL_CHAT_ENDPOINT="${MODEL_CHAT}/v1/${INFERENCE_ENDPOINT}"
+                elif [ -n "$MODEL_NAME" ]; then
+                    print_warning "Model endpoint not found" "Model endpoint not found for $MODEL_NAME" "Check model HTTPRoute configuration: kubectl get httproute -n llm"
+                    MODEL_NAME=""
+                    MODEL_CHAT_ENDPOINT=""
+                fi
             else
                 print_warning "Models endpoint accessible but no models found" "You may need to deploy a model a simulated model can be deployed with the following command:" "kustomize build docs/samples/models/simulator | kubectl apply --server-side=true --force-conflicts -f -"
                 MODEL_NAME=""
@@ -355,12 +483,16 @@ else
     # Test model inference endpoint (if model exists)
     if [ -n "$TOKEN" ] && [ -n "$MODEL_NAME" ] && [ -n "$MODEL_CHAT_ENDPOINT" ]; then
         print_check "Model inference endpoint"
-        print_info "Testing: curl -sSk -X POST ${MODEL_CHAT_ENDPOINT} -H 'Authorization: Bearer \$TOKEN' -H 'Content-Type: application/json' -d '{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 5}'"
+        
+        # Substitute MODEL_NAME placeholder in the request payload
+        REQUEST_PAYLOAD="${DEFAULT_REQUEST_PAYLOAD//\$\{MODEL_NAME\}/$MODEL_NAME}"
+        
+        print_info "Testing: curl -sSk -X POST ${MODEL_CHAT_ENDPOINT} -H 'Authorization: Bearer \$TOKEN' -H 'Content-Type: application/json' -d '${REQUEST_PAYLOAD}'"
         
         INFERENCE_RESPONSE=$(curl -sSk --connect-timeout 10 --max-time 30 -w "\n%{http_code}" \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 5}" \
+            -d "${REQUEST_PAYLOAD}" \
             "${MODEL_CHAT_ENDPOINT}" 2>/dev/null || echo "")
         
         HTTP_CODE=$(echo "$INFERENCE_RESPONSE" | tail -n1)
@@ -373,6 +505,7 @@ else
                 "Check Gateway and model HTTPRoute: kubectl get httproute -n llm"
         elif [ "$HTTP_CODE" = "200" ]; then
             print_success "Model inference endpoint working"
+            print_info "Response: $(echo $RESPONSE_BODY | head -c 200)"
         elif [ "$HTTP_CODE" = "404" ]; then
             print_fail "Model inference endpoint not found (HTTP 404)" \
                 "Path is incorrect - traffic reaching but wrong path" \
@@ -381,8 +514,12 @@ else
             print_fail "Gateway/Service error (HTTP $HTTP_CODE)" \
                 "Gateway cannot reach model service" \
                 "Check: 1) Model pods running: kubectl get pods -n llm, 2) Model service exists, 3) HTTPRoute configured: kubectl get httproute -n llm"
+        elif [ "$HTTP_CODE" = "401" ]; then
+            print_fail "Authorization failed (HTTP 401)" "Response: $(echo $RESPONSE_BODY | head -c 200)" "Check AuthPolicy and TokenRateLimitPolicy"
+        elif [ "$HTTP_CODE" = "429" ]; then
+            print_warning "Rate limiting (HTTP 429)" "Response: $(echo $RESPONSE_BODY | head -c 200)" "wait a minute and try again"
         else
-            print_fail "Model inference failed (HTTP $HTTP_CODE)" "Response: $(echo $RESPONSE_BODY | head -c 200)" "Check model pod logs and HTTPRoute configuration"
+            print_fail "Model inference failed (HTTP $HTTP_CODE)" "Response: $(echo $RESPONSE_BODY | head -c 200)" "Check model pod logs and HTTPRoute configuration, this model may also have a different response format"
         fi
     fi
     
@@ -391,6 +528,9 @@ else
         print_check "Rate limiting"
         print_info "Sending 10 rapid requests to test rate limiting..."
         
+        # Use the same request payload for rate limiting tests
+        REQUEST_PAYLOAD="${DEFAULT_REQUEST_PAYLOAD//\$\{MODEL_NAME\}/$MODEL_NAME}"
+        
         SUCCESS_COUNT=0
         RATE_LIMITED_COUNT=0
         
@@ -398,7 +538,7 @@ else
             HTTP_CODE=$(curl -sSk --connect-timeout 5 --max-time 15 -o /dev/null -w "%{http_code}" \
                 -H "Authorization: Bearer ${TOKEN}" \
                 -H "Content-Type: application/json" \
-                -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Test\", \"max_tokens\": 1}" \
+                -d "${REQUEST_PAYLOAD}" \
                 "${MODEL_CHAT_ENDPOINT}" 2>/dev/null || echo "000")
             
             if [ "$HTTP_CODE" = "200" ]; then
@@ -420,9 +560,12 @@ else
     # Test unauthorized access
     print_check "Authorization enforcement (401 without token)"
     if [ -n "$MODEL_NAME" ] && [ -n "$MODEL_CHAT_ENDPOINT" ]; then
+        # Use the same request payload for unauthorized test
+        REQUEST_PAYLOAD="${DEFAULT_REQUEST_PAYLOAD//\$\{MODEL_NAME\}/$MODEL_NAME}"
+        
         UNAUTH_CODE=$(curl -sSk --connect-timeout 5 --max-time 15 -o /dev/null -w "%{http_code}" \
             -H "Content-Type: application/json" \
-            -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Test\", \"max_tokens\": 1}" \
+            -d "${REQUEST_PAYLOAD}" \
             "${MODEL_CHAT_ENDPOINT}" 2>/dev/null || echo "000")
         
         if [ "$UNAUTH_CODE" = "401" ]; then
@@ -453,6 +596,7 @@ if [ "$FAILED" -eq 0 ]; then
     echo "  1. Deploy a model: kustomize build docs/samples/models/simulator | kubectl apply -f -"
     echo "  2. Access the API at: ${HOST:-https://maas.\${CLUSTER_DOMAIN}}"
     echo "  3. Check documentation: docs/README.md"
+    echo "  4. Re-run validation with specific model: ./deployment/scripts/validate-deployment.sh MODEL_NAME"
     exit 0
 else
     print_fail "Some checks failed. Please review the errors above."
@@ -461,6 +605,9 @@ else
     echo "  - Wait for pods to start: kubectl get pods -A | grep -v Running"
     echo "  - Check operator logs: kubectl logs -n kuadrant-system -l app.kubernetes.io/name=kuadrant-operator"
     echo "  - Re-run deployment: ./deployment/scripts/deploy-openshift.sh"
+    echo ""
+    echo "Usage: ./deployment/scripts/validate-deployment.sh [MODEL_NAME]"
+    echo "  MODEL_NAME: Optional. Specify a model to validate against"
     echo ""
     exit 1
 fi
