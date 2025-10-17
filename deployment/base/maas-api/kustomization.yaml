@@ -4,7 +4,6 @@ kind: Kustomization
 namespace: maas-api
 
 resources:
-  - namespace.yaml
   - deployment.yaml
   - service.yaml
   - rbac

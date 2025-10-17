@@ -206,7 +206,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
-if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0-rc2 &>/dev/null 2>&1; then
+if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&1; then
     echo "   No existing installation found, checking for leftover CRDs..."
     LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
     if [ -n "$LEFTOVER_CRDS" ]; then
@@ -286,7 +286,7 @@ fi
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
 # Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
-wait_for_csv "kuadrant-operator.v1.3.0-rc2" "kuadrant-system" 300 || \
+wait_for_csv "kuadrant-operator.v1.3.0" "kuadrant-system" 300 || \
     echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
 
 wait_for_csv "authorino-operator.v0.22.0" "kuadrant-system" 60 || \
@@ -314,20 +314,6 @@ echo ""
 echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
 kustomize build deployment/base/maas-api | envsubst | kubectl apply -f -
-
-echo ""
-echo "9️⃣ Applying OpenShift-specific configurations..."
-
-# Patch Kuadrant for OpenShift Gateway Controller
-echo "   Patching Kuadrant operator..."
-if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
-  kubectl get csv kuadrant-operator.v1.3.0-rc2 -n kuadrant-system -o json | \
-  jq '.spec.install.spec.deployments[0].spec.template.spec.containers[0].env |= map(if .name == "ISTIO_GATEWAY_CONTROLLER_NAMES" then . + {"value": "istio.io/gateway-controller,openshift.io/gateway-controller/v1"} else . end)' | \
-  kubectl apply -f -
-  echo "   ✅ Kuadrant operator patched"
-else
-  echo "   ✅ Kuadrant operator already configured"
-fi
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
