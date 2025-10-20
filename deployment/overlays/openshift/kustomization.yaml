@@ -21,7 +21,3 @@ resources:
   # Sample models (optional, can be commented out if not needed)
   # - ../../samples/models/simulator
   # - ../../samples/models/qwen3
-  
-  # OpenShift-specific additions
-  - openshift-routes.yaml
-  - gateway-route.yaml  # Route to gateway for rate-limited model access

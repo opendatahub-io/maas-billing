@@ -363,12 +363,6 @@ cd "$PROJECT_ROOT"
 kustomize build deployment/base/policies | kubectl apply --server-side=true --force-conflicts -f -
 
 echo ""
-echo "1️⃣2️⃣ Deploying OpenShift Routes..."
-cd "$PROJECT_ROOT"
-envsubst < deployment/overlays/openshift/openshift-routes.yaml | kubectl apply -f -
-envsubst < deployment/overlays/openshift/gateway-route.yaml | kubectl apply -f -
-
-echo ""
 echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
 AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
 if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
