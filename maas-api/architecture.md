@@ -1,253 +1,608 @@
 # MaaS API Architecture
 
-**For a live demo see the [MaaS API Quickstart](./README.md)**
-
 ## Overview
 
-Enables team-based API key management system that integrates with Kuadrant for authentication, authorization, and rate
-limiting. It provides multi-tenant access control for the KServe inference services plus resource usage metrics.
+The MaaS (Model as a Service) API provides a tier-based token management system for accessing AI models through KServe. It integrates with OpenShift authentication, Kuadrant policies, and Gateway API to deliver multi-tenant access control, rate limiting, and usage metrics for LLM inference services.
+
+## Key Features
+
+- **Tier-Based Access Control**: Users are assigned to tiers (free, premium, enterprise) based on Kubernetes group membership
+- **Short-Lived Token Issuance**: Self-service ephemeral tokens with configurable expiration
+- **Rate & Token Limiting**: Per-tier request and token consumption limits
+- **Model Discovery**: Automatic listing of available KServe InferenceServices and LLMInferenceServices
+- **Usage Metrics**: Real-time telemetry with user, tier, and model tracking
+- **Kubernetes-Native**: Leverages Service Accounts, RBAC, and TokenReview for authentication
+
+## Technology Stack
+
+- **Backend**: Go with Gin framework
+- **Authentication**: Kubernetes TokenReview API + OpenShift OAuth
+- **Authorization**: Kubernetes SubjectAccessReview (RBAC)
+- **Gateway**: OpenShift Gateway API implementation
+- **Policies**: Kuadrant (AuthPolicy, RateLimitPolicy, TokenRateLimitPolicy, TelemetryPolicy)
+- **Model Serving**: KServe InferenceServices and LLMInferenceServices
+- **Metrics**: Prometheus via Limitador and TelemetryPolicy
+- **Rate Limiting**: Limitador (part of Kuadrant)
 
 ## API Endpoint Reference
 
-| Endpoint                 | Method | Purpose                                    | Request Body            | Response                      |
-|--------------------------|--------|--------------------------------------------|-------------------------|-------------------------------|
-| `/models`                | GET    | List available AI models (ISVCs)           | None                    | OpenAI-compatible models list |
-| `/v1/models`             | GET    | List available AI models (LLMIsvc)         | None                    | OpenAI-compatible models list |
-| `/teams`                 | POST   | Create new team with policy                | Team config             | Team details                  |
-| `/teams`                 | GET    | List all teams                             | None                    | Array of team summaries       |
-| `/teams/{team_id}`       | GET    | Get team details and configuration         | None                    | Complete team info            |
-| `/teams/{team_id}`       | PATCH  | Update team configuration                  | Team updates            | Updated team                  |
-| `/teams/{team_id}`       | DELETE | Delete team and all resources              | None                    | Success confirmation          |
-| `/teams/{team_id}/keys`  | POST   | Create team-scoped API key                 | User config             | API key with team context     |
-| `/teams/{team_id}/keys`  | GET    | List all team API keys                     | None                    | Array of team API keys        |
-| `/teams/{team_id}/usage` | GET    | Get team usage metrics with user breakdown | None                    | Team usage statistics         |
-| `/keys/{key_name}`       | DELETE | Delete specific API key                    | None                    | Success confirmation          |
-| `/users/{user_id}/keys`  | GET    | List all user keys across teams            | None                    | Array of user API keys        |
-| `/users/{user_id}/usage` | GET    | Get user usage metrics across all teams    | None                    | User usage statistics         |
-
-### Auxiliary API Reference
-
-| Endpoint                 | Method | Purpose                                    | Request Body | Response                      |
-|--------------------------|--------|--------------------------------------------|--------------|-------------------------------|
-| `/health`                | GET    | Service health check                       | None         | Health status                 |
+| Endpoint             | Method | Purpose                                | Request Body      | Response                    |
+|----------------------|--------|----------------------------------------|-------------------|-----------------------------|
+| `/health`            | GET    | Service health check                   | None              | Health status               |
+| `/models`            | GET    | List available InferenceServices       | None              | OpenAI-compatible list      |
+| `/v1/models`         | GET    | List available LLMInferenceServices    | None              | OpenAI-compatible list      |
+| `/v1/tokens`         | POST   | Issue short-lived token for user       | `{"expiration"}` | Token with expiration       |
+| `/v1/tokens`         | DELETE | Revoke all tokens for user             | None              | Success confirmation        |
+| `/v1/tiers/lookup`   | POST   | Lookup tier for user groups (internal) | `{"groups"}`     | `{"tier"}`                 |
 
 ## Core Architecture Components
 
 ### 1. MaaS API Service
 
 - **Language**: Go with Gin framework
-- **Purpose**: Central API management service
+- **Port**: 8080
+- **Service Account**: `maas-api` with cluster-wide permissions
+- **Purpose**: Central API for token management and model discovery
 - **Features**:
-    - Team-based API key generation
-    - Policy-driven rate limiting
-    - Usage metrics collection
-    - Multi-tenant isolation
+  - Ephemeral token generation via Kubernetes Service Account TokenRequest API
+  - Tier-based namespace and Service Account management
+  - KServe model discovery across all namespaces
+  - Health checks and CORS support (debug mode)
 
-### 2. Kuadrant Integration
+**Key Components**:
+- **Token Manager**: Creates/revokes Service Account tokens
+- **Token Reviewer**: Validates tokens via Kubernetes TokenReview API
+- **Tier Mapper**: Maps user groups to tiers using ConfigMap
+- **Model Manager**: Discovers InferenceServices and LLMInferenceServices
 
-- **AuthPolicy**: Handles authentication and authorization
-- **TokenRateLimitPolicy**: Enforces usage limits per team/user
-- **Gateway**: Istio Gateway with Envoy proxy for traffic management
+### 2. Kuadrant Policy Engine
 
-### 3. KServe Model Services
+**Deployed Components**:
+- **Authorino**: Authentication and authorization policy enforcement
+- **Limitador**: Rate limiting and token counting engine
+- **Kuadrant Operator**: Policy CRD management and synchronization
 
-- **InferenceService CRs**: Deploy AI models
-- **Model Discovery**: Automatic model listing from KServe resources
-- **Traffic Routing**: Through Istio Gateway to model endpoints
+**Policies Applied**:
 
-## Team Creation and Key Management Workflow
+#### Gateway AuthPolicy
 
-```mermaid
-graph TD
-    A[Admin Creates Team] --> B[Team Config Secret Created]
-    B --> C[Policy Added to TokenRateLimitPolicy]
-    C --> D[Policy Added to AuthPolicy Authorization]
-    D --> E[Envoy Proxy Reload Triggered]
-    E --> F[Team Ready for Key Creation]
+- **Target**: `maas-default-gateway` (Gateway)
+- **Authentication**: Service Account tokens via `kubernetesTokenReview`
+- **Metadata Enrichment**: Calls MaaS API `/v1/tiers/lookup` to determine user tier (cached for 300s)
+- **Authorization**: Kubernetes SubjectAccessReview for model access (checks user can POST to specific LLMInferenceService)
+- **Identity Injection**: Adds `userid` and `tier` to request context for downstream policies
 
-    F --> G[Admin Creates User Key]
-    G --> H[API Key Secret Created with Labels]
-    H --> I[Secret Includes Group Annotation]
-    I --> J[Envoy Discovers New Key]
-    J --> K[Key Active for Authentication]
+#### MaaS API AuthPolicy
 
-    subgraph "Secret Labels & Annotations"
-        L[kuadrant.io/apikeys-by=rhcl-keys]
-        M[maas/team-id=team-name]
-        N[maas/policy=policy-name]
-        O[kuadrant.io/groups: policy-name]
-    end
+- **Target**: `maas-api-route` (HTTPRoute)
+- **Authentication**: OpenShift user tokens via `kubernetesTokenReview`
+- **Purpose**: Allows authenticated OpenShift users to issue tokens
 
-    H --> L
-    H --> M
-    H --> N
-    H --> O
-```
+#### RateLimitPolicy
 
-## Detailed Component Workflows
+- **Target**: `maas-default-gateway` (Gateway)
+- **Limits by Tier**:
+  - Free: 5 requests per 2 minutes
+  - Premium: 20 requests per 2 minutes
+  - Enterprise: 50 requests per 2 minutes
+- **Counter**: Per user (`auth.identity.userid`)
 
-### Team Creation Process
+#### TokenRateLimitPolicy
 
-1. **Team Configuration Secret Creation**
-    - Creates `team-{team_id}-config` secret in `llm` namespace
-    - Contains team metadata and policy association
-    - Labels: `maas/resource-type=team-config`, `maas/team-id={team_id}`
-    - Annotations: `maas/policy={policy_name}`, `maas/team-name={team_name}`
+- **Target**: `maas-default-gateway` (Gateway)
+- **Limits by Tier** (tokens per minute):
+  - Free: 100 tokens/min
+  - Premium: 50,000 tokens/min
+  - Enterprise: 100,000 tokens/min
+- **Counter**: Per user (`auth.identity.userid`)
+- **Token Extraction**: Automatically reads `usage.total_tokens` from response body
 
-2. **Policy Integration**
-    - Adds new limit section to `TokenRateLimitPolicy`
-    - Updates `AuthPolicy` authorization rules
-    - Policy name becomes the group identifier for rate limiting
+#### TelemetryPolicy
 
-3. **Kuadrant Reload Requirements**
-    - **AuthPolicy changes**: Immediate effect (hot reload)
-    - **TokenRateLimitPolicy changes**: Requires Envoy proxy restart
-    - **New API keys**: Discovered within 5-10 seconds via watch
+- **Target**: `maas-default-gateway` (Gateway)
+- **Metrics Labels**:
+  - `model`: Extracted from response body (`/model`)
+  - `tier`: From identity context
+  - `user`: From identity context
+- **Purpose**: Export usage metrics to Prometheus via Limitador
 
-### API Key Creation Process
+### 3. Gateway API and Routing
 
-1. **Secret Generation**
-    - Creates `apikey-{user_id}-{team_id}-{hash}` secret
-    - Contains base64-encoded API key
-    - Applies critical labels and annotations for Kuadrant discovery
+Two gateways are deployed:
 
-2. **Key Labels and Annotations**
-   ```yaml
-   labels:
-     app: llm-gateway                           # Kuadrant selector
-     kuadrant.io/apikeys-by: rhcl-keys         # Kuadrant discovery
-     kuadrant.io/auth-secret: "true"           # Auth enablement
-     maas/team-id: test-team                   # Team association
-     maas/user-id: testuser                    # User association
-     maas/policy-test-tokens: "true"           # Policy marker
+1. **openshift-ai-inference**:
+   - Basic HTTP gateway for non-MaaS model access
+   - No authentication or rate limiting
+   - Allows direct access to models
 
-   annotations:
-     kuadrant.io/groups: test-tokens           # Rate limit group
-     maas/policy: test-tokens                  # Policy reference
-     secret.kuadrant.io/user-id: testuser      # Identity mapping
-   ```
+2. **maas-default-gateway**:
+   - Managed MaaS gateway with full policy enforcement
+   - Hostname: `maas.${CLUSTER_DOMAIN}`
+   - Listeners: HTTP (80) and HTTPS (443)
+   - Policies: Auth, RateLimit, TokenRateLimit, Telemetry
 
-3. **Kuadrant Integration Points**
-    - **Authentication**: `app=llm-gateway` label enables discovery
-    - **Authorization**: `kuadrant.io/groups` annotation defines group membership
-    - **Rate Limiting**: Group name matches TokenRateLimitPolicy limits
-    - **Identity**: `secret.kuadrant.io/user-id` provides user context
+**HTTPRoute for MaaS API**:
+- `/v1/models` → `maas-api:8080` (OpenAI-compatible endpoint at root)
+- `/maas-api/*` → `maas-api:8080` (with prefix rewrite to `/`)
 
-## Kuadrant Policy Configuration
+### 4. Tier Management
 
-### AuthPolicy Structure
-```yaml
-authentication:
-  api-key-users-apikey:
-    apiKey:
-      allNamespaces: true
-      selector:
-        matchLabels:
-          app: llm-gateway           # Discovers all API key secrets
-    credentials:
-      authorizationHeader:
-        prefix: APIKEY
+The tier configuration defines three tiers with increasing levels of access:
 
-authorization:
-  allow-groups:
-    opa:
-      rego: |
-        groups := split(object.get(input.auth.identity.metadata.annotations, "kuadrant.io/groups", ""), ",")
-        allow { groups[_] == "test-tokens" }    # Allow specific groups
-        allow { groups[_] == "premium" }
-        allow { groups[_] == "enterprise" }
+- **free** (level 0): Default for all authenticated users via `system:authenticated` group
+- **premium** (level 1): For users in premium groups
+- **enterprise** (level 2): Highest tier for enterprise/admin groups
 
-response:
-  success:
-    filters:
-      identity:
-        json:
-          properties:
-            groups:
-              selector: auth.identity.metadata.annotations.kuadrant\.io/groups
-            userid:
-              selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id
-```
+**Tier Resolution Logic**:
+1. User groups are extracted from OpenShift token
+2. Tiers are sorted by level (highest first)
+3. First matching tier based on group membership wins
+4. Service Account group (`system:serviceaccounts:<tier-namespace>`) is automatically added to tier groups
 
-### TokenRateLimitPolicy Structure
+**Tier Namespace Convention**:
+- Format: `{instance-name}-tier-{tier-name}`
+- Example: `maas-default-gateway-tier-free`
+- Namespaces are created automatically when first token is issued
 
-```yaml
-limits:
-  test-tokens:                    # Matches group from API key annotation
-    counters:
-    - expression: auth.identity.userid
-    rates:
-    - limit: 200
-      window: 1m
-    when:
-    - predicate: auth.identity.groups.split(",").exists(g, g == "test-tokens")
-```
+### 5. KServe Model Services
 
-## Model Discovery and Listing
+**Supported CRDs**:
+- **InferenceService** (`serving.kserve.io/v1beta1`)
+- **LLMInferenceService** (`serving.kserve.io/v1alpha1`)
 
-### KServe Integration
-- **InferenceService CRs**: Deployed in `llm` namespace
-- **Model Discovery**: MaaS API queries KServe resources
-- **OpenAI Compatibility**: Converts KServe models to OpenAI format
-- **Dynamic Updates**: Real-time model availability
+**Model Discovery**:
+- Queries all namespaces for InferenceServices/LLMInferenceServices
+- Extracts model ID from `spec.model.name` or falls back to `metadata.name`
+- Checks readiness via status conditions
+- Returns OpenAI-compatible model list with URL and ready status
 
-### Model Listing Process
-1. Query KServe InferenceService CRDs
-2. Extract model names and metadata
-3. Convert to OpenAI-compatible format
-4. Return structured model list
+**Model URL Resolution**:
+1. Primary: `status.url`
+2. Fallback: First URL in `status.addresses[]`
 
-## Usage Metrics and Monitoring
+### 6. Token Lifecycle
 
-### Prometheus Metrics Collection
-- **Source**: Istio Envoy proxy metrics endpoint
-- **Format**: Custom metrics with user/group embedding
-- **Collection**: Direct HTTP requests from MaaS API
+**Service Account-Based Token Architecture**:
 
-### Metric Structure
+The system uses Kubernetes Service Account tokens as the primary authentication mechanism. Each user gets a dedicated Service Account in their tier namespace.
 
-```
-token_usage_with_user_and_group__user___testuser___group___test_tokens___namespace__llm{} 1003
-authorized_calls_with_user_and_group__user___testuser___group___test_tokens___namespace__llm{} 15
-limited_calls_with_user_and_group__user___testuser___group___test_tokens___namespace__llm{} 2
-```
-
-### Usage Data Processing
-
-1. **Collection**: HTTP GET to Envoy metrics endpoint
-2. **Parsing**: Regex extraction of user/group/metric type
-3. **Aggregation**: Team and user-level summaries
-4. **Enrichment**: Team names and user emails from secrets
-
-### Usage Analytics Features
-
-- **User Usage**: Cross-team aggregated statistics for the user (may have keys across teams)
-- **Team Usage**: User breakdown within team
-- **Real-time Data**: Direct Prometheus metrics
-
-## System Integration Flow
+## Token Issuance Workflow
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant Gateway as Istio Gateway
-    participant Envoy as Envoy Proxy
-    participant KM as MaaS API
-    participant KServe as Model Service
-    participant Metrics as Prometheus
+    participant User
+    participant Gateway as Gateway API
+    participant Authorino
+    participant MaaS as MaaS API
+    participant TierMapper as Tier Mapper
+    participant K8s as Kubernetes API
 
-    Client->>Gateway: API Request with APIKEY
-    Gateway->>Envoy: Route to AuthPolicy
-    Envoy->>Envoy: Authenticate via Secret Labels
-    Envoy->>Envoy: Authorize via Group Policy
-    Envoy->>Envoy: Apply Rate Limits
-    Envoy->>KServe: Forward Authenticated Request
-    KServe-->>Envoy: Model Response
-    Envoy->>Metrics: Record Usage Metrics
-    Envoy-->>Client: Return Response
+    User->>Gateway: POST /maas-api/v1/tokens<br/>Authorization: Bearer {openshift-token}
+    Gateway->>Authorino: Enforce MaaS API AuthPolicy
+    Authorino->>K8s: TokenReview (validate OpenShift token)
+    K8s-->>Authorino: User identity (username, groups)
+    Authorino->>Gateway: Authenticated
+    Gateway->>MaaS: Forward request with user context
 
-    Note over KM: Periodic Usage Collection
-    KM->>Metrics: Query Usage Data
-    Metrics-->>KM: Return Aggregated Metrics
+    Note over MaaS,TierMapper: Determine User Tier
+    MaaS->>TierMapper: GetTierForGroups(user.groups)
+    TierMapper->>K8s: Get ConfigMap(tier-to-group-mapping)
+    K8s-->>TierMapper: Tier configuration
+    TierMapper-->>MaaS: User tier (e.g., "premium")
+
+    Note over MaaS,K8s: Ensure Tier Resources
+    MaaS->>K8s: Create Namespace({instance}-tier-{tier}) if needed
+    MaaS->>K8s: Create ServiceAccount({username-hash}) if needed
+
+    Note over MaaS,K8s: Generate Token
+    MaaS->>K8s: CreateToken(namespace, SA name, TTL)
+    K8s-->>MaaS: TokenRequest with token and expiration
+
+    MaaS-->>User: {<br/>  "token": "...",<br/>  "expiration": "4h",<br/>  "expiresAt": 1234567890<br/>}
 ```
+
+### Token Issuance Details
+
+**Step 1: Authentication**
+- User authenticates with OpenShift token (`oc whoami -t`)
+- MaaS API AuthPolicy validates token via Kubernetes TokenReview
+- User context (username, groups, UID) is extracted
+
+**Step 2: Tier Determination**
+- User groups are matched against tier configuration
+- Highest level tier wins (enterprise > premium > free)
+- Projected Service Account group is added: `system:serviceaccounts:{tier-namespace}`
+
+**Step 3: Resource Provisioning**
+- Tier namespace is created if missing: `{instance}-tier-{tier}`
+- Service Account is created if missing: `{username-sanitized}-{hash}`
+  - Username sanitization: lowercase, replace invalid chars with `-`, max 63 chars
+  - Hash suffix prevents collisions (first 8 chars of SHA1)
+- Labels applied for tracking tier and instance association
+
+**Step 4: Token Generation**
+- Uses Kubernetes TokenRequest API (`ServiceAccounts().CreateToken()`)
+- Audience: `{instance}-sa`
+- TTL: User-specified (default: 4 hours)
+- Returns token, expiration duration, and Unix timestamp
+
+### Token Revocation Workflow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Gateway as Gateway API
+    participant Authorino
+    participant MaaS as MaaS API
+    participant K8s as Kubernetes API
+
+    User->>Gateway: DELETE /maas-api/v1/tokens<br/>Authorization: Bearer {openshift-token}
+    Gateway->>Authorino: Enforce MaaS API AuthPolicy
+    Authorino->>K8s: TokenReview (validate OpenShift token)
+    K8s-->>Authorino: User identity
+    Authorino->>Gateway: Authenticated
+    Gateway->>MaaS: Forward request with user context
+
+    Note over MaaS,K8s: Revoke All Tokens
+    MaaS->>K8s: Delete ServiceAccount({username-hash})
+    MaaS->>K8s: Recreate ServiceAccount({username-hash})
+
+    Note right of K8s: All existing tokens<br/>are invalidated
+
+    MaaS-->>User: 204 No Content
+```
+
+**Revocation Mechanism**:
+- Kubernetes doesn't support individual token revocation
+- Solution: Delete and recreate the Service Account
+- All tokens issued from that Service Account become invalid immediately
+- New Service Account can immediately issue new tokens
+
+## Model Access Workflow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Gateway as Gateway API
+    participant Authorino
+    participant MaaS as MaaS API
+    participant Limitador
+    participant Model as KServe Model
+
+    Note over User: 1. Obtain Token
+    User->>Gateway: POST /maas-api/v1/tokens<br/>Authorization: Bearer {openshift-token}
+    Gateway->>MaaS: Route to MaaS API
+    MaaS-->>User: {token: "...", expiration: "4h"}
+
+    Note over User: 2. Access Model
+    User->>Gateway: POST /{namespace}/{model}/v1/chat/completions<br/>Authorization: Bearer {sa-token}
+
+    Note over Gateway,Authorino: Gateway AuthPolicy Enforcement
+    Gateway->>Authorino: Validate request
+    Authorino->>Authorino: TokenReview (validate SA token)
+    Authorino->>MaaS: POST /v1/tiers/lookup<br/>{groups: [...]}
+    MaaS-->>Authorino: {tier: "premium"}
+    Authorino->>Authorino: SubjectAccessReview<br/>(check RBAC for model access)
+    Authorino->>Authorino: Inject identity context:<br/>{userid: "user", tier: "premium"}
+    Authorino-->>Gateway: Authorized
+
+    Note over Gateway,Limitador: Rate Limiting
+    Gateway->>Limitador: Check RateLimit (premium: 20/2m)
+    Limitador-->>Gateway: Allowed
+    Gateway->>Limitador: Check TokenRateLimit (premium: 50k/min)
+    Limitador-->>Gateway: Allowed
+
+    Gateway->>Model: Forward request
+    Model-->>Gateway: Response {usage: {total_tokens: 150}}
+
+    Note over Gateway,Limitador: Record Usage
+    Gateway->>Limitador: Record 150 tokens for user
+    Gateway->>Limitador: Export metrics:<br/>{user, tier, model}
+
+    Gateway-->>User: Model response
+```
+
+### Model Access Details
+
+**Step 1: Token-Based Authentication**
+- Gateway extracts Bearer token from Authorization header
+- Authorino performs TokenReview to validate Service Account token
+- Token audience is checked: `maas-default-gateway-sa`
+- User ID is normalized from full SA name: `system:serviceaccount:{ns}:{name}` → `{name}`
+
+**Step 2: Tier Lookup with Caching**
+- Authorino calls MaaS API: `POST /v1/tiers/lookup` with user groups
+- User groups include the tier-specific SA group: `system:serviceaccounts:{tier-namespace}`
+- Response is cached for 300 seconds (5 minutes) per username
+- Tier is added to identity metadata: `auth.identity.tier`
+
+**Step 3: Authorization via RBAC**
+- Authorino performs Kubernetes SubjectAccessReview
+- Checks if user can POST to specific LLMInferenceService
+- Resource attributes:
+  - Group: `serving.kserve.io`
+  - Resource: `llminferenceservices`
+  - Namespace: Extracted from request path (`/{namespace}/{model}/...`)
+  - Name: Extracted from request path
+  - Verb: `post`
+
+**Step 4: Rate Limiting**
+- Limitador checks request count against tier limit
+- Counter key: `auth.identity.userid`
+- Returns 429 if limit exceeded
+
+**Step 5: Token Rate Limiting**
+- Pre-checks estimated token usage (if available)
+- Actual token usage is recorded from response body: `usage.total_tokens`
+- Counter key: `auth.identity.userid`
+- Returns 429 if token limit exceeded
+
+**Step 6: Telemetry Export**
+- Limitador exports metrics with labels:
+  - `model`: Extracted from response body JSON (`/model`)
+  - `tier`: From auth identity context
+  - `user`: From auth identity context
+- Metrics available in Prometheus format at Limitador metrics endpoint
+
+## Detailed Component Workflows
+
+### Tier Lookup Endpoint
+
+**Purpose**: Internal API for Gateway AuthPolicy to determine user tier
+
+**Endpoint**: `POST /v1/tiers/lookup`
+
+**Request**:
+```json
+{
+  "groups": [
+    "system:serviceaccounts:maas-default-gateway-tier-premium",
+    "system:authenticated",
+    "premium-group"
+  ]
+}
+```
+
+**Response**:
+```json
+{
+  "tier": "premium"
+}
+```
+
+**Implementation**:
+1. Receive user groups in request body
+2. Load tier configuration from ConfigMap `tier-to-group-mapping`
+3. Sort tiers by level (highest first)
+4. Find first tier containing any of the user groups
+5. Return tier name or 404 if no match
+
+**Error Handling**:
+- 400: Invalid request body
+- 404: No tier found for any group
+- 500: Failed to load tier configuration
+
+### Model Discovery
+
+**Endpoints**:
+- `GET /models` - List InferenceServices
+- `GET /v1/models` - List LLMInferenceServices
+
+**Response Format** (OpenAI-compatible):
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "facebook-opt-125m",
+      "object": "model",
+      "created": 1703001234,
+      "owned_by": "models-namespace",
+      "url": "http://facebook-opt-125m.models.svc.cluster.local",
+      "ready": true
+    }
+  ]
+}
+```
+
+**Discovery Process**:
+1. Query Kubernetes for all InferenceServices or LLMInferenceServices across all namespaces
+2. For each resource:
+   - Extract model ID from `spec.model.name` or `metadata.name`
+   - Determine URL from `status.url` or `status.addresses[0].url`
+   - Check readiness:
+     - Not marked for deletion
+     - `status.observedGeneration` matches `metadata.generation`
+     - All conditions have `status: "True"`
+3. Convert to OpenAI model format
+4. Return array of models
+
+### Service Account Name Sanitization
+
+**Problem**: Kubernetes usernames can contain characters invalid for Service Account names
+
+**Examples**:
+- Email: `user@example.com` (contains `@`, `.`)
+- LDAP DN: `CN=User,OU=Users,DC=example,DC=com` (contains `=`, `,`)
+
+**Sanitization Algorithm**:
+1. Convert to lowercase
+2. Replace all invalid characters (`[^a-z0-9-]`) with `-`
+3. Collapse consecutive dashes to single dash
+4. Trim leading/trailing dashes
+5. Append 8-character SHA1 hash of original username (collision prevention)
+6. Truncate to 63 characters total (Kubernetes limit)
+
+**Examples**:
+- `user@example.com` → `user-example-com-a1b2c3d4`
+- `CN=User,OU=Users` → `cn-user-ou-users-e5f6g7h8`
+
+## Security Considerations
+
+### Authentication Security
+
+1. **Two-Stage Authentication**:
+   - Stage 1: OpenShift token validates user identity (for token issuance)
+   - Stage 2: Service Account token authenticates model access
+
+2. **Token Scoping**:
+   - Service Account tokens are scoped to specific audience: `{instance}-sa`
+   - Tokens cannot be used outside the MaaS gateway context
+
+3. **Short-Lived Tokens**:
+   - Default: 4 hours
+   - Configurable per request
+   - Automatic expiration enforced by Kubernetes
+
+4. **Revocation**:
+   - All user tokens can be revoked via Service Account recreation
+   - No persistent token storage (stateless)
+
+### Authorization Security
+
+1. **Kubernetes RBAC Integration**:
+   - Model access requires Kubernetes RBAC permissions
+   - Fine-grained control per namespace and model name
+
+2. **Tier-Based Isolation**:
+   - Each tier has dedicated namespace
+   - Service Accounts cannot cross tier boundaries
+   - Network policies can further isolate tiers
+
+3. **Identity Propagation**:
+   - User identity is preserved through all policy layers
+   - Authorino injects normalized user ID into request context
+
+### Rate Limiting Security
+
+1. **Multi-Level Protection**:
+   - Request-based limits prevent API abuse
+   - Token-based limits prevent cost-based attacks
+
+2. **Per-User Accounting**:
+   - Limits enforced per user ID (from Service Account name)
+   - Prevents shared token abuse
+
+3. **Tier Enforcement**:
+   - Limits cannot be bypassed by switching tokens
+   - Tier is re-evaluated on each request via cached lookup
+
+## Metrics and Observability
+
+### Available Metrics
+
+**Source**: Limitador (exposed on port 8080 at `/metrics`)
+
+**Metric Types**:
+1. **Request Counters**:
+   - `limitador_rate_limit_counter` - Requests per user/tier
+   - Labels: `user`, `tier`, `namespace`
+
+2. **Token Counters**:
+   - `limitador_token_rate_limit_counter` - Tokens consumed per user/tier
+   - Labels: `user`, `tier`, `namespace`
+
+3. **Telemetry Metrics** (via TelemetryPolicy):
+   - Custom metrics with model, user, and tier labels
+   - Exports: `model`, `tier`, `user`
+
+### Monitoring Setup
+
+**Prometheus ServiceMonitor**:
+- Scrapes Limitador metrics endpoint
+- Interval: 30 seconds
+- Labels for Grafana dashboards
+
+**Access Metrics**:
+```bash
+# Port-forward Limitador
+kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080
+
+# Query metrics
+curl http://localhost:8080/metrics | grep -E '(rate_limit|token_rate_limit)'
+```
+
+## Deployment Architecture
+
+### Namespace Organization
+
+```
+openshift-ingress/
+├── Gateway: maas-default-gateway
+├── Gateway: openshift-ai-inference
+├── AuthPolicy: gateway-auth-policy
+├── RateLimitPolicy: gateway-rate-limits
+├── TokenRateLimitPolicy: gateway-token-rate-limits
+└── TelemetryPolicy: user-group
+
+maas-api/
+├── Deployment: maas-api
+├── Service: maas-api
+├── ServiceAccount: maas-api (with cluster permissions)
+├── HTTPRoute: maas-api-route
+├── AuthPolicy: maas-api-auth-policy
+└── ConfigMap: tier-to-group-mapping
+
+kuadrant-system/
+├── Deployment: authorino
+├── Deployment: limitador
+└── Deployment: kuadrant-operator
+
+{instance}-tier-free/       (created dynamically)
+├── ServiceAccount: user1-a1b2c3d4
+├── ServiceAccount: user2-e5f6g7h8
+└── ...
+
+{instance}-tier-premium/    (created dynamically)
+└── ServiceAccount: user3-i9j0k1l2
+
+{instance}-tier-enterprise/ (created dynamically)
+└── ServiceAccount: admin1-m3n4o5p6
+```
+
+### RBAC Requirements
+
+**MaaS API Service Account Permissions**:
+
+The MaaS API requires cluster-level permissions for:
+- **Token management**: Create, list, get, and delete Service Accounts and Service Account tokens
+- **Namespace management**: Create, list, get namespaces for tier isolation
+- **Authentication**: Create TokenReviews to validate user tokens
+- **Model discovery**: List and get InferenceServices and LLMInferenceServices across all namespaces
+- **Tier configuration**: Read ConfigMaps for tier-to-group mapping
+
+**User Model Access RBAC**:
+
+Users access models through their tier-specific Service Account. Access is granted via RoleBindings that bind tier groups to roles with POST permissions on LLMInferenceService resources.
+
+Example tier-based access pattern:
+- Subject: Group `system:serviceaccounts:maas-default-gateway-tier-premium`
+- Namespace: `models-namespace`
+- Resource: `llminferenceservices.serving.kserve.io`
+- Verb: `post`
+
+## Configuration Reference
+
+### Environment Variables
+
+**MaaS API Deployment**:
+- `NAMESPACE`: Namespace where MaaS API is deployed (from fieldRef)
+- `PROVIDER`: Token provider type (value: `sa-tokens`)
+- `PORT`: HTTP server port (default: `8080`)
+- `DEBUG_MODE`: Enable CORS and debug logging (default: `false`)
+
+### Tier Configuration
+
+**ConfigMap**: `tier-to-group-mapping` (namespace: `maas-api`)
+
+The tier configuration uses a list structure with three key fields per tier:
+
+**Tier Fields**:
+- `name`: Tier identifier (used in namespace naming and policy matching)
+- `level`: Priority integer (higher wins in case of multiple group matches)
+- `groups`: Array of Kubernetes groups that belong to this tier
+
+**Special Groups**:
+- `system:authenticated`: Default group for all authenticated users (typically assigned to free tier)
+- `system:serviceaccounts:{tier-namespace}`: Automatically added for each tier to enable tier-based routing
 
