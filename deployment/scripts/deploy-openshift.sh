@@ -241,7 +241,7 @@ echo "   Cluster domain: $CLUSTER_DOMAIN"
 
 echo "   Deploying Gateway and GatewayClass..."
 cd "$PROJECT_ROOT"
-envsubst < deployment/base/networking/gateway-api.yaml | kubectl apply --server-side=true --force-conflicts -f -
+kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/gateway-api.yaml)
 
 # Wait for Gateway API CRDs if not already present
 if ! kubectl get crd gateways.gateway.networking.k8s.io &>/dev/null 2>&1; then
