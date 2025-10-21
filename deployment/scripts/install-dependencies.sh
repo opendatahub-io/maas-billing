@@ -129,7 +129,7 @@ spec:
   displayName: Kuadrant Operators
   grpcPodConfig:
     securityContextConfig: restricted
-  image: 'quay.io/kuadrant/kuadrant-operator-catalog:v1.3.0-rc2'
+  image: 'quay.io/kuadrant/kuadrant-operator-catalog:v1.3.0'
   publisher: grpc
   sourceType: grpc
 EOF
@@ -178,7 +178,7 @@ EOF
         # Patch Kuadrant for OpenShift Gateway Controller
         echo "   Patching Kuadrant operator..."
         if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
-          kubectl patch csv kuadrant-operator.v1.3.0-rc2 -n kuadrant-system --type='json' -p='[
+          kubectl patch csv kuadrant-operator.v1.3.0 -n kuadrant-system --type='json' -p='[
             {
               "op": "add",
               "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/-",
