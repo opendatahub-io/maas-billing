@@ -250,7 +250,7 @@ if kubectl get crd llminferenceservices.serving.kserve.io &>/dev/null 2>&1; then
     echo "   ✅ KServe CRDs already present (ODH/RHOAI detected)"
 else
     echo "   ⚠️  KServe not detected. Deploying ODH KServe components..."
-    "$SCRIPT_DIR/install-dependencies.sh" --odh
+    "$SCRIPT_DIR/install-dependencies.sh" --ocp --odh
 fi
 
 echo ""
@@ -348,11 +348,6 @@ echo "⚠️  TEMPORARY WORKAROUNDS (TO BE REMOVED)"
 echo "========================================="
 echo ""
 echo "Applying temporary workarounds for known issues..."
-
-echo "   🔧 Removing overly restrictive NetworkPolicy for ODH model controller..."
-kubectl delete networkpolicy odh-model-controller -n opendatahub 2>/dev/null && \
-  echo "   ✅ NetworkPolicy removed" || \
-  echo "   ⚠️  NetworkPolicy not found or already removed"
 
 echo "   🔧 Restarting Kuadrant, Authorino, and Limitador operators to refresh webhook configurations..."
 kubectl delete pod -n kuadrant-system -l control-plane=controller-manager 2>/dev/null && \
