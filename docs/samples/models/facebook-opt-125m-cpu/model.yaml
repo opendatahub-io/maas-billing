@@ -10,7 +10,7 @@ spec:
     name: facebook/opt-125m
   replicas: 1
   router:
-    # route: { }
+    route: { }
     # Connect to MaaS-enabled gateway
     gateway:
       refs:
