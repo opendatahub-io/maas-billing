@@ -43,7 +43,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo "  $0 llm-simulator                                # Validate using llm-simulator model"
     echo ""
     echo "  # For base models like granite (use completions endpoint with 'prompt')"
-    echo "  $0 granite-8b-base --endpoint responses --request-payload '{\"model\": \"\${MODEL_NAME}\", \"input\": \"Hello\", \"max_tokens\": 50}'"
+    echo "  $0 granite-8b-code-instruct-maas --endpoint responses --request-payload '{\"model\": \"\${MODEL_NAME}\", \"input\": \"Hello\", \"max_tokens\": 50}'"
     echo ""
     echo "  # For custom model paths (e.g., special inference endpoints)"
     echo "  $0 my-model --model-path /v1/responses --request-payload '{\"input\": \"test\"}'"
@@ -346,7 +346,7 @@ else
     # Test authentication endpoint
     print_check "Authentication endpoint"
     ENDPOINT="${HOST}/maas-api/v1/tokens"
-    print_info "Testing: curl -sSk -X POST $ENDPOINT -H 'Authorization: Bearer \$(oc whoami -t)' -H 'Content-Type: application/json' -d '{\"expiration\": \"10m\"}'"
+    print_info "Testing: curl -sSk -X POST $ENDPOINT -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -d '{\"expiration\": \"10m\"}'"
     
     if command -v oc &> /dev/null; then
         OC_TOKEN=$(oc whoami -t 2>/dev/null || echo "")
@@ -401,7 +401,7 @@ else
     print_check "Models endpoint"
     if [ -n "$TOKEN" ]; then
         ENDPOINT="${HOST}/maas-api/v1/models"
-        print_info "Testing: curl -sSk $ENDPOINT -H 'Content-Type: application/json' -H 'Authorization: Bearer \$TOKEN'"
+        print_info "Testing: curl -sSk $ENDPOINT -H \"Content-Type: application/json\" -H \"Authorization: Bearer \$TOKEN\""
         
         MODELS_RESPONSE=$(curl -sSk --connect-timeout 10 --max-time 30 -w "\n%{http_code}" \
             -H "Content-Type: application/json" \
@@ -498,7 +498,7 @@ else
         # Substitute MODEL_NAME placeholder in the request payload
         REQUEST_PAYLOAD="${DEFAULT_REQUEST_PAYLOAD//\$\{MODEL_NAME\}/$MODEL_NAME}"
         
-        print_info "Testing: curl -sSk -X POST ${MODEL_CHAT_ENDPOINT} -H 'Authorization: Bearer \$TOKEN' -H 'Content-Type: application/json' -d '${REQUEST_PAYLOAD}'"
+        print_info "Testing: curl -sSk -X POST ${MODEL_CHAT_ENDPOINT} -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d '${REQUEST_PAYLOAD}'"
         
         INFERENCE_RESPONSE=$(curl -sSk --connect-timeout 10 --max-time 30 -w "\n%{http_code}" \
             -H "Authorization: Bearer ${TOKEN}" \

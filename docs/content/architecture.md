@@ -8,7 +8,7 @@ The MaaS Platform is designed as a cloud-native, Kubernetes-based solution that 
 
 ### 🏗️ High-Level Architecture
 
-The MaaS Platform is an end-to-end solution that leverages Red Hat Connectivity Link (Kuadrant) Application Connectivity Policies and Red Hat OpenShift AI's Model Serving capabilities to provide a fully managed, scalable, and secure self-service platform for AI model serving.
+The MaaS Platform is an end-to-end solution that leverages Kuadrant (Red Hat Connectivity Link) and Open Data Hub (Red Hat OpenShift AI)'s Model Serving capabilities to provide a fully managed, scalable, and secure self-service platform for AI model serving.
 
 ```mermaid
 graph LR
@@ -54,7 +54,7 @@ The MaaS Platform architecture is designed to be modular and scalable. It is com
 
 ### Detailed Component Architecture
 
-### MaaS API Component Details
+#### MaaS API Component Details
 
 The MaaS API provides a self-service platform for users to request tokens for their inference requests. By leveraging Kubernetes native objects like ConfigMaps and ServiceAccounts, it offers model owners a simple way to configure access to their models based on a familiar group-based access control model.
 
@@ -116,11 +116,11 @@ graph TB
 **Key Features:**
 
 - **Tier-to-Group Mapping**: Uses ConfigMap in the same namespace as MaaS API to map Kubernetes groups to tiers
-- **Three Configurable Default Tiers**: Out of the box, the MaaS Platform comes with three default tiers: free, premium, and enterprise. These tiers are configurable and can be extended to support more tiers as needed.
+- **Configurable Tiers**: Out of the box, the MaaS Platform comes with three default tiers: free, premium, and enterprise. These tiers are configurable and can be extended to support more tiers as needed.
 - **Service Account Tokens**: Generates tokens for the appropriate tier's service account based on user's group membership
 - **Future Enhancements**: Planned improvements for more sophisticated token management and the ability to integrate with external identity providers.
 
-### Inference Service Component Details
+#### Inference Service Component Details
 
 Once a user has obtained their token through the MaaS API, they can use it to make inference requests to the Gateway API. RHCL's Application Connectivity Policies then validate the token and enforce access control and rate limiting policies:
 
@@ -159,7 +159,6 @@ graph TB
     
     subgraph "Observability"
         Prometheus[**Prometheus**<br/>Metrics Collection]
-        Dashboards[**Observability Stack**<br/>Grafana/Perses Dashboards]
     end
     
     Client -->|Inference Request + Service Account Token| GatewayAPI
@@ -179,7 +178,6 @@ graph TB
     RHOAI --> Models
     
     Limitador -->|Usage Metrics| Prometheus
-    Prometheus --> Dashboards
     
     style GatewayAPI fill:#f3e5f5
     style Kuadrant fill:#fff3e0
@@ -191,6 +189,8 @@ graph TB
     style RBAC fill:#ffeb3b
     style LLMInferenceService fill:#ffeb3b
     style RHOAI fill:#e8f5e8
+    style Models fill:#e8f5e8
+    style Prometheus fill:#e1f5fe
 ```
 
 **Policy Engine Flow:**
@@ -206,119 +206,67 @@ graph TB
 
 ### 1. Token Retrieval Flow (MaaS API)
 
-The MaaS API handles token generation and management for different user tiers:
+The MaaS API generates service account tokens based on user group membership and tier configuration:
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant AdminUI[Admin/User UI]
-    participant MaaSAPI[MaaS API]
-    participant TokenDB[(Token Database)]
-    participant TierDB[(Tier Database)]
-    
-    User->>AdminUI: Request Token
-    AdminUI->>MaaSAPI: POST /tokens
-    MaaSAPI->>TierDB: Check User Tier
-    TierDB-->>MaaSAPI: Tier Limits & Permissions
-    MaaSAPI->>TokenDB: Generate Token
-    TokenDB-->>MaaSAPI: Token + Metadata
-    MaaSAPI-->>AdminUI: Token Response
-    AdminUI-->>User: Token for Inference
-    
-    Note over MaaSAPI: Token includes:<br/>- User ID<br/>- Tier Level<br/>- Rate Limits<br/>- Model Access
+    participant Gateway as Gateway API
+    participant Authorino
+    participant MaaS as MaaS API
+    participant TierMapper as Tier Mapper
+    participant K8s as Kubernetes API
+
+    User->>Gateway: POST /maas-api/v1/tokens<br/>Authorization: Bearer {openshift-token}
+    Gateway->>Authorino: Enforce MaaS API AuthPolicy
+    Authorino->>K8s: TokenReview (validate OpenShift token)
+    K8s-->>Authorino: User identity (username, groups)
+    Authorino->>Gateway: Authenticated
+    Gateway->>MaaS: Forward request with user context
+
+    Note over MaaS,TierMapper: Determine User Tier
+    MaaS->>TierMapper: GetTierForGroups(user.groups)
+    TierMapper->>K8s: Get ConfigMap(tier-to-group-mapping)
+    K8s-->>TierMapper: Tier configuration
+    TierMapper-->>MaaS: User tier (e.g., "premium")
+
+    Note over MaaS,K8s: Ensure Tier Resources
+    MaaS->>K8s: Create Namespace({instance}-tier-{tier}) if needed
+    MaaS->>K8s: Create ServiceAccount({username-hash}) if needed
+
+    Note over MaaS,K8s: Generate Token
+    MaaS->>K8s: CreateToken(namespace, SA name, TTL)
+    K8s-->>MaaS: TokenRequest with token and expiration
+
+    MaaS-->>User: {<br/>  "token": "...",<br/>  "expiration": "4h",<br/>  "expiresAt": 1234567890<br/>}
 ```
 
-### 2. Gateway & Authentication Flow
+### 2. Model Inference Flow
 
-The Gateway API and RHCL components handle authentication and rate limiting:
+The Gateway API and RHCL components validate service account tokens and enforce policies:
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant GatewayAPI[Gateway API]
-    participant Kuadrant[Kuadrant]
-    participant Authrino[Authrino]
-    participant Limitador[Limitador]
-    participant MaaSAPI[MaaS API]
+    participant GatewayAPI
+    participant Kuadrant
+    participant Authorino
+    participant Limitador
+    participant AuthPolicy
+    participant RateLimitPolicy
+    participant LLMInferenceService
     
-    Client->>GatewayAPI: Inference Request + Token
-    GatewayAPI->>Kuadrant: Apply Auth Policy
-    Kuadrant->>Authrino: Validate Token
-    Authrino->>MaaSAPI: Check Token Validity
-    MaaSAPI-->>Authrino: Token Status + Tier Info
-    Authrino-->>Kuadrant: Auth Result
+    Client->>GatewayAPI: Inference Request + Service Account Token
+    GatewayAPI->>Kuadrant: Applying Policies
+    Kuadrant->>Authorino: Validate Service Account Token
+    Authorino->>AuthPolicy: Check Token Validity
+    AuthPolicy-->>Authorino: Token Valid + Tier Info
+    Authorino-->>Kuadrant: Authentication Success
     Kuadrant->>Limitador: Check Rate Limits
-    Limitador-->>Kuadrant: Rate Limit Status
-    Kuadrant-->>GatewayAPI: Policy Decision
-    GatewayAPI-->>Client: Forward to Model or Reject
+    Limitador->>RateLimitPolicy: Apply Tier-based Limits
+    RateLimitPolicy-->>Limitador: Rate Limit Status
+    Limitador-->>Kuadrant: Rate Check Result
+    Kuadrant-->>GatewayAPI: Policy Decision (Allow/Deny)
+    GatewayAPI ->> LLMInferenceService: Forward Request
+    LLMInferenceService-->>Client: Response
 ```
-
-### 3. Model Inference Flow
-
-The inference flow routes validated requests to RHOAI models:
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant GatewayAPI[Gateway API]
-    participant RHCL[RHCL Components]
-    participant RHOAI[RHOAI Platform]
-    participant Model[LLM Model]
-    
-    Client->>GatewayAPI: POST /v1/models/{model}/infer
-    GatewayAPI->>RHCL: Validate Request & Token
-    RHCL-->>GatewayAPI: Validation Success
-    GatewayAPI->>RHOAI: Forward Inference Request
-    RHOAI->>Model: Process Inference
-    Model-->>RHOAI: Inference Result
-    RHOAI-->>GatewayAPI: Response
-    GatewayAPI-->>Client: Model Response
-    
-    Note over RHCL: Updates metrics:<br/>- Token usage<br/>- Request count<br/>- Tier consumption
-```
-
-## Core Components
-
-### MaaS API (Token Management)
-
-The MaaS API is the central component for token generation and management:
-
-- **Token Generation**: Creates secure tokens with embedded metadata
-- **Tier Management**: Enforces subscription tier limits and permissions
-- **User Authentication**: Validates user credentials and permissions
-- **Rate Limit Configuration**: Sets token-specific rate limits based on tier
-
-### Gateway API & RHCL Components
-
-The gateway layer provides policy-based request handling:
-
-- **Gateway API**: Entry point for all inference requests
-- **Kuadrant**: Policy attachment point for authentication and authorization
-- **Authrino**: Authentication and authorization service that validates tokens
-- **Limitador**: Rate limiting service that enforces usage quotas
-
-### RHOAI (Model Serving)
-
-Red Hat OpenShift AI provides the model serving infrastructure:
-
-- **Model Hosting**: Runs LLM models (Qwen, Granite, Llama, etc.)
-- **Scaling**: Automatic scaling based on demand
-- **Resource Management**: GPU allocation and management
-- **Model Lifecycle**: Model deployment, updates, and retirement
-
-## Architecture Benefits
-
-### Security
-- **Token-based Authentication**: Secure, stateless authentication
-- **Policy Enforcement**: Centralized security policies via Kuadrant
-- **Rate Limiting**: Prevents abuse and ensures fair resource usage
-
-### Scalability
-- **Microservices Architecture**: Independent scaling of components
-- **Kubernetes Native**: Leverages OpenShift/Kubernetes scaling capabilities
-- **Tier-based Resource Allocation**: Different service levels for different user tiers
-
-### Observability
-- **Comprehensive Metrics**: Token usage, request rates, and tier consumption
-- **Centralized Logging**: All components log to centralized systems
-- **Monitoring**: Real-time monitoring of system health and performance
