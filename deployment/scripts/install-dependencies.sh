@@ -215,7 +215,7 @@ EOF
         script_args+=("--ocp")
     fi
     
-    if ! "$installer_script" "${script_args[@]+"${script_args[@]}"}"; then
+    if ! "$installer_script" "${script_args[@]:-""}"; then
         if [[ "$OCP" == true ]]; then
             echo "❌ Failed to set up $component for OpenShift"
         else
