@@ -1,6 +1,6 @@
 site_name: ODH Model-as-a-Service Documentation
 site_url: https://opendatahub-io.github.io/maas-billing
-repo_url: https://opendatahub-io/maas-billing
+repo_url: https://github.com/opendatahub-io/maas-billing
 repo_name: opendatahub-io/maas-billing
 
 # Set the docs directory to the content subdirectory
@@ -48,7 +48,6 @@ nav:
   - Home: index.md
   - Getting Started:
     - Installation: installation.md
-    - Architecture: architecture.md
   - User Guide:
     - User Guide: user-guide.md
     - Model Access: model-access.md
@@ -56,6 +55,7 @@ nav:
     - Tier Management: tier-management.md
     - Token Management: token-management.md
     - Gateway Setup: gateway-setup.md
+  - Architecture: architecture.md
   - Advanced Administration:
     - Observability: observability.md
 
