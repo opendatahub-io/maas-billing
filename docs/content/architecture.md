@@ -241,7 +241,9 @@ sequenceDiagram
     MaaS-->>User: {<br/>  "token": "...",<br/>  "expiration": "4h",<br/>  "expiresAt": 1234567890<br/>}
 ```
 
-### 2. Model Inference Flow
+### 3. Model Inference Flow
+
+The inference flow routes validated requests to RHOAI models:
 
 The Gateway API and RHCL components validate service account tokens and enforce policies:
 
