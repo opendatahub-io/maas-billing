@@ -46,18 +46,20 @@ plugins:
 
 nav:
   - Home: index.md
-  - Getting Started:
-    - Installation: installation.md
+  - Quick Start: installation.md
   - User Guide:
+    - Installation:
+      - Prerequisites: install/prerequisites.md
+      - install/odh-setup.md
     - User Guide: user-guide.md
     - Model Access: model-access.md
-  - Configuration & Management:
-    - Tier Management: tier-management.md
-    - Token Management: token-management.md
-    - Gateway Setup: gateway-setup.md
+    - Configuration & Management:
+      - Tier Management: tier-management.md
+      - Token Management: token-management.md
+      - Gateway Setup: gateway-setup.md
+    - Advanced Administration:
+      - Observability: observability.md
   - Architecture: architecture.md
-  - Advanced Administration:
-    - Observability: observability.md
 
 markdown_extensions:
   - pymdownx.highlight:
