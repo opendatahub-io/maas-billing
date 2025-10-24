@@ -23,6 +23,9 @@ spec:
         env:
           - name: VLLM_LOGGING_LEVEL
             value: INFO
+          # Tool calling support for vLLM
+          - name: VLLM_ADDITIONAL_ARGS
+            value: "--tool-call-parser granite --enable-auto-tool-choice"
         resources:
           limits:
             cpu: '2'

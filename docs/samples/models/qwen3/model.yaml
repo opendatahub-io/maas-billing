@@ -55,6 +55,9 @@ spec:
             value: "false"  # Disable Triton
           - name: VLLM_WORKER_MULTIPROC_METHOD
             value: "spawn"  # Use spawn instead of fork
+          # Tool calling support for vLLM
+          - name: VLLM_ADDITIONAL_ARGS
+            value: "--tool-call-parser granite --enable-auto-tool-choice"
           # Add CUDA visibility
           - name: NVIDIA_VISIBLE_DEVICES
             value: "all"
