@@ -15,6 +15,105 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
   - KServe enabled in DataScienceCluster
   - Service Mesh installed (automatically installed with ODH/RHOAI)
 
+- **Pull Secret Setup for RHCL 1.2 and RHOAI 3.0.0 RC (Temporary Workaround)**:
+  *Note: These are temporary workarounds for accessing staging registry images. This section will be updated after GA releases.*
+  
+  Set up pull secrets for both Red Hat Connectivity Link 1.2 and RHOAI 3.0.0 RC:
+  
+  ```bash
+  # Create pull secrets in required namespaces
+  kubectl create secret generic wasm-plugin-pull-secret --from-file=.dockerconfigjson=$HOME/.config/containers/auth.json --type=kubernetes.io/dockerconfigjson -n openshift-ingress || true
+  kubectl create secret generic stage-pull-secret --from-file=.dockerconfigjson=$HOME/.config/containers/auth.json --type=kubernetes.io/dockerconfigjson -n openshift-config || true
+  
+  # Merge all pull secrets into the global cluster pull secret
+  oc get secret/pull-secret -n openshift-config --template='{{index .data ".dockerconfigjson" | base64decode}}' > cluster-pull-secret.json
+  oc get secret/stage-pull-secret -n openshift-config --template='{{index .data ".dockerconfigjson" | base64decode}}' > stage-pull-secret.json
+  
+  # Merge all secrets together (This may overwrite the values. You can manually merge the files and set data)
+  jq -s '.[0] * .[1]' cluster-pull-secret.json stage-pull-secret.json > merged-pull-secret.json
+  oc set data secret/pull-secret -n openshift-config --from-file=.dockerconfigjson=merged-pull-secret.json
+  
+  # Clean up temporary files
+  rm cluster-pull-secret.json stage-pull-secret.json merged-pull-secret.json
+  ```
+
+- **RHOAI 3.0.0 RC Installation**:
+  After setting up the pull secrets above, follow these steps to complete RHOAI 3.0.0 RC installation:
+  
+  1. **Create ImageContentSourcePolicy:**
+     ```bash
+     cat <<EOF | kubectl apply -f -
+     apiVersion: operator.openshift.io/v1alpha1
+     kind: ImageContentSourcePolicy
+     metadata:
+       name: brew-registry
+     spec:
+       repositoryDigestMirrors:
+         - source: registry.redhat.io/rhoai
+           mirrors:
+             - quay.io/rhoai
+     EOF
+     ```
+  
+  2. **Create CatalogSource:**
+     ```bash
+     cat <<EOF | kubectl apply -f -
+     apiVersion: operators.coreos.com/v1alpha1
+     kind: CatalogSource
+     metadata:
+       name: rhoai3-catalogsource
+       namespace: openshift-marketplace
+     spec:
+       sourceType: grpc
+       image: quay.io/rhoai/rhoai-fbc-fragment@sha256:c2da92cb7abd1cde02317c753937a237506a6cba9ca59ba85c7e29404fa89336
+       displayName: "RHOAI v3.0 RC"
+       publisher: "RHOAI DevOps"
+       grpcPodConfig:
+         securityContextConfig: restricted
+     EOF
+     ```
+  
+  3. **Create Subscription:**
+     ```bash
+     cat <<EOF | kubectl apply -f -
+     apiVersion: operators.coreos.com/v1alpha1
+     kind: Subscription
+     metadata:
+       name: rhods-operator
+       namespace: redhat-ods-operator
+     spec:
+       channel: fast-3.x
+       installPlanApproval: Automatic
+       name: rhods-operator
+       source: rhoai3-catalogsource
+       sourceNamespace: openshift-marketplace
+       startingCSV: rhods-operator.3.0.0
+     EOF
+     ```
+  
+  4. **Create DataScienceCluster:**
+     ```bash
+     # Wait for the operator to be ready
+     kubectl wait --for=condition=Available deployment/rhods-operator -n redhat-ods-operator --timeout=600s
+     
+     cat <<EOF | kubectl apply -f -
+     apiVersion: datasciencecluster.opendatahub.io/v2
+     kind: DataScienceCluster
+     metadata:
+       name: default-dsc
+     spec:
+       components:
+         # Components required for MaaS:
+         kserve:
+           managementState: Managed
+           rawDeploymentServiceConfig: Headed
+     
+         # Components recommended for MaaS:
+         dashboard:
+           managementState: Managed
+     EOF
+     ```
+
 ## Important Notes
 
 - This project assumes OpenDataHub (ODH) or Red Hat OpenShift AI (RHOAI) as the base platform
