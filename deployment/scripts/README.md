@@ -26,7 +26,7 @@ Complete automated deployment script for OpenShift clusters.
 **Requirements:**
 - OpenShift cluster (4.16+)
 - `oc` CLI installed and logged in
-- `kubectl` installed
+- `kubectl` installed  
 - `jq` installed
 - `kustomize` installed
 

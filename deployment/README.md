@@ -15,6 +15,30 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
   - KServe enabled in DataScienceCluster
   - Service Mesh installed (automatically installed with ODH/RHOAI)
 
+- **Pull Secret for RHCL 1.2 Release**: 
+  Deploy the `kuadrant-pull-secret` to the `openshift-config` namespace to access Red Hat Connectivity Link 1.2 images from the staging registry *(temporary workaround - will be removed after RHCL is GA)*:
+  ```bash
+  # Create the pull secret in kuadrant-system and openshift-ingress namespaces (where script expects it)
+  kubectl create secret generic kuadrant-pull-secret --from-file=.dockerconfigjson=$HOME/.config/containers/auth.json --type=kubernetes.io/dockerconfigjson -n kuadrant-system
+  kubectl create secret generic kuadrant-pull-secret --from-file=.dockerconfigjson=$HOME/.config/containers/auth.json --type=kubernetes.io/dockerconfigjson -n openshift-ingress
+
+  # Patch required serviceAccounts in the kuadrant-system namespace to use this pull secret (You can skip this if you just make that pull secret global)
+  kubectl patch serviceaccount authorino-operator -n kuadrant-system -p "{\"imagePullSecrets\": [{\"name\": \"kuadrant-pull-secret\"}]}"
+  kubectl patch serviceaccount dns-operator-controller-manager -n kuadrant-system -p "{\"imagePullSecrets\": [{\"name\": \"kuadrant-pull-secret\"}]}"
+  kubectl patch serviceaccount dns-operator-remote-cluster -n kuadrant-system -p "{\"imagePullSecrets\": [{\"name\": \"kuadrant-pull-secret\"}]}"
+  kubectl patch serviceaccount kuadrant-operator-controller-manager -n kuadrant-system -p "{\"imagePullSecrets\": [{\"name\": \"kuadrant-pull-secret\"}]}"
+  kubectl patch serviceaccount limitador-operator-controller-manager -n kuadrant-system -p "{\"imagePullSecrets\": [{\"name\": \"kuadrant-pull-secret\"}]}"
+  kubectl patch serviceaccount authorino-authorino -n kuadrant-system -p "{\"imagePullSecrets\": [{\"name\": \"kuadrant-pull-secret\"}]}"
+
+  
+  # (Optional) If you want to make the pull secret global Run the script to merge it into global pull secret
+  oc get secret/pull-secret -n openshift-config --template='{{index .data ".dockerconfigjson" | base64decode}}' > cluster-pull-secret.json
+  oc get secret/kuadrant-pull-secret -n kuadrant-system --template='{{index .data ".dockerconfigjson" | base64decode}}' > kuadrant-pull-secret.json
+  jq -s '.[0] * .[1]' cluster-pull-secret.json kuadrant-pull-secret.json > merged-pull-secret.json
+  oc set data secret/pull-secret -n openshift-config --from-file=.dockerconfigjson=merged-pull-secret.json
+  rm cluster-pull-secret.json kuadrant-pull-secret.json merged-pull-secret.json
+  ```
+
 ## Important Notes
 
 - This project assumes OpenDataHub (ODH) or Red Hat OpenShift AI (RHOAI) as the base platform

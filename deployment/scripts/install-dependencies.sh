@@ -103,7 +103,6 @@ install_component() {
         # Ensure kuadrant-system namespace exists
         kubectl create namespace kuadrant-system 2>/dev/null || echo "✅ Namespace kuadrant-system already exists"
 
-
         echo "🚀 Creating Kuadrant OperatorGroup..."
         kubectl apply -f - <<EOF
 apiVersion: operators.coreos.com/v1
@@ -129,56 +128,77 @@ spec:
   displayName: Kuadrant Operators
   grpcPodConfig:
     securityContextConfig: restricted
-  image: 'quay.io/kuadrant/kuadrant-operator-catalog:v1.3.0'
+  image: 'quay.io/trepel/index-from-errata:rhcl-1.2.0-rc5-multiarch'
   publisher: grpc
   sourceType: grpc
+  secrets:
+    - kuadrant-pull-secret
 EOF
         fi
 
-
-        echo "🚀 Installing kuadrant (via OLM Subscription)..."
+        echo "🚀 Installing kuadrant operator (via OLM Subscription)..."
         kubectl apply -f - <<EOF
   apiVersion: operators.coreos.com/v1alpha1
   kind: Subscription
   metadata:
-    name: kuadrant-operator
+    name: rhcl-operator
     namespace: kuadrant-system
   spec:
     channel: stable
+    config:
+      env:
+        - name: RELATED_IMAGE_WASMSHIM
+          value: 'registry.stage.redhat.io/rhcl-1/wasm-shim-rhel9@sha256:6c8bbd989e532bc5ed629fc235b7da9eb3a4949b7caf9615bc282ef682ba9221'
+        - name: PROTECTED_REGISTRY
+          value: registry.stage.redhat.io
     installPlanApproval: Automatic
-    name: kuadrant-operator
+    name: rhcl-operator
     source: kuadrant-operator-catalog
     sourceNamespace: kuadrant-system
 EOF
-        # Wait for kuadrant-operator-controller-manager deployment to exist before waiting for Available condition
-        ATTEMPTS=0
-        MAX_ATTEMPTS=7
-        while true; do
-
-            if kubectl get deployment/kuadrant-operator-controller-manager -n kuadrant-system &>/dev/null; then
-                break
-            else
-                ATTEMPTS=$((ATTEMPTS+1))
-                if [[ $ATTEMPTS -ge $MAX_ATTEMPTS ]]; then
-                    echo "❌ kuadrant-operator-controller-manager deployment not found after $MAX_ATTEMPTS attempts."
-                    return 1
+        # Wait for all operator deployments to be created
+        echo "⏳ Waiting for operator deployments to be created..."
+        DEPLOYMENTS=("kuadrant-operator-controller-manager" "limitador-operator-controller-manager" "authorino-operator" "dns-operator-controller-manager")
+        
+        for deployment in "${DEPLOYMENTS[@]}"; do
+            ATTEMPTS=0
+            MAX_ATTEMPTS=7
+            while true; do
+                if kubectl get deployment/"$deployment" -n kuadrant-system &>/dev/null; then
+                    echo "✅ Deployment $deployment created"
+                    break
+                else
+                    ATTEMPTS=$((ATTEMPTS+1))
+                    if [[ $ATTEMPTS -ge $MAX_ATTEMPTS ]]; then
+                        echo "⚠️  Deployment $deployment not found after $MAX_ATTEMPTS attempts, continuing..."
+                        break
+                    fi
+                    echo "   Waiting for $deployment deployment to be created... (attempt $ATTEMPTS/$MAX_ATTEMPTS)"
+                    sleep $((5 + 5 * $ATTEMPTS))
                 fi
-                echo "⏳ Waiting for kuadrant-operator-controller-manager deployment to be created... (attempt $ATTEMPTS/$MAX_ATTEMPTS)"
-                sleep $((10 + 10 * $ATTEMPTS))
-            fi
+            done
         done
 
+
         echo "⏳ Waiting for operators to be ready..."
-        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s
-        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
-        kubectl wait --for=condition=Available deployment/authorino-operator -n kuadrant-system --timeout=300s
+        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s || \
+          echo "   ⚠️  Kuadrant operator taking longer than expected"
+        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s || \
+          echo "   ⚠️  Limitador operator taking longer than expected"  
+        kubectl wait --for=condition=Available deployment/authorino-operator -n kuadrant-system --timeout=300s || \
+          echo "   ⚠️  Authorino operator taking longer than expected"
+        kubectl wait --for=condition=Available deployment/dns-operator-controller-manager -n kuadrant-system --timeout=180s || \
+          echo "   ⚠️  DNS operator taking longer than expected"
 
         sleep 5
 
         # Patch Kuadrant for OpenShift Gateway Controller
         echo "   Patching Kuadrant operator..."
         if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
-          kubectl patch csv kuadrant-operator.v1.3.0 -n kuadrant-system --type='json' -p='[
+          # Get the actual CSV name dynamically
+          CSV_NAME=$(kubectl get csv -n kuadrant-system -o jsonpath='{.items[?(@.spec.displayName=="Red Hat Connectivity Link")].metadata.name}' 2>/dev/null || echo "rhcl-operator.v1.2.0")
+          echo "   Patching CSV: $CSV_NAME"
+          kubectl patch csv "$CSV_NAME" -n kuadrant-system --type='json' -p='[
             {
               "op": "add",
               "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/-",
