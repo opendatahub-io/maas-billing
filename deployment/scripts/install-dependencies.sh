@@ -152,7 +152,7 @@ EOF
 EOF
         # Wait for kuadrant-operator-controller-manager deployment to exist before waiting for Available condition
         ATTEMPTS=0
-        MAX_ATTEMPTS=5
+        MAX_ATTEMPTS=7
         while true; do
 
             if kubectl get deployment/kuadrant-operator-controller-manager -n kuadrant-system &>/dev/null; then
