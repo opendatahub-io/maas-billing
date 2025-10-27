@@ -15,6 +15,21 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
   - KServe enabled in DataScienceCluster
   - Service Mesh installed (automatically installed with ODH/RHOAI)
 
+- **Pull Secret for RHCL 1.2 Release**: 
+  Deploy the `kuadrant-pull-secret` to the `openshift-config` namespace to access Red Hat Connectivity Link 1.2 images from the staging registry *(temporary workaround - will be removed after RHCL is GA)*:
+  ```bash
+  # Create the pull secret in kuadrant-system namespace (where script expects it)
+  kubectl create secret generic kuadrant-pull-secret --from-file=.dockerconfigjson=$HOME/.config/containers/auth.json --type=kubernetes.io/dockerconfigjson -n kuadrant-system
+
+  # Patch default serviceAccount in the kuadrant-system namespace to use this pull secret
+  kubectl patch serviceaccount default -n kuadrant-system -p "{\"imagePullSecrets\": [{\"name\": \"kuadrant-pull-secret\"}]}"
+  kubectl create sa kuadrant-sa -n kuadrant-system
+  kubectl secrets link kuadrant-sa kuadrant-pull-secret --for=pull -n kuadrant-system
+
+  # Run the script to merge it into global pull secret
+  ./deployment/scripts/update-cluster-pull-secret.sh
+  ```
+
 ## Important Notes
 
 - This project assumes OpenDataHub (ODH) or Red Hat OpenShift AI (RHOAI) as the base platform
