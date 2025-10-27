@@ -68,7 +68,7 @@ If either check fails, the request is denied.
 
 ## Core Entities
 
-We define 6 core entities that work together to enable this separation:
+We define 7 core entities that work together to enable this separation:
 
 ### Entity Relationships
 
