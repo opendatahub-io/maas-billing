@@ -50,6 +50,20 @@ This separation means:
 - **Policies** define what you're allowed to access (based on permissions)
 - **Both are enforced** together during request evaluation
 
+### Model Access: Dual-Check Requirement
+
+**Critical**: For any model request to succeed, it must pass BOTH checks:
+
+1. **Commercial Check**: Model must be included in the group's `subscription.entitlements.model_access`
+2. **Permission Check**: User must be allowed by an active Policy with matching `target_id`
+
+**Example**: Alice wants to use GPT-4
+- ✅ **Commercial**: GPT-4 is in her team's Pro subscription model list
+- ✅ **Permission**: RBAC policy allows ML engineers to access GPT-4  
+- ✅ **Result**: Request succeeds
+
+If either check fails, the request is denied.
+
 ---
 
 ## Core Entities
@@ -271,7 +285,9 @@ Defines access control rules (NOT rate limits or quotas).
 }
 ```
 
-**Note**: Rate limits and quotas are NOT defined in policies - they come from the subscription's entitlements.
+**Important Notes**:
+- Rate limits and quotas are NOT defined in policies - they come from subscription entitlements
+- Policy permission alone is not enough - the model must also be in the subscription's `model_access` list
 
 **Relationships:**
 - Applies to Users or Groups (subject)
@@ -320,6 +336,8 @@ Defines entitlements and billing for a group.
   "end_date": "2024-12-31T23:59:59Z"
 }
 ```
+
+**Important - Model Access**: The `model_access` list defines which models are **commercially available** to this subscription. However, users still need **Policy permission** to actually use these models. Both checks must pass.
 
 **Relationships:**
 - Owned by one Group
@@ -430,11 +448,11 @@ sequenceDiagram
     Alice->>API: Request GPT-4 inference
     API->>PolicyEngine: Check RBAC policy
     Note over PolicyEngine: Policy check:<br/>✓ Alice is in ML team<br/>✓ RBAC allows GPT-4 access
-    PolicyEngine-->>API: Access allowed
+    PolicyEngine-->>API: Permission granted
     
-    API->>SubscriptionService: Check subscription limits
-    Note over SubscriptionService: Subscription check:<br/>✓ Rate limit: 95/100 req/min<br/>✓ Quota: 45K/50K monthly requests
-    SubscriptionService-->>API: Limits OK
+    API->>SubscriptionService: Check subscription
+    Note over SubscriptionService: Subscription checks:<br/>✓ Commercial: GPT-4 in model_access list<br/>✓ Rate limit: 95/100 req/min<br/>✓ Quota: 45K/50K monthly requests
+    SubscriptionService-->>API: All checks OK
     
     API->>API: Call GPT-4
     API->>UsageTracker: Record usage
@@ -447,10 +465,16 @@ sequenceDiagram
 - **Cost** is attributed to the ML team's subscription
 - **Both policy and subscription checks** are logged for audit
 
-This demonstrates the **separation of concerns**:
-- **Policy** controls WHO can access WHAT (Alice can use GPT-4)
-- **Subscription** controls HOW MUCH can be consumed (100 req/min, 50K/month)
-- **Both must pass** for the request to succeed
+This demonstrates the **dual-check model access**:
+1. **Policy Check**: WHO can access WHAT (Alice has permission for GPT-4)
+2. **Subscription Checks**: 
+   - **Commercial**: GPT-4 is included in the paid plan
+   - **Limits**: HOW MUCH can be consumed (100 req/min, 50K/month)
+
+**All three checks must pass** for the request to succeed. This prevents:
+- Users accessing models not in their subscription (commercial control)
+- Unauthorized users accessing allowed models (permission control)  
+- Exceeding usage limits (resource control)
 
 ---
 
