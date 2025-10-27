@@ -13,7 +13,9 @@
 This document defines the core entities for the MaaS platform and their relationships. The goal is to establish a unified data model that enables:
 
 - **Clear Entity Relationships**: Users belong to Groups, Groups own Subscriptions
-- **Policy-Driven Access**: Policies apply to Users, Groups, and Models
+- **Separation of Concerns**: 
+  - **Subscriptions** define commercial limits (rate limits, quotas, billing)
+  - **Policies** define access control (who can access what models)
 - **Usage Tracking**: Direct correlation between usage and billing
 - **Transparent Attribution**: Cost tracking from user action to billing
 
@@ -26,16 +28,33 @@ This document defines the core entities for the MaaS platform and their relation
 - Cannot track costs by user/group effectively
 
 **Goals:**
-- Define 7 core entities with clear relationships
-- Enable policy inheritance (Global → Group → User)
+- Define 6 core entities with clear relationships
+- **Subscription-driven limits**: Rate limits and quotas defined by what you pay for
+- **Policy-driven access**: Who can access which models and features
 - Connect usage events to billing and policy decisions
 - Support multi-tenant enterprise scenarios
 
 ---
 
+## Key Design Principle: Subscription vs Policy Separation
+
+**Important**: We separate commercial concerns from access control:
+
+| Concern | Handled By | Examples |
+|---------|------------|----------|
+| **Commercial Limits** | Subscription | Rate limits, quotas, billing rates, cost caps |
+| **Access Control** | Policy | Who can access which models, RBAC rules, permissions |
+
+This separation means:
+- **Subscription entitlements** define what you can consume (based on what you pay)
+- **Policies** define what you're allowed to access (based on permissions)
+- **Both are enforced** together during request evaluation
+
+---
+
 ## Core Entities
 
-We define 6 core entities that work together to enable policy-driven access control and transparent billing:
+We define 6 core entities that work together to enable this separation:
 
 ### Entity Relationships
 
@@ -215,12 +234,12 @@ Links users to groups with roles and permissions.
 ```
 
 ### 4. Policy
-Defines access rules, rate limits, and quotas.
+Defines access control rules (NOT rate limits or quotas).
 
 **Core Fields:**
 - `id`: Unique identifier (UUID)
 - `name`: Human-readable name
-- `type`: Policy type (rbac, rate_limit, quota)
+- `type`: Policy type (rbac, abac)
 - `subject_type`: Who it applies to (user, group)
 - `subject_id`: Specific subject ID
 - `target_type`: What it controls (model, resource)
@@ -229,7 +248,7 @@ Defines access rules, rate limits, and quotas.
 - `priority`: Evaluation order (higher = priority)
 - `active`: Policy status
 
-**Example:**
+**Example - RBAC Policy:**
 ```json
 {
   "id": "pol-789e1234-e89b-12d3-a456-426614174333",
@@ -251,6 +270,8 @@ Defines access rules, rate limits, and quotas.
   "active": true
 }
 ```
+
+**Note**: Rate limits and quotas are NOT defined in policies - they come from the subscription's entitlements.
 
 **Relationships:**
 - Applies to Users or Groups (subject)
@@ -403,12 +424,18 @@ sequenceDiagram
     participant Alice
     participant API
     participant PolicyEngine
+    participant SubscriptionService
     participant UsageTracker
     
     Alice->>API: Request GPT-4 inference
-    API->>PolicyEngine: Check access (Alice + GPT-4)
-    Note over PolicyEngine: 1. Alice is in ML team<br/>2. Team has Pro subscription<br/>3. RBAC policy allows access<br/>4. Quota check: OK
-    PolicyEngine-->>API: Access granted
+    API->>PolicyEngine: Check RBAC policy
+    Note over PolicyEngine: Policy check:<br/>✓ Alice is in ML team<br/>✓ RBAC allows GPT-4 access
+    PolicyEngine-->>API: Access allowed
+    
+    API->>SubscriptionService: Check subscription limits
+    Note over SubscriptionService: Subscription check:<br/>✓ Rate limit: 95/100 req/min<br/>✓ Quota: 45K/50K monthly requests
+    SubscriptionService-->>API: Limits OK
+    
     API->>API: Call GPT-4
     API->>UsageTracker: Record usage
     Note over UsageTracker: Create UsageRecord:<br/>- user_id: Alice<br/>- model_id: GPT-4<br/>- subscription_id: Pro<br/>- cost: $0.045
@@ -418,9 +445,12 @@ sequenceDiagram
 **Data Created:**
 - **UsageRecord** links Alice → GPT-4 → Pro Subscription
 - **Cost** is attributed to the ML team's subscription
-- **Policy decision** is logged for audit
+- **Both policy and subscription checks** are logged for audit
 
-This demonstrates how all entities work together to enable controlled access with transparent billing.
+This demonstrates the **separation of concerns**:
+- **Policy** controls WHO can access WHAT (Alice can use GPT-4)
+- **Subscription** controls HOW MUCH can be consumed (100 req/min, 50K/month)
+- **Both must pass** for the request to succeed
 
 ---
 
