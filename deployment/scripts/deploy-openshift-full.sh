@@ -2,39 +2,8 @@
 
 # OpenShift MaaS Platform Deployment Script
 # This script automates the complete deployment of the MaaS platform on OpenShift
-# 
-# Prerequisites:
-# - RHOAI/OpenDataHub must be installed and running
-# - cert-manager must be installed and running
-# 
-# Use --skip-validation to bypass prerequisite validation checks
 
 set -e
-
-# Parse command line arguments
-SKIP_VALIDATION=false
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --skip-validation)
-            SKIP_VALIDATION=true
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: $0 [--skip-validation]"
-            echo ""
-            echo "Options:"
-            echo "  --skip-validation    Skip validation of required components (ODH/RHOAI, cert-manager)"
-            echo "  -h, --help          Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
 
 # Helper function to wait for CRD to be established
 wait_for_crd() {
@@ -180,16 +149,6 @@ echo "🚀 MaaS Platform OpenShift Deployment"
 echo "========================================="
 echo ""
 
-if [[ "$SKIP_VALIDATION" == "true" ]]; then
-    echo "⚠️  Validation mode: SKIPPED (--skip-validation flag used)"
-    echo "   Prerequisites will not be validated"
-    echo ""
-else
-    echo "✅ Validation mode: ENABLED"
-    echo "   Prerequisites will be validated before deployment"
-    echo ""
-fi
-
 # Check if running on OpenShift
 if ! kubectl api-resources | grep -q "route.openshift.io"; then
     echo "❌ This script is for OpenShift clusters only."
@@ -260,17 +219,13 @@ else
     echo "   ✅ Kuadrant operator already installed, skipping CRD cleanup"
 fi
 
-    if [[ "$SKIP_VALIDATION" == "true" ]]; then
-        echo "   ⏭️  Skipping cert-manager validation (--skip-validation flag)"
-    else
-        echo "   Validating cert-manager installation..."
-        if ! "$SCRIPT_DIR/validators/validate-cert-manager.sh"; then
-            echo "   ❌ cert-manager validation failed"
-            echo "   Please install cert-manager first or use --skip-validation to bypass this check"
-            exit 1
-        fi
-        echo "   ✅ cert-manager validation passed"
-    fi
+echo "   Installing cert-manager..."
+"$SCRIPT_DIR/install-dependencies.sh" --cert-manager
+
+# Wait for cert-manager CRDs to be ready
+echo "   Waiting for cert-manager CRDs to be established..."
+wait_for_crd "certificates.cert-manager.io" 120 || \
+    echo "   ⚠️  Certificate CRD not yet available"
 
 echo "   Installing Kuadrant..."
 "$SCRIPT_DIR/install-dependencies.sh" --kuadrant
@@ -290,17 +245,12 @@ cd "$PROJECT_ROOT"
 envsubst < deployment/base/networking/gateway-api.yaml | kubectl apply --server-side=true --force-conflicts -f -
 
 echo ""
-echo "5️⃣ Validating OpenDataHub/RHOAI installation..."
-if [[ "$SKIP_VALIDATION" == "true" ]]; then
-    echo "   ⏭️  Skipping RHOAI validation (--skip-validation flag)"
+echo "5️⃣ Checking for OpenDataHub/RHOAI KServe..."
+if kubectl get crd llminferenceservices.serving.kserve.io &>/dev/null 2>&1; then
+    echo "   ✅ KServe CRDs already present (ODH/RHOAI detected)"
 else
-    echo "   Validating RHOAI installation..."
-    if ! "$SCRIPT_DIR/validators/validate-rhoai3.sh"; then
-        echo "   ❌ RHOAI validation failed"
-        echo "   Please install RHOAI/OpenDataHub first or use --skip-validation to bypass this check"
-        exit 1
-    fi
-    echo "   ✅ RHOAI validation passed"
+    echo "   ⚠️  KServe not detected. Deploying ODH KServe components..."
+    "$SCRIPT_DIR/install-dependencies.sh" --odh
 fi
 
 echo ""
@@ -409,13 +359,9 @@ kubectl delete pod -n kuadrant-system -l control-plane=controller-manager 2>/dev
   echo "   ✅ Kuadrant operator restarted" || \
   echo "   ⚠️  Could not restart Kuadrant operator"
 
-if kubectl get deployment authorino-operator -n kuadrant-system &>/dev/null; then
-    kubectl rollout restart deployment authorino-operator -n kuadrant-system 2>/dev/null && \
-      echo "   ✅ Authorino operator restarted" || \
-      echo "   ⚠️  Could not restart Authorino operator"
-else
-    echo "   ⚠️  ⚠️  Authorino operator deployment not found - skipping restart"
-fi
+kubectl rollout restart deployment authorino-operator -n kuadrant-system 2>/dev/null && \
+  echo "   ✅ Authorino operator restarted" || \
+  echo "   ⚠️  Could not restart Authorino operator"
 
 kubectl rollout restart deployment limitador-operator-controller-manager -n kuadrant-system 2>/dev/null && \
   echo "   ✅ Limitador operator restarted" || \
@@ -424,12 +370,8 @@ kubectl rollout restart deployment limitador-operator-controller-manager -n kuad
 echo "   Waiting for operators to be ready..."
 kubectl rollout status deployment kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Kuadrant operator taking longer than expected"
-if kubectl get deployment authorino-operator -n kuadrant-system &>/dev/null; then
-    kubectl rollout status deployment authorino-operator -n kuadrant-system --timeout=60s 2>/dev/null || \
-      echo "   ⚠️  Authorino operator taking longer than expected"
-else
-    echo "   ⚠️  ⚠️  Authorino operator deployment not found - skipping status check"
-fi
+kubectl rollout status deployment authorino-operator -n kuadrant-system --timeout=60s 2>/dev/null || \
+  echo "   ⚠️  Authorino operator taking longer than expected"
 kubectl rollout status deployment limitador-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Limitador operator taking longer than expected"
 
