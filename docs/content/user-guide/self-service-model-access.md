@@ -1,30 +1,33 @@
-# Model Access Guide
+# Self Service Model Access
 
-This guide explains how to interact with deployed models on the MaaS Platform, including authentication, making requests, and handling responses.
+This guide is for **end users** who want to use AI models through the MaaS platform.
 
-## Overview
+## 🎯 What is MaaS?
 
-The MaaS Platform provides a secure, tier-based model access system where:
-- Users authenticate with tokens obtained from the MaaS API
-- Access is controlled by subscription tiers (free, premium, enterprise)
-- Rate limiting and token consumption tracking are enforced
-- Models are accessed through the MaaS gateway for policy enforcement
+The Model-as-a-Service (MaaS) platform provides access to AI models through a simple API. Your organization's administrator has set up the platform and configured access for your team.
 
-## Authentication
+## Getting Your Access Token
 
-### Getting a Token
+### Step 1: Get Your OpenShift Authentication Token
 
-Before accessing models, you need to obtain an authentication token:
+First, you need your OpenShift token to prove your identity to the maas-api.
 
 ```bash
-# Get your OpenShift token
-OC_TOKEN=$(oc whoami -t)
+# Log in to your OpenShift cluster if you haven't already
+oc login ...
 
-# Set your MaaS API endpoint
-HOST="https://maas-api.your-domain.com"
+# Get your current OpenShift authentication token
+OC_TOKEN=$(oc whoami -t)
+```
+
+### Step 2: Request an Access Token from the API
+
+Next, use that OpenShift token to call the maas-api `/v1/tokens` endpoint. You can specify the desired expiration time; the default is 4 hours.
+
+```bash
+HOST="https://maas.yourdomain.io"
 MAAS_API_URL="${HOST}/maas-api"
 
-# Request an access token
 TOKEN_RESPONSE=$(curl -sSk \
   -H "Authorization: Bearer ${OC_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -32,11 +35,16 @@ TOKEN_RESPONSE=$(curl -sSk \
   "${MAAS_API_URL}/v1/tokens")
 
 ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
+
+echo $ACCESS_TOKEN
 ```
+
+!!! note
+    Replace `HOST` with the actual route to your `maas-api` instance.
 
 ### Token Lifecycle
 
-- **Default lifetime**: 4 hours
+- **Default lifetime**: 4 hours (configurable when requesting)
 - **Maximum lifetime**: Determined by cluster configuration
 - **Refresh**: Request a new token before expiration
 - **Revocation**: Tokens can be revoked if compromised
@@ -48,7 +56,7 @@ ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 Get a list of models available to your tier:
 
 ```bash
-MODELS=$(curl ${HOST}/maas-api/v1/models \
+MODELS=$(curl "${MAAS_API_URL}/v1/models" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}")
 
@@ -56,6 +64,7 @@ echo $MODELS | jq .
 ```
 
 Example response:
+
 ```json
 {
   "data": [
@@ -81,36 +90,41 @@ Get detailed information about a specific model:
 
 ```bash
 MODEL_ID="simulator"
-MODEL_INFO=$(curl ${HOST}/maas-api/v1/models \
+MODEL_INFO=$(curl "${MAAS_API_URL}/v1/models" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" | \
     jq --arg model "$MODEL_ID" '.data[] | select(.id == $model)')
 
 echo $MODEL_INFO | jq .
 ```
 
-## Making Requests
+## Making Inference Requests
 
 ### Basic Chat Completion
 
 Make a simple chat completion request:
 
 ```bash
-MODEL_URL="https://gateway.your-domain.com/simulator/v1/chat/completions"
+# First, get the model URL from the models endpoint
+MODELS=$(curl "${MAAS_API_URL}/v1/models" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}")
+MODEL_URL=$(echo $MODELS | jq -r '.data[0].url')
+MODEL_NAME=$(echo $MODELS | jq -r '.data[0].id')
 
 curl -sSk \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{
-        "model": "simulator",
-        "messages": [
+  -d "{
+        \"model\": \"${MODEL_NAME}\",
+        \"messages\": [
           {
-            "role": "user",
-            "content": "Hello, how are you?"
+            \"role\": \"user\",
+            \"content\": \"Hello, how are you?\"
           }
         ],
-        "max_tokens": 100
-      }' \
-  "${MODEL_URL}"
+        \"max_tokens\": 100
+      }" \
+  "${MODEL_URL}/v1/chat/completions"
 ```
 
 ### Advanced Request Parameters
@@ -138,7 +152,7 @@ curl -sSk \
         "top_p": 0.9,
         "stream": false
       }' \
-  "${MODEL_URL}"
+  "${MODEL_URL}/v1/chat/completions"
 ```
 
 ### Streaming Responses
@@ -160,14 +174,14 @@ curl -sSk \
         "max_tokens": 300,
         "stream": true
       }' \
-  "${MODEL_URL}" | while IFS= read -r line; do
+  "${MODEL_URL}/v1/chat/completions" | while IFS= read -r line; do
     if [[ $line == data:* ]]; then
       echo "${line#data: }" | jq -r '.choices[0].delta.content // empty' 2>/dev/null
     fi
   done
 ```
 
-## Handling Responses
+## Processing Responses
 
 ### Standard Response Format
 
@@ -197,9 +211,7 @@ Models return responses in the OpenAI-compatible format:
 }
 ```
 
-### Processing Responses
-
-Extract content from responses:
+### Extract Response Content
 
 ```bash
 RESPONSE=$(curl -sSk \
@@ -215,7 +227,7 @@ RESPONSE=$(curl -sSk \
         ],
         "max_tokens": 50
       }' \
-  "${MODEL_URL}")
+  "${MODEL_URL}/v1/chat/completions")
 
 # Extract the response content
 CONTENT=$(echo $RESPONSE | jq -r '.choices[0].message.content')
@@ -229,11 +241,29 @@ TOTAL_TOKENS=$(echo $RESPONSE | jq -r '.usage.total_tokens')
 echo "Token usage: $TOTAL_TOKENS total ($PROMPT_TOKENS prompt + $COMPLETION_TOKENS completion)"
 ```
 
+## Understanding Your Access Level
+
+Your access is determined by your **tier**, which controls:
+
+- **Available models** - Which AI models you can use
+- **Request limits** - How many requests per minute
+- **Token limits** - Maximum tokens per request
+- **Features** - Advanced capabilities available
+
+### Common Tiers
+
+| Tier | Requests/min | Tokens/min |
+|------|--------------|------------|
+| Free | 5 | 100 |
+| Premium | 20 | 50,000 |
+| Enterprise | 50 | 100,000 |
+
 ## Error Handling
 
 ### Common Error Responses
 
 **401 Unauthorized**
+
 ```json
 {
   "error": {
@@ -245,6 +275,7 @@ echo "Token usage: $TOTAL_TOKENS total ($PROMPT_TOKENS prompt + $COMPLETION_TOKE
 ```
 
 **403 Forbidden**
+
 ```json
 {
   "error": {
@@ -256,6 +287,7 @@ echo "Token usage: $TOTAL_TOKENS total ($PROMPT_TOKENS prompt + $COMPLETION_TOKE
 ```
 
 **429 Too Many Requests**
+
 ```json
 {
   "error": {
@@ -308,21 +340,9 @@ else
 fi
 ```
 
-## Rate Limiting and Quotas
+## Monitoring Usage
 
-### Understanding Limits
-
-Each tier has different limits:
-
-| Tier | Requests/2min | Tokens/min |
-|------|---------------|------------|
-| Free | 5 | 100 |
-| Premium | 20 | 50,000 |
-| Enterprise | 50 | 100,000 |
-
-### Monitoring Usage
-
-Check your current usage through response headers or the metrics dashboard:
+Check your current usage through response headers:
 
 ```bash
 # Make a request and check headers
@@ -330,49 +350,71 @@ curl -I -sSk \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"model": "simulator", "messages": [{"role": "user", "content": "test"}]}' \
-  "${MODEL_URL}" | grep -i "x-ratelimit"
+  "${MODEL_URL}/v1/chat/completions" | grep -i "x-ratelimit"
 ```
 
-### Implementing Rate Limiting
+## ⚠️ Common Issues
 
-For applications that need to respect rate limits:
+### Authentication Errors
+
+**Problem**: `401 Unauthorized`
+
+**Solution**: Check your token and ensure it's correctly formatted:
 
 ```bash
-# Simple rate limiting implementation
-make_request_with_backoff() {
-  local model_url="$1"
-  local prompt="$2"
-  local max_retries=3
-  local retry_count=0
-  
-  while [ $retry_count -lt $max_retries ]; do
-    response=$(curl -sSk \
-      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-      -H "Content-Type: application/json" \
-      -d "{
-            \"model\": \"simulator\",
-            \"messages\": [
-              {
-                \"role\": \"user\",
-                \"content\": \"$prompt\"
-              }
-            ],
-            \"max_tokens\": 100
-          }" \
-      "${model_url}")
-    
-    # Check for rate limit error
-    if echo "$response" | jq -e '.error.code == "rate_limit_exceeded"' > /dev/null; then
-      retry_count=$((retry_count + 1))
-      echo "Rate limit exceeded, waiting before retry $retry_count/$max_retries..." >&2
-      sleep 30  # Wait 30 seconds before retry
-    else
-      echo "$response" | jq -r '.choices[0].message.content'
-      return 0
-    fi
-  done
-  
-  echo "Max retries exceeded" >&2
-  return 1
-}
+# Correct format
+-H "Authorization: Bearer YOUR_TOKEN"
+
+# Wrong format
+-H "Authorization: YOUR_TOKEN"
 ```
+
+### Rate Limit Exceeded
+
+**Problem**: `429 Too Many Requests`
+
+**Solution**: Wait before making more requests, or contact your administrator to upgrade your tier.
+
+### Model Not Available
+
+**Problem**: `404 Model Not Found`
+
+**Solution**: Check which models are available in your tier:
+
+```bash
+curl -X GET "${MAAS_API_URL}/v1/models" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
+```
+
+## 💡 Best Practices
+
+1. **Request tokens** with appropriate expiration times for your use case
+2. **Refresh tokens** proactively before they expire
+3. **Handle errors** gracefully in your scripts
+4. **Monitor your usage** to stay within tier limits
+5. **Batch requests** when possible to be efficient
+6. **Cache responses** when appropriate
+
+## FAQs
+
+**Q: My tier is wrong or shows as "free". How do I fix it?**
+
+A: Your tier is determined by your group membership in OpenShift. Contact your platform administrator to ensure you are in the correct user group.
+
+---
+
+**Q: How long should my tokens be valid for?**
+
+A: It's a balance of security and convenience. For interactive command-line use, 1-8 hours is common. For applications, request shorter-lived tokens (e.g., 15-60 minutes) and refresh them automatically.
+
+---
+
+**Q: Can I have multiple active tokens at once?**
+
+A: Yes. Each call to the `/v1/tokens` endpoint issues a new, independent token. All of them will be valid until they expire or are revoked.
+
+---
+
+**Q: Can I use one token to access multiple different models?**
+
+A: Yes. Your token grants you access based on your tier's RBAC permissions. If your tier is authorized to use multiple models, a single token will work for all of them.

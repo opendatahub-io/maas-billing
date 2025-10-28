@@ -47,17 +47,17 @@ plugins:
 nav:
   - Home: index.md
   - Getting Started:
-    - Installation: installation.md
-  - User Guide:
-    - User Guide: user-guide.md
-    - Model Access: model-access.md
+    - Installation: getting-started/installation.md
+  - Self Service Model Access: user-guide/self-service-model-access.md
   - Configuration & Management:
-    - Tier Management: tier-management.md
-    - Token Management: token-management.md
-    - Gateway Setup: gateway-setup.md
+    - Tier Management:
+        - Tier Overview: configuration-and-management/tier-overview.md
+        - Tier Configuration: configuration-and-management/tier-configuration.md
+        - Tier Concepts: configuration-and-management/tier-concepts.md
+    - Gateway Setup: configuration-and-management/gateway-setup.md
   - Architecture: architecture.md
   - Advanced Administration:
-    - Observability: observability.md
+    - Observability: advanced-administration/observability.md
 
 markdown_extensions:
   - pymdownx.highlight:
