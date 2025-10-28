@@ -42,3 +42,6 @@ CLAUDE.md
 # Docs build and site directories
 docs/build/
 docs/site/
+
+# Openshift users files for MaaS Testing
+maas-users.htpasswd
