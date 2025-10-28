@@ -46,8 +46,11 @@ plugins:
 
 nav:
   - Home: index.md
-  - Getting Started:
-    - Installation: getting-started/installation.md
+  - Architecture: architecture.md
+  - Installation:
+    - Prerequisites: install/prerequisites.md
+    - Installation: install/installation.md
+    - ODH Setup: install/odh-setup.md
   - Self Service Model Access: user-guide/self-service-model-access.md
   - Configuration & Management:
     - Tier Management:
@@ -55,7 +58,6 @@ nav:
         - Tier Configuration: configuration-and-management/tier-configuration.md
         - Tier Concepts: configuration-and-management/tier-concepts.md
     - Gateway Setup: configuration-and-management/gateway-setup.md
-  - Architecture: architecture.md
   - Advanced Administration:
     - Observability: advanced-administration/observability.md
 
