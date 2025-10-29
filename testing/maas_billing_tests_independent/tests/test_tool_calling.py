@@ -66,11 +66,14 @@ def test_tool_calling_forced(http, base_url, model_name, tools_spec):
     print("[tool_calling] http:", r.status_code)
     print("[tool_calling] tool_calls:", json.dumps(tool_calls, indent=2))
     print("[tool_calling] full_response:", json.dumps(data, indent=2))
-    assert tool_calls, f"No tool_calls in response: {data}"
+    assert tool_calls, "No tool_calls in response"
+    assert len(tool_calls) == 1, f"Expected exactly one tool_call, got {len(tool_calls)}"
 
-    fn = (tool_calls[0].get("function") or {}).get("name")
-    args_raw = (tool_calls[0].get("function") or {}).get("arguments")
+    call0 = tool_calls[0]
+    fn = (call0.get("function") or {}).get("name")
+    args_raw = (call0.get("function") or {}).get("arguments")
     args = _parse_args(args_raw)
+
     assert fn == "get_weather", f"Unexpected tool: {fn}"
     assert ("city" in args or "location" in args), f"Missing city/location in args: {args}"
 
