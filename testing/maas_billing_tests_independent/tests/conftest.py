@@ -249,3 +249,53 @@ def get_limit(env_name: str, fallback_key: str, default_val):
         except Exception:
             return default_val
     return POLICY.get(fallback_key) or default_val
+
+# --- new: tool-calling -
+
+@pytest.fixture(scope="session")
+def tool_calling_enabled() -> bool:
+    return os.getenv("TOOL_CALLING_ENABLED", "false").lower() in ("1","true","yes")
+
+# @pytest.fixture(scope="session")
+# def tools_spec():
+#     return [
+#         {
+#             "type": "function",
+#             "function": {
+#                 "name": "get_weather",
+#                 "description": "Get current weather for a city/location.",
+#                 "parameters": {
+#                     "type": "object",
+#                     "properties": {
+#                         "city": {"type": "string"},
+#                         "location": {"type": "string"},
+#                         "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+#                     },
+#                     "required": ["location"],
+#                     "additionalProperties": False,
+#                 },
+#             },
+#         }
+#     ]
+
+@pytest.fixture(scope="session")
+def tools_spec():
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather for a city/location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string", "description": "City name, e.g. Boston, MA"},
+                        "city": {"type": "string", "description": "City name (legacy alias)"},
+                        "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+                    },
+                    "required": ["location"],
+                    "additionalProperties": False
+                },
+            },
+        }
+    ]
