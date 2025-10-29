@@ -60,6 +60,33 @@ spec:
     path: /metrics
 ```
 
+## High Availability for MaaS Metrics
+
+For production deployments where metric persistence across pod restarts and scaling events is critical, you should configure Limitador to use Redis as a backend storage solution.
+
+### Why High Availability Matters
+
+By default, Limitador stores rate-limiting counters in memory, which means:
+
+- All hit counts are lost when pods restart
+- Metrics reset when pods are rescheduled or scaled down
+- No persistence across cluster maintenance or updates
+
+### Setting Up Persistent Metrics
+
+To enable persistent metric counts, refer to the detailed guide:
+
+**[Configuring Redis storage for rate limiting](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html/installing_connectivity_link_on_openshift/configure-redis_connectivity-link)**
+
+This Red Hat documentation provides:
+
+- Step-by-step Redis configuration for OpenShift
+- Secret management for Redis credentials
+- Limitador custom resource updates
+- Production-ready setup instructions
+
+For local development and testing, you can also use our [Limitador Persistence](limitador-persistence.md) guide which includes a basic Redis setup script that works with any Kubernetes cluster.
+
 ## Grafana Dashboards
 
 ### MaaS Platform Overview Dashboard
