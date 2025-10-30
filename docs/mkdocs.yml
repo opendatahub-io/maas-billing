@@ -51,6 +51,7 @@ nav:
     - Installation:
       - Prerequisites: install/prerequisites.md
       - install/odh-setup.md
+      - install/rhoai-setup.md
     - User Guide: user-guide.md
     - Model Access: model-access.md
     - Configuration & Management:
