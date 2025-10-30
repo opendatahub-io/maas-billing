@@ -48,7 +48,20 @@ plugins:
 
 nav:
   - Home: index.md
-  - QuickStart: quickstart.md
+  - Quick Start: installation.md
+  - User Guide:
+    - Installation:
+      - Prerequisites: install/prerequisites.md
+      - install/odh-setup.md
+      - install/rhoai-setup.md
+    - User Guide: user-guide.md
+    - Model Access: model-access.md
+    - Configuration & Management:
+      - Tier Management: tier-management.md
+      - Token Management: token-management.md
+      - Gateway Setup: gateway-setup.md
+    - Advanced Administration:
+      - Observability: observability.md
   - Architecture: architecture.md
   - Installation:
     - Prerequisites: install/prerequisites.md
