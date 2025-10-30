@@ -1,8 +1,12 @@
-# MaaS Installation Prerequisites
+# MaaS Installation Overivew
 
 Currently, ODH's _Model-as-a-Service_ is provided as a standalone capability that is
 compatible with the Open Data Hub project (ODH), and with Red Hat OpenShift AI (RHOAI). To
-install MaaS, you should choose one of these platforms.
+install MaaS:
+
+* Install the [Open Data Hub project](odh-setup.md),
+  or install [Red Hat OpenShift AI](rhoai-setup.md).
+* [Install MaaS using Kustomize manifests](maas-setup.md).
 
 MaaS inherits the platform requirement for a Red Hat OpenShift cluster version 4.19.9 or
 later, which is the version that has formal support for Gateway API. For earlier OpenShift

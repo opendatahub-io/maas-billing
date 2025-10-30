@@ -234,7 +234,7 @@ export CLUSTER_DOMAIN="apps.my-cluster.example.com"
 For issues or questions:
 1. Run the validation script to identify specific problems
 2. Check the main project [README](../../README.md)
-3. Review deployment documentation in [deployment/README.md](../README.md)
+3. Review [deployment documentation](../../docs/content/quickstart.md)
 4. Check sample model configurations in [docs/samples/models/](../../docs/samples/models/)
 
 

@@ -4,20 +4,7 @@ kind: Kustomization
 metadata:
   name: maas-openshift-overlay
 
-# Base configuration
 resources:
-  # Core gateway routes and networking
-  - ../../base/networking
-  
-  # Core MaaS API components
-  - ../../base/maas-api
-
-  # Policies
+  - ../../base/networking/maas
   - ../../base/policies
-
-  # Observability (optional, can be commented out if not needed)
-  # - ../../components/observability
-  
-  # Sample models (optional, can be commented out if not needed)
-  # - ../../samples/models/simulator
-  # - ../../samples/models/qwen3
+  - ../../base/maas-api

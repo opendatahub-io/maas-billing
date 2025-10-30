@@ -1,4 +1,3 @@
----
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:

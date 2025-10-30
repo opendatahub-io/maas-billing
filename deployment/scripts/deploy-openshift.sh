@@ -242,7 +242,8 @@ echo "   Cluster domain: $CLUSTER_DOMAIN"
 
 echo "   Deploying Gateway and GatewayClass..."
 cd "$PROJECT_ROOT"
-kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/gateway-api.yaml)
+kubectl apply --server-side=true --force-conflicts -f deployment/base/networking/odh/odh-gateway-api.yaml
+kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml)
 
 echo ""
 echo "5️⃣ Checking for OpenDataHub/RHOAI KServe..."
@@ -278,7 +279,7 @@ wait_for_crd "tokenratelimitpolicies.kuadrant.io" 10 || echo "   ⚠️  tokenra
 echo ""
 echo "7️⃣ Deploying Kuadrant configuration (now that CRDs exist)..."
 cd "$PROJECT_ROOT"
-kubectl apply -f deployment/base/networking/kuadrant.yaml
+kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 
 echo ""
 echo "8️⃣ Deploying MaaS API..."
