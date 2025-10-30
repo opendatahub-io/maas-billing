@@ -12,7 +12,7 @@ Link (RHCL) and the LeaderWorkerSet API (LWS). RHCL, in turn, requires cert-mana
 
 Tools you will need:
 
-* kubectl or oc client (this guide uses oc)
+* kubectl or oc client (this guide uses kubectl)
 
 !!! warning
     You should choose either to install Red Hat OpenShift AI, or the Open Data Hub
@@ -52,12 +52,15 @@ spec:
   sourceNamespace: openshift-marketplace
 ```
 
+Check [Red Hat cert-manager documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/latest/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift)
+if you need further guidance.
+
 ### Verification
 
 Check that cert-manager deployments are ready:
 
 ```shell
-oc get deployments --namespace cert-manager
+kubectl get deployments --namespace cert-manager
 
 NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
 cert-manager              1/1     1            1           16s
@@ -110,12 +113,15 @@ spec:
   managementState: Managed
 ```
 
+Check [Red Hat LWS documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/latest/html/ai_workloads/leader-worker-set-operator)
+if you need further guidance.
+
 ### Verification
 
 Check that LWS deployments are ready:
 
 ```shell
-oc get deployments --namespace openshift-lws-operator
+kubectl get deployments --namespace openshift-lws-operator
 
 NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
 lws-controller-manager   2/2     2            2           61s
@@ -124,7 +130,7 @@ openshift-lws-operator   1/1     1            1           4m26s
 
 ## Install Red Hat Connectivity Link
 
-Initialize OpenShift's provided Gateway API implementation by creating the following 
+Initialize OpenShift's provided Gateway API implementation by creating the following
 resource:
 
 ```yaml
@@ -139,7 +145,7 @@ spec:
 Wait until the GatewayClass resource is accepted:
 
 ```yaml
-oc get gatewayclass openshift-default
+kubectl get gatewayclass openshift-default
 
 NAME                CONTROLLER                           ACCEPTED   AGE
 openshift-default   openshift.io/gateway-controller/v1   True       52s
@@ -185,12 +191,15 @@ metadata:
   namespace: kuadrant-system
 ```
 
+Check [RHCL documentation](https://docs.redhat.com/en/documentation/red_hat_connectivity_link)
+if you need further guidance.
+
 ### Verification
 
 Check that RHCL deployments are ready:
 
 ```shell
-oc get deployments -n kuadrant-system
+kubectl get deployments -n kuadrant-system
 
 NAME                                    READY   UP-TO-DATE   AVAILABLE   AGE
 authorino-operator                      1/1     1            1           80s
@@ -216,12 +225,12 @@ metadata:
 spec:
   gatewayClassName: openshift-default
   listeners:
-   - name: http
-     port: 80
-     protocol: HTTP
-     allowedRoutes:
-       namespaces:
-         from: All
+  - name: http
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: All
   infrastructure:
     labels:
       serving.kserve.io/gateway: kserve-ingress-gateway
@@ -256,8 +265,8 @@ spec:
   sourceNamespace: openshift-marketplace
 ```
 
-Once ready, the RHOAI Operator should automatically create a `DSCInitialization` 
-resource. Install the Model Serving component by creating the following 
+Once ready, the RHOAI Operator should automatically create a `DSCInitialization`
+resource. Install the Model Serving component by creating the following
 `DataScienceCluster` resource:
 
 ```yaml
@@ -277,12 +286,15 @@ spec:
       managementState: Managed
 ```
 
+Check [RHOAI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed)
+if you need further guidance.
+
 ### Verification
 
 Check that RHOAI Model Serving Deployments are ready:
 
 ```shell
-oc get deployments -n redhat-ods-applications
+kubectl get deployments -n redhat-ods-applications
 
 NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
 kserve-controller-manager   1/1     1            1           73s
