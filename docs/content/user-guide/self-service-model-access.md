@@ -1,4 +1,4 @@
-# Self Service Model Access
+# Self-Service Model Access
 
 This guide is for **end users** who want to use AI models through the MaaS platform.
 
