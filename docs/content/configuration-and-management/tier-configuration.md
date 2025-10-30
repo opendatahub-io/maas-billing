@@ -164,7 +164,7 @@ kubectl wait --for=condition=Enforced=true tokenratelimitpolicy/gateway-token-ra
 ```
 
 ### 4. Validate the Configuration
-
+Configuration can be validated by running through the manual validation steps in the [deployment scripts documentation](../../deployment/scripts/README.md), or by using the automated validation script:
 Can be validated by running through the manual validation steps in the [deployment scripts documentation](../../deployment/scripts/README.md). Or by using the automated validation script:
 
 ```bash
