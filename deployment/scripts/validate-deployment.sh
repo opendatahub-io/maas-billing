@@ -13,6 +13,8 @@ REQUESTED_MODEL=""
 CUSTOM_REQUEST_PAYLOAD=""
 INFERENCE_ENDPOINT="chat/completions"  # Default to chat completions
 CUSTOM_MODEL_PATH=""  # Custom path for model endpoint (overrides --endpoint)
+RATE_LIMIT_TEST_COUNT=10  # Default number of requests for rate limit testing
+MAX_TOKENS=50  # Default max_tokens for requests
 
 # Show help if requested
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
@@ -31,11 +33,15 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo "  -h, --help                Show this help message and exit"
     echo "  --request-payload JSON    Custom JSON request payload for model inference tests."
     echo "                            Use \${MODEL_NAME} as a placeholder for the model name."
-    echo "                            Default (Chat): '{\"model\": \"\${MODEL_NAME}\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}], \"max_tokens\": 5}'"
+    echo "                            Default (Chat): '{\"model\": \"\${MODEL_NAME}\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}], \"max_tokens\": 50}'"
     echo "  --endpoint ENDPOINT       API endpoint to use: 'chat/completions' or 'completions'"
     echo "                            Default: 'chat/completions'"
     echo "  --model-path PATH         Custom path for model endpoint (e.g., '/v1/responses')"
     echo "                            Overrides --endpoint if provided"
+    echo "  --rate-limit-requests N   Number of requests to send for rate limit testing"
+    echo "                            Default: 10"
+    echo "  --max-tokens N            Maximum number of tokens to generate per request"
+    echo "                            Default: 50"
     echo ""
     echo "Examples:"
     echo "  # Basic validation"
@@ -50,6 +56,9 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo ""
     echo "  # For instruction/chat models (default format works)"
     echo "  $0 qwen3-instruct"
+    echo ""
+    echo "  # Test with custom rate limit request count"
+    echo "  $0 llm-simulator --rate-limit-requests 20          # Send 20 requests for rate limit test"
     echo ""
     echo "Exit Codes:"
     echo "  0    All critical checks passed"
@@ -67,6 +76,26 @@ while [ $# -gt 0 ]; do
             ;;
         --endpoint)
             INFERENCE_ENDPOINT="$2"
+            shift 2
+            ;;
+        --model-path)
+            CUSTOM_MODEL_PATH="$2"
+            shift 2
+            ;;
+        --rate-limit-requests)
+            RATE_LIMIT_TEST_COUNT="$2"
+            if ! [[ "$RATE_LIMIT_TEST_COUNT" =~ ^[0-9]+$ ]]; then
+                echo "Error: --rate-limit-requests must be a positive integer"
+                exit 1
+            fi
+            shift 2
+            ;;
+        --max-tokens)
+            MAX_TOKENS="$2"
+            if ! [[ "$MAX_TOKENS" =~ ^[0-9]+$ ]]; then
+                echo "Error: --max-tokens must be a positive integer"
+                exit 1
+            fi
             shift 2
             ;;
         -*)
@@ -89,7 +118,7 @@ done
 
 # Set default request payload if not provided (OpenAI Chat Completions format)
 if [ -z "$CUSTOM_REQUEST_PAYLOAD" ]; then
-    DEFAULT_REQUEST_PAYLOAD='{"model": "${MODEL_NAME}", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 5}'
+    DEFAULT_REQUEST_PAYLOAD='{"model": "${MODEL_NAME}", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": '"$MAX_TOKENS"'}'
 else
     DEFAULT_REQUEST_PAYLOAD="$CUSTOM_REQUEST_PAYLOAD"
 fi
@@ -104,6 +133,14 @@ fi
 
 if [ "$INFERENCE_ENDPOINT" != "chat/completions" ]; then
     echo "Using custom endpoint: /v1/$INFERENCE_ENDPOINT"
+fi
+
+if [ "$RATE_LIMIT_TEST_COUNT" != "10" ]; then
+    echo "Using custom rate limit test count: $RATE_LIMIT_TEST_COUNT"
+fi
+
+if [ "$MAX_TOKENS" != "50" ]; then
+    echo "Using custom max_tokens: $MAX_TOKENS"
 fi
 
 # Color codes for output
@@ -371,6 +408,29 @@ else
                 TOKEN=$(echo "$RESPONSE_BODY" | jq -r '.token' 2>/dev/null || echo "")
                 if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
                     print_success "Authentication successful (HTTP $HTTP_CODE)"
+                    
+                    # Decode token and extract tier information
+                    print_check "Token information"
+                    TOKEN_PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null || echo "")
+                    if [ -n "$TOKEN_PAYLOAD" ]; then
+                        SUB=$(echo "$TOKEN_PAYLOAD" | jq -r '.sub' 2>/dev/null || echo "")
+                        if [ -n "$SUB" ] && [ "$SUB" != "null" ]; then
+                            print_info "Token subject: $SUB"
+                            
+                            # Extract tier from sub: system:serviceaccount:maas-default-gateway-tier-{tier}:{user}
+                            # Extract the part between "tier-" and the colon
+                            TIER=$(echo "$SUB" | sed -n 's/.*tier-\([^:]*\):.*/\1/p')
+                            if [ -n "$TIER" ]; then
+                                print_success "User tier: $TIER"
+                            else
+                                print_warning "Could not extract tier from subject" "Subject format may not match expected pattern"
+                            fi
+                        else
+                            print_warning "Could not extract sub from token payload"
+                        fi
+                    else
+                        print_warning "Could not decode token payload"
+                    fi
                 else
                     print_fail "Authentication response invalid" "Received HTTP $HTTP_CODE but no token in response" "Check MaaS API logs: kubectl logs -n maas-api -l app=maas-api"
                 fi
@@ -538,7 +598,7 @@ else
     # Test rate limiting
     if [ -n "$TOKEN" ] && [ -n "$MODEL_NAME" ] && [ -n "$MODEL_CHAT_ENDPOINT" ]; then
         print_check "Rate limiting"
-        print_info "Sending 10 rapid requests to test rate limiting..."
+        print_info "Sending $RATE_LIMIT_TEST_COUNT rapid requests to test rate limiting..."
         
         # Use the same request payload for rate limiting tests
         REQUEST_PAYLOAD="${DEFAULT_REQUEST_PAYLOAD//\$\{MODEL_NAME\}/$MODEL_NAME}"
@@ -546,7 +606,7 @@ else
         SUCCESS_COUNT=0
         RATE_LIMITED_COUNT=0
         
-        for i in {1..10}; do
+        for i in $(seq 1 $RATE_LIMIT_TEST_COUNT); do
             HTTP_CODE=$(curl -sSk --connect-timeout 5 --max-time 15 -o /dev/null -w "%{http_code}" \
                 -H "Authorization: Bearer ${TOKEN}" \
                 -H "Content-Type: application/json" \
@@ -623,4 +683,3 @@ else
     echo ""
     exit 1
 fi
-
