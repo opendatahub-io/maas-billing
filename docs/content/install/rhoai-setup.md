@@ -144,7 +144,7 @@ spec:
 
 Wait until the GatewayClass resource is accepted:
 
-```yaml
+```shell
 kubectl get gatewayclass openshift-default
 
 NAME                CONTROLLER                           ACCEPTED   AGE
