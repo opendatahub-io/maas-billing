@@ -23,12 +23,11 @@ graph TB
     
     subgraph "Gateway & Policy Layer"
         GatewayAPI["maas-default-gateway<br/>All Traffic Entry Point"]
-        AuthPolicy["Auth Policy<br/>Authorino<br/>Token Validation"]
-        RateLimit["Rate Limiting<br/>Limitador<br/>Usage Quotas"]
+        AuthPolicy["<b>Auth Policy</b><br/>Authorino<br/>Token Validation"]
+        RateLimit["<b>Rate Limiting</b><br/>Limitador<br/>Usage Quotas"]
     end
     
     subgraph "Token Management Path"
-        PathAPI["maas-api path"]
         MaaSAPI["MaaS API<br/>Token Retrieval"]
     end
     
@@ -40,8 +39,7 @@ graph TB
     User -->|"All Requests"| GatewayAPI
     GatewayAPI -->|"All Traffic"| AuthPolicy
     
-    AuthPolicy -->|"/maas-api<br/>Auth Only"| PathAPI
-    PathAPI --> MaaSAPI
+    AuthPolicy -->|"/maas-api<br/>Auth Only"| MaaSAPI
     MaaSAPI -->|"Returns Token"| User
     
     AuthPolicy -->|"Inference Traffic<br/>Auth + Rate Limit"| RateLimit
@@ -51,8 +49,10 @@ graph TB
     
     style MaaSAPI fill:#1976d2,stroke:#333,stroke-width:2px,color:#fff
     style GatewayAPI fill:#7b1fa2,stroke:#333,stroke-width:2px,color:#fff
-    style RHCL fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
-    style RHOAI fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
+    style AuthPolicy fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style RateLimit fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style PathInference fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
+    style ModelServing fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### Architecture Details
