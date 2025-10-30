@@ -48,11 +48,11 @@ plugins:
 
 nav:
   - Home: index.md
+  - QuickStart: quickstart.md
   - Architecture: architecture.md
   - Installation:
     - Prerequisites: install/prerequisites.md
     - Install Open Data Hub project: install/odh-setup.md
-    - Installation: install/installation.md
     - Validation: install/validation.md
   - Self Service Model Access: user-guide/self-service-model-access.md
   - Configuration & Management:

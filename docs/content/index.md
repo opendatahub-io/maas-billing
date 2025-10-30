@@ -10,15 +10,15 @@ Use this platform to streamline the deployment of your models, monitor usage, an
 
 ### 🚀 Getting Started
 
-- **[Installation Guide](installation.md)** - Complete platform deployment instructions
+- **[QuickStart Guide](quickstart.md)** - Complete platform deployment instructions
 - **[Architecture](architecture.md)** - Overview of the MaaS Platform architecture
 
 ### ⚙️ Configuration & Management
 
-- **[Gateway Setup](gateway-setup.md)** - Setting up authentication and rate limiting
-- **[Tier Management](tier-management.md)** - Configuring subscription tiers and access control
-- **[Model Access Guide](model-access.md)** - Managing model access and policies
+- **[Tier Management](configuration-and-management/tier-overview.md)** - Configuring subscription tiers and access control
+- **[Model Setup](configuration-and-management/model-setup.md)** - Setting up models for MaaS
+- **[Self-Service Model Access](user-guide/self-service-model-access.md)** - Managing model access and policies
 
 ### 🔧 Advanced Administration
 
-- **[Observability](observability.md)** - Monitoring, metrics, and dashboards
+- **[Observability](advanced-administration/observability.md)** - Monitoring, metrics, and dashboards

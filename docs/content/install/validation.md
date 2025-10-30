@@ -111,7 +111,7 @@ kubectl get tokenratelimitpolicy -A
 kubectl get llminferenceservices -n llm
 ```
 
-See the [deployment scripts documentation](../../deployment/scripts/README.md) for more information about validation and troubleshooting.
+See the deployment scripts documentation at `deployment/scripts/README.md` for more information about validation and troubleshooting.
 
 ## Automated Validation
 

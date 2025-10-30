@@ -132,4 +132,4 @@ spec:
 
 ## Next Steps
 
-After installation, proceed to [Validation](validation.md) to test and verify your deployment.
+After installation, proceed to [Validation](install/validation.md) to test and verify your deployment.
