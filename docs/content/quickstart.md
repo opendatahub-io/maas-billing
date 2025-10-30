@@ -1,6 +1,9 @@
 # Installation Guide
 
-This guide provides complete instructions for deploying the MaaS Platform infrastructure.
+This guide provides quickstart instructions for deploying the MaaS Platform infrastructure.
+
+!!! note
+    For more detailed instructions, please refer to [Installation under the Administrator Guide](install/prerequisites.md).
 
 ## Prerequisites
 
