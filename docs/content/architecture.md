@@ -10,59 +10,81 @@ The MaaS Platform is designed as a cloud-native, Kubernetes-based solution that 
 
 The MaaS Platform is an end-to-end solution that leverages Kuadrant (Red Hat Connectivity Link) and Open Data Hub (Red Hat OpenShift AI)'s Model Serving capabilities to provide a fully managed, scalable, and secure self-service platform for AI model serving.
 
+**All requests flow through the maas-default-gateway and RHCL components**, which then route requests based on the path:
+
+- `/maas-api/*` requests → MaaS API (token retrieval, validates OpenShift Token via RHCL)
+- Inference requests (`/v1/models`, `/v1/chat/completions`) → Model Serving (validates Service Account Token via RHCL)
+
 ```mermaid
-graph LR
+graph TB
     subgraph "User Layer"
         User[Users]
-        AdminUI[Admin/User UI]
     end
     
-    subgraph "Token Management"
-        MaaSAPI[MaaS API<br/>Token Retrieval]
+    subgraph "Gateway & Policy Layer"
+        GatewayAPI["maas-default-gateway<br/>All Traffic Entry Point"]
+        AuthPolicy["Auth Policy<br/>Authorino<br/>Token Validation"]
+        RateLimit["Rate Limiting<br/>Limitador<br/>Usage Quotas"]
     end
     
-    subgraph "Gateway & Auth"
-        GatewayAPI[Gateway API]
-        RHCL[RHCL Components<br/>Kuadrant/Authrino/Limitador<br/>Auth & Rate Limiting]
+    subgraph "Token Management Path"
+        PathAPI["maas-api path"]
+        MaaSAPI["MaaS API<br/>Token Retrieval"]
     end
     
-    subgraph "Model Serving"
-        RHOAI[RHOAI<br/>LLM Models]
+    subgraph "Model Serving Path"
+        PathInference["Inference Service"]
+        ModelServing["RHOAI Model Serving"]
     end
     
-    User -->|1. Request Token| AdminUI
-    User -->|1a. Direct Token Request| MaaSAPI
-    AdminUI -->|2. Retrieve Token| MaaSAPI
-    User -->|3. Inference Request<br/>with Token| GatewayAPI
-    GatewayAPI -->|4. Auth & Rate Limit| RHCL
-    RHCL -->|5. Forward to Model| RHOAI
+    User -->|"All Requests"| GatewayAPI
+    GatewayAPI -->|"All Traffic"| AuthPolicy
     
-    style MaaSAPI fill:#e1f5fe
+    AuthPolicy -->|"/maas-api<br/>Auth Only"| PathAPI
+    PathAPI --> MaaSAPI
+    MaaSAPI -->|"Returns Token"| User
+    
+    AuthPolicy -->|"Inference Traffic<br/>Auth + Rate Limit"| RateLimit
+    RateLimit --> PathInference
+    PathInference --> ModelServing
+    ModelServing -->|"Returns Response"| User
+    
     style GatewayAPI fill:#f3e5f5
-    style RHCL fill:#fff3e0
-    style RHOAI fill:#e8f5e8
+    style AuthPolicy fill:#fff3e0
+    style RateLimit fill:#ff9800
+    style MaaSAPI fill:#e1f5fe
+    style ModelServing fill:#e8f5e8
+    style PathAPI fill:#ffeb3b
+    style PathInference fill:#ffeb3b
 ```
 
 ### Architecture Details
 
 The MaaS Platform architecture is designed to be modular and scalable. It is composed of the following components:
 
-- **MaaS API**: The central component for token generation and management.
-- **Gateway API**: The entry point for all inference requests.
-- **Kuandrant (Red Hat Connectivity Link)**: The policy engine for authentication and authorization.
-- **Open Data Hub (Red Hat OpenShift AI)**: The model serving platform.
+- **maas-default-gateway**: The single entry point for all traffic (both token requests and inference requests).
+- **RHCL (Red Hat Connectivity Link)**: The policy engine that handles authentication and authorization for all requests. Routes requests to appropriate backend based on path:
+  - `/maas-api/*` → MaaS API (validates OpenShift tokens)
+  - Inference paths (`/v1/models`, `/v1/chat/completions`) → Model Serving (validates Service Account tokens)
+- **MaaS API**: The central component for token generation and management, accessed via `/maas-api` path.
+- **Open Data Hub (Red Hat OpenShift AI)**: The model serving platform that handles inference requests.
 
 ### Detailed Component Architecture
 
 #### MaaS API Component Details
 
-The MaaS API provides a self-service platform for users to request tokens for their inference requests. By leveraging Kubernetes native objects like ConfigMaps and ServiceAccounts, it offers model owners a simple way to configure access to their models based on a familiar group-based access control model.
+The MaaS API provides a self-service platform for users to request tokens for their inference requests. All requests to the MaaS API pass through the `maas-default-gateway` where authentication is performed against the user's OpenShift token via the Auth Policy component. By leveraging Kubernetes native objects like ConfigMaps and ServiceAccounts, it offers model owners a simple way to configure access to their models based on a familiar group-based access control model.
 
 ```mermaid
 graph TB
     subgraph "External Access"
         User[Users]
         AdminUI[Admin/User UI]
+    end
+    
+    subgraph "Gateway & Auth"
+        Gateway[**maas-default-gateway**<br/>Entry Point]
+        AuthPolicy[**Auth Policy**<br/>Validates OpenShift Token]
     end
     
     subgraph "MaaS API Service"
@@ -89,8 +111,10 @@ graph TB
         EnterpriseSA1[**ServiceAccount**<br/>ent-user1-sa]
     end
     
-    User -->|Direct API Call| API
-    AdminUI -->|Token Request| API
+    User -->|"Request with<br/>OpenShift Token"| Gateway
+    AdminUI -->|"Request with<br/>OpenShift Token"| Gateway
+    Gateway -->|"/maas-api path"| AuthPolicy
+    AuthPolicy -->|"Authenticated Request"| API
     
     API --> TierMapping
     API --> TokenGen
@@ -104,6 +128,8 @@ graph TB
     
     K8sGroups -->|Group Membership| TierMapping
     
+    style Gateway fill:#f3e5f5
+    style AuthPolicy fill:#fff3e0
     style API fill:#e1f5fe
     style ConfigMap fill:#ffeb3b
     style K8sGroups fill:#ffeb3b

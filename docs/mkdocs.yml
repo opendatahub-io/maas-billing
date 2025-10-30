@@ -8,6 +8,8 @@ docs_dir: content
 
 theme:
   name: material
+  favicon: assets/favicon.ico
+  logo: assets/favicon.ico
   features:
     - navigation.tabs
     - navigation.sections
@@ -49,17 +51,18 @@ nav:
   - Architecture: architecture.md
   - Installation:
     - Prerequisites: install/prerequisites.md
+    - Install Open Data Hub project: install/odh-setup.md
     - Installation: install/installation.md
-    - ODH Setup: install/odh-setup.md
+    - Validation: install/validation.md
   - Self Service Model Access: user-guide/self-service-model-access.md
   - Configuration & Management:
     - Tier Management:
         - Tier Overview: configuration-and-management/tier-overview.md
         - Tier Configuration: configuration-and-management/tier-configuration.md
         - Tier Concepts: configuration-and-management/tier-concepts.md
-    - Gateway Setup: configuration-and-management/gateway-setup.md
-  - Advanced Administration:
-    - Observability: advanced-administration/observability.md
+    - Model Setup: configuration-and-management/model-setup.md
+    - Advanced Administration:
+      - Observability: advanced-administration/observability.md
 
 markdown_extensions:
   - pymdownx.highlight:

@@ -251,7 +251,3 @@ spec:
       managementState: Managed
 EOF
 ```
-
-### Verification
-
-TODO: _Work in progress_

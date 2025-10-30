@@ -25,22 +25,20 @@ OC_TOKEN=$(oc whoami -t)
 Next, use that OpenShift token to call the maas-api `/v1/tokens` endpoint. You can specify the desired expiration time; the default is 4 hours.
 
 ```bash
-HOST="https://maas.yourdomain.io"
-MAAS_API_URL="${HOST}/maas-api"
+CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+MAAS_API_URL="https://maas.${CLUSTER_DOMAIN}"
 
 TOKEN_RESPONSE=$(curl -sSk \
   -H "Authorization: Bearer ${OC_TOKEN}" \
   -H "Content-Type: application/json" \
+  -X POST \
   -d '{"expiration": "15m"}' \
-  "${MAAS_API_URL}/v1/tokens")
+  "${MAAS_API_URL}/maas-api/v1/tokens")
 
 ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 
 echo $ACCESS_TOKEN
 ```
-
-!!! note
-    Replace `HOST` with the actual route to your `maas-api` instance.
 
 ### Token Lifecycle
 
@@ -127,118 +125,26 @@ curl -sSk \
   "${MODEL_URL}/v1/chat/completions"
 ```
 
-### Advanced Request Parameters
+### Streaming Chat Completion
 
-Use additional parameters for more control:
+For streaming responses, add `"stream": true` to the request and use `--no-buffer` to process the response in real-time:
 
 ```bash
-curl -sSk \
+curl -sSk --no-buffer \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{
-        "model": "simulator",
-        "messages": [
+  -d "{
+        \"model\": \"${MODEL_NAME}\",
+        \"messages\": [
           {
-            "role": "system",
-            "content": "You are a helpful assistant."
-          },
-          {
-            "role": "user",
-            "content": "Explain quantum computing in simple terms."
+            \"role\": \"user\",
+            \"content\": \"Hello, how are you?\"
           }
         ],
-        "max_tokens": 200,
-        "temperature": 0.7,
-        "top_p": 0.9,
-        "stream": false
-      }' \
+        \"max_tokens\": 100,
+        \"stream\": true
+      }" \
   "${MODEL_URL}/v1/chat/completions"
-```
-
-### Streaming Responses
-
-For real-time responses, use streaming:
-
-```bash
-curl -sSk \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "model": "simulator",
-        "messages": [
-          {
-            "role": "user",
-            "content": "Write a short story about a robot."
-          }
-        ],
-        "max_tokens": 300,
-        "stream": true
-      }' \
-  "${MODEL_URL}/v1/chat/completions" | while IFS= read -r line; do
-    if [[ $line == data:* ]]; then
-      echo "${line#data: }" | jq -r '.choices[0].delta.content // empty' 2>/dev/null
-    fi
-  done
-```
-
-## Processing Responses
-
-### Standard Response Format
-
-Models return responses in the OpenAI-compatible format:
-
-```json
-{
-  "id": "chatcmpl-123",
-  "object": "chat.completion",
-  "created": 1677652288,
-  "model": "simulator",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "Hello! I am doing well, thank you for asking."
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 9,
-    "completion_tokens": 12,
-    "total_tokens": 21
-  }
-}
-```
-
-### Extract Response Content
-
-```bash
-RESPONSE=$(curl -sSk \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "model": "simulator",
-        "messages": [
-          {
-            "role": "user",
-            "content": "What is the capital of France?"
-          }
-        ],
-        "max_tokens": 50
-      }' \
-  "${MODEL_URL}/v1/chat/completions")
-
-# Extract the response content
-CONTENT=$(echo $RESPONSE | jq -r '.choices[0].message.content')
-echo "Model response: $CONTENT"
-
-# Extract token usage
-PROMPT_TOKENS=$(echo $RESPONSE | jq -r '.usage.prompt_tokens')
-COMPLETION_TOKENS=$(echo $RESPONSE | jq -r '.usage.completion_tokens')
-TOTAL_TOKENS=$(echo $RESPONSE | jq -r '.usage.total_tokens')
-
-echo "Token usage: $TOTAL_TOKENS total ($PROMPT_TOKENS prompt + $COMPLETION_TOKENS completion)"
 ```
 
 ## Understanding Your Access Level
@@ -250,7 +156,7 @@ Your access is determined by your **tier**, which controls:
 - **Token limits** - Maximum tokens per request
 - **Features** - Advanced capabilities available
 
-### Common Tiers
+### Default Tiers
 
 | Tier | Requests/min | Tokens/min |
 |------|--------------|------------|
@@ -298,48 +204,6 @@ Your access is determined by your **tier**, which controls:
 }
 ```
 
-### Handling Errors in Scripts
-
-```bash
-make_request() {
-  local model_url="$1"
-  local prompt="$2"
-  
-  response=$(curl -sSk \
-    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-          \"model\": \"simulator\",
-          \"messages\": [
-            {
-              \"role\": \"user\",
-              \"content\": \"$prompt\"
-            }
-          ],
-          \"max_tokens\": 100
-        }" \
-    "${model_url}")
-  
-  # Check for errors
-  if echo "$response" | jq -e '.error' > /dev/null; then
-    error_message=$(echo "$response" | jq -r '.error.message')
-    error_code=$(echo "$response" | jq -r '.error.code')
-    echo "Error: $error_message (Code: $error_code)" >&2
-    return 1
-  fi
-  
-  # Extract and return content
-  echo "$response" | jq -r '.choices[0].message.content'
-}
-
-# Usage
-if result=$(make_request "$MODEL_URL" "Hello, world!"); then
-  echo "Success: $result"
-else
-  echo "Request failed"
-fi
-```
-
 ## Monitoring Usage
 
 Check your current usage through response headers:
@@ -385,36 +249,3 @@ curl -I -sSk \
 curl -X GET "${MAAS_API_URL}/v1/models" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}"
 ```
-
-## 💡 Best Practices
-
-1. **Request tokens** with appropriate expiration times for your use case
-2. **Refresh tokens** proactively before they expire
-3. **Handle errors** gracefully in your scripts
-4. **Monitor your usage** to stay within tier limits
-5. **Batch requests** when possible to be efficient
-6. **Cache responses** when appropriate
-
-## FAQs
-
-**Q: My tier is wrong or shows as "free". How do I fix it?**
-
-A: Your tier is determined by your group membership in OpenShift. Contact your platform administrator to ensure you are in the correct user group.
-
----
-
-**Q: How long should my tokens be valid for?**
-
-A: It's a balance of security and convenience. For interactive command-line use, 1-8 hours is common. For applications, request shorter-lived tokens (e.g., 15-60 minutes) and refresh them automatically.
-
----
-
-**Q: Can I have multiple active tokens at once?**
-
-A: Yes. Each call to the `/v1/tokens` endpoint issues a new, independent token. All of them will be valid until they expire or are revoked.
-
----
-
-**Q: Can I use one token to access multiple different models?**
-
-A: Yes. Your token grants you access based on your tier's RBAC permissions. If your tier is authorized to use multiple models, a single token will work for all of them.

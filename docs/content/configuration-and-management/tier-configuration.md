@@ -131,26 +131,24 @@ Add tier-specific rate limits by patching the existing `gateway-token-rate-limit
 kubectl patch tokenratelimitpolicy gateway-token-rate-limits -n openshift-ingress --type merge --patch-file=/dev/stdin <<'EOF'
 spec:
   limits:
-    stier-user-tokens:
+    stier-user-tokens: # 1
       rates:
-        - limit: 999
-          window: 1m
+        - limit: 999 # 2
+          window: 1m # 3
       when:
-        - predicate: auth.identity.tier == "stier"
+        - predicate: auth.identity.tier == "stier" # 4
       counters:
-        - expression: auth.identity.userid
+        - expression: auth.identity.userid # 5
 EOF
 ```
 
 **Rate Limit Policy Configuration Explained:**
 
-1. **Target reference** - Specifies which HTTPRoute this policy applies to
-2. **Main limits section** - Container for all tier-specific rate limit definitions
-3. **Tier definition** - Each tier (free, premium, enterprise) gets its own configuration block (this is just a naming convention, it is not used for the actual tier resolution)
-4. **Request limit** - Maximum number of requests allowed per time window
-5. **Time window** - Duration after which the request counter resets
-6. **Predicate condition** - Determines when this tier's limits apply based on user authentication
-7. **Counter expression** - Tracks requests per user ID for reporting purposes
+1. **Tier definition** - Each tier (free, premium, enterprise) gets its own configuration block (this is just a naming convention, it is not used for the actual tier resolution)
+2. **Request limit** - Maximum number of requests allowed per time window
+3. **Time window** - Duration after which the request counter resets
+4. **Predicate condition** - Determines when this tier's limits apply based on user authentication
+5. **Counter expression** - Tracks requests per user ID for reporting purposes
 
 !!!Warning "Important"
     The predicate condition (not the Tier Definition) is used to determine when this tier's limits apply based on user authentication. It is a CEL expression that is evaluated by the Authorino policy engine.
