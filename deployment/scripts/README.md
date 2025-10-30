@@ -128,11 +128,6 @@ Installs individual dependencies (cert-manager, Kuadrant, ODH, etc.).
 
 ---
 
-### `install.sh`
-Alternative deployment script (legacy, use `deploy-openshift.sh` for OpenShift).
-
----
-
 ## Common Workflows
 
 ### Initial Deployment

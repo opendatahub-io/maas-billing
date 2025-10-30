@@ -251,6 +251,32 @@ pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py
 
 ---
 
+## 5A) Tool Calling
+
+Validates vLLM tool calling end-to-end through MaaS.  
+Works with Qwen/Qwen3-0.6B (or any model deployed with tool calling enabled).
+
+### Prereqs
+
+The model deployment must enable tool calling, e.g. vLLM args include:
+- `--tool-call-parser qwen3_xml`
+- `--enable-auto-tool-choice`
+
+The MaaS token endpoint may reject short TTLs. Use ≥ 10m.
+
+### Run tests
+
+```bash
+# Pick a model that supports tool calling:
+export MODEL_NAME="Qwen/Qwen3-0.6B"
+# Gate to enable these tests
+export TOOL_CALLING_ENABLED=true
+
+pytest -q testing/maas_billing_tests_independent/tests/test_tool_calling.py::test_tool_calling_forced -s \
+  --html="$OUT/tool-calling-forced.html" --self-contained-html \
+  --junitxml="$OUT/tool-calling-forced.xml"
+```
+
 ## 6) PowerShell equivalents (Windows)
 
 ```powershell

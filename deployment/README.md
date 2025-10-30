@@ -4,6 +4,13 @@ This guide provides instructions for deploying the MaaS Platform infrastructure 
 
 ## Prerequisites
 
+- **OpenShift cluster (4.19.9+)** with **kubectl** or **oc** access
+
+- **Required CLI Tools**:
+  - **jq**: Command-line JSON processor
+  - **kustomize**: Kubernetes manifests customization tool (v5.7.0+)
+  - **git**: Version control system
+
 - **ODH/RHOAI requirements**:
   - KServe enabled in DataScienceCluster
   - Service Mesh installed (automatically installed with ODH/RHOAI)
