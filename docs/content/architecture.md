@@ -37,10 +37,10 @@ graph LR
     GatewayAPI -->|4. Auth & Rate Limit| RHCL
     RHCL -->|5. Forward to Model| RHOAI
     
-    style MaaSAPI fill:#e1f5fe
-    style GatewayAPI fill:#f3e5f5
-    style RHCL fill:#fff3e0
-    style RHOAI fill:#e8f5e8
+    style MaaSAPI fill:#1976d2,stroke:#333,stroke-width:2px,color:#fff
+    style GatewayAPI fill:#7b1fa2,stroke:#333,stroke-width:2px,color:#fff
+    style RHCL fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style RHOAI fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### Architecture Details
@@ -104,13 +104,13 @@ graph TB
     
     K8sGroups -->|Group Membership| TierMapping
     
-    style API fill:#e1f5fe
-    style ConfigMap fill:#ffeb3b
-    style K8sGroups fill:#ffeb3b
-    style FreeSA1 fill:#ffeb3b
-    style FreeSA2 fill:#ffeb3b
-    style PremiumSA1 fill:#ffeb3b
-    style EnterpriseSA1 fill:#ffeb3b
+    style API fill:#1976d2,stroke:#333,stroke-width:2px,color:#fff
+    style ConfigMap fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style K8sGroups fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style FreeSA1 fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
+    style FreeSA2 fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
+    style PremiumSA1 fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
+    style EnterpriseSA1 fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 **Key Features:**
@@ -179,18 +179,18 @@ graph TB
     
     Limitador -->|Usage Metrics| Prometheus
     
-    style GatewayAPI fill:#f3e5f5
-    style Kuadrant fill:#fff3e0
-    style Authorino fill:#fff3e0
-    style Limitador fill:#fff3e0
-    style AuthPolicy fill:#ffeb3b
-    style RateLimitPolicy fill:#ffeb3b
-    style TokenRateLimitPolicy fill:#ffeb3b
-    style RBAC fill:#ffeb3b
-    style LLMInferenceService fill:#ffeb3b
-    style RHOAI fill:#e8f5e8
-    style Models fill:#e8f5e8
-    style Prometheus fill:#e1f5fe
+    style GatewayAPI fill:#7b1fa2,stroke:#333,stroke-width:2px,color:#fff
+    style Kuadrant fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style Authorino fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style Limitador fill:#f57c00,stroke:#333,stroke-width:2px,color:#fff
+    style AuthPolicy fill:#d32f2f,stroke:#333,stroke-width:2px,color:#fff
+    style RateLimitPolicy fill:#d32f2f,stroke:#333,stroke-width:2px,color:#fff
+    style TokenRateLimitPolicy fill:#d32f2f,stroke:#333,stroke-width:2px,color:#fff
+    style RBAC fill:#d32f2f,stroke:#333,stroke-width:2px,color:#fff
+    style LLMInferenceService fill:#d32f2f,stroke:#333,stroke-width:2px,color:#fff
+    style RHOAI fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
+    style Models fill:#388e3c,stroke:#333,stroke-width:2px,color:#fff
+    style Prometheus fill:#1976d2,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 **Policy Engine Flow:**
