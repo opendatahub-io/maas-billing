@@ -46,8 +46,8 @@ export MAAS_API_BASE_URL="http://${HOST}/maas-api"    # point directly to /maas-
 export USAGE_API_BASE="$MAAS_API_BASE_URL"
 
 export FREE_OC_TOKEN="$(oc whoami -t)"
-
 ```
+
 Pick a **MODEL_NAME** from the catalog (`id` field):
 
 ```bash
@@ -99,11 +99,9 @@ The suite assumes **`FREE_OC_TOKEN`** holds the *current* user’s token.
 ### A) Admin (sanity / wiring)
 
 ```bash
-
 pytest -q testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
 pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
 pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
-
 ```
 
 ### B) Free user (authz + request-rate burst + usage)
@@ -198,6 +196,7 @@ By shaping traffic as above (many *cheap* calls vs few *expensive* calls), you c
 
 ## 4) Reports (HTML & JUnit)
 
+```bash
 # Create a timestamped artifacts folder
 REP_ROOT=testing/maas_billing_tests_independent/artifacts
 TS=$(date +%Y-%m-%d_%H-%M-%S)
@@ -210,10 +209,12 @@ pytest -q testing/maas_billing_tests_independent/tests \
   --junitxml="$OUT/maas-test-report.xml"
 
 echo "Reports saved in: $OUT"
-#Note - The artifacts/ folder is kept in Git but its contents are ignored, so reports don’t show in PRs
+# Note - The artifacts/ folder is kept in Git but its contents are ignored, so reports don't show in PRs
+```
 
-## Smoke tests & single test (saved under artifacts/)
+### 4.1 Smoke tests & single test (saved under artifacts/)
 
+```bash
 # 3 smoke tests → one report
 REP_ROOT=testing/maas_billing_tests_independent/artifacts
 TS=$(date +%Y-%m-%d_%H-%M-%S)
@@ -231,6 +232,7 @@ pytest -q \
 pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works \
   --html="$OUT/chat.html" --self-contained-html \
   --junitxml="$OUT/chat.xml"
+```
 
 ---
 
@@ -251,7 +253,7 @@ pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py
 
 ---
 
-## 5A) Tool Calling
+### 5A) Tool Calling
 
 Validates vLLM tool calling end-to-end through MaaS.  
 Works with Qwen/Qwen3-0.6B (or any model deployed with tool calling enabled).
@@ -275,6 +277,25 @@ export TOOL_CALLING_ENABLED=true
 pytest -q testing/maas_billing_tests_independent/tests/test_tool_calling.py::test_tool_calling_forced -s \
   --html="$OUT/tool-calling-forced.html" --self-contained-html \
   --junitxml="$OUT/tool-calling-forced.xml"
+```
+
+### 5B) Streaming (SSE) chat completions
+
+Validates that the model endpoint supports Server-Sent Events with `stream:true`:
+- Confirms Content-Type: `text/event-stream`
+- Parses data: frames as JSON (`choices[].delta.content`)
+- Reconstructs non-empty text from chunks
+- Ensures the stream ends with `[DONE]`
+
+```bash
+# Enable the streaming test (and extra logs)
+STREAMING_ENABLED=true STREAMING_DEBUG=true \
+pytest -q testing/maas_billing_tests_independent/tests/test_streaming_chat.py::test_chat_completions_streaming \
+  -s --capture=tee-sys \
+  --html="$OUT/streaming.html" --self-contained-html \
+  --junitxml="$OUT/streaming.xml"
+
+echo "Streaming reports saved in: $OUT"
 ```
 
 ## 6) PowerShell equivalents (Windows)
@@ -331,7 +352,7 @@ Write-Host "Reports saved in: $OUT"
 
 ---
 
-## 8) TL;DR (copy-paste)
+## 7) TL;DR (copy-paste)
 
 ```bash
 # venv
