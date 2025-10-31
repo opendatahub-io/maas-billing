@@ -19,13 +19,17 @@ def test_chat_completions_streaming(http, base_url, model_name):
     assert r.status_code in (200, 201), "Token mint failed"
     token = r.json()["token"]
 
-    # 2) Discover model URL
+    # 2) Discover model URL  ← make sure everything below is indented inside the function
     r = http.get(f"{base_url}/v1/models", headers={"Authorization": f"Bearer {token}"}, timeout=30)
     assert r.status_code == 200, "Models list failed"
     models = r.json()["data"]
     model_entry = next((m for m in models if m["id"] == model_name), None)
     assert model_entry, f"Model {model_name} not found in /v1/models"
-    chat_url = f"{model_entry['url']}/v1/chat/completions"
+
+    chat_url = (model_entry.get("url") or "").rstrip("/")
+    assert chat_url, "Model entry has no 'url'"
+    if not chat_url.endswith("/v1/chat/completions"):
+        chat_url = f"{chat_url}/v1/chat/completions"
     if DEBUG:
         print(f"[streaming] chat_url={chat_url}")
 
@@ -48,7 +52,6 @@ def test_chat_completions_streaming(http, base_url, model_name):
         timeout=90,
         stream=True,
     )
-
     # 4) Validate SSE and reconstruct text
     assert r.status_code == 200, "Streaming call failed"
     ctype = (r.headers.get("content-type") or r.headers.get("Content-Type") or "").lower()
