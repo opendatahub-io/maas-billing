@@ -43,8 +43,8 @@ spec:
               --port 8000 \
               --trust-remote-code \
               --disable-log-requests \
-              --ssl-certfile /etc/ssl/certs/tls.crt \
-              --ssl-keyfile /etc/ssl/certs/tls.key \
+              --ssl-certfile /var/run/kserve/tls/tls.crt \
+              --ssl-keyfile /var/run/kserve/tls/tls.key \
               --enforce-eager \
               --max-model-len 8192
         env:
