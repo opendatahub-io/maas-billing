@@ -12,7 +12,7 @@
 
 This document defines the core entities for the MaaS platform and their relationships. The goal is to establish a unified data model that enables:
 
-- **Clear Entity Relationships**: Users belong to Groups, Groups own Subscriptions
+- **Clear Entity Relationships**: Users belong to Groups, Groups have multiple Subscriptions (many-to-many)
 - **Separation of Concerns**: 
   - **Subscriptions** define commercial limits (rate limits, quotas, billing)
   - **Policies** define access control (who can access what models)
@@ -64,11 +64,27 @@ This separation means:
 
 If either check fails, the request is denied.
 
+### Subscription Selection Logic
+
+When a group has multiple subscriptions, the system uses this logic:
+
+1. **Find all active subscriptions** for the user's group via GroupSubscription
+2. **Filter by model access** - only subscriptions that include the requested model
+3. **Select highest priority** - subscription with the highest priority number
+4. **Apply limits** - check rate limits and quotas from the selected subscription
+
+**Example**: ML Team has three subscriptions:
+- Development (priority: 10, models: ["gpt-3.5"])  
+- Production (priority: 20, models: ["gpt-4", "claude-3"])
+- Research (priority: 30, models: ["gpt-4", "experimental-model"])
+
+For a GPT-4 request: Research (30) wins over Production (20)
+
 ---
 
 ## Core Entities
 
-We define 7 core entities that work together to enable this separation:
+We define 8 core entities that work together to enable this separation:
 
 ### Entity Relationships
 
@@ -76,7 +92,8 @@ We define 7 core entities that work together to enable this separation:
 erDiagram
     User ||--o{ UserGroupMembership : "belongs to"
     Group ||--o{ UserGroupMembership : "contains"
-    Group ||--o{ Subscription : "owns"
+    Group ||--o{ GroupSubscription : "has"
+    Subscription ||--o{ GroupSubscription : "shared by"
     User ||--o{ Policy : "subject"
     Group ||--o{ Policy : "subject" 
     Model ||--o{ Policy : "target"
@@ -111,6 +128,14 @@ erDiagram
         bool active
     }
     
+    GroupSubscription {
+        string group_id FK
+        string subscription_id FK
+        int priority
+        timestamp assigned_at
+        bool active
+    }
+    
     Policy {
         string id PK
         string name
@@ -127,7 +152,6 @@ erDiagram
     Subscription {
         string id PK
         string name
-        string group_id FK
         string tier
         json entitlements
         json billing_config
@@ -222,7 +246,7 @@ Organizational units that own subscriptions and enable hierarchical policies.
 
 **Relationships:**
 - Contains multiple Users (via UserGroupMembership)
-- Owns Subscriptions
+- Has multiple Subscriptions (via GroupSubscription)
 - Can have parent/child Groups
 - Can be subject of Policies
 
@@ -247,7 +271,30 @@ Links users to groups with roles and permissions.
 }
 ```
 
-### 4. Policy
+### 4. GroupSubscription
+Links groups to subscriptions with priority for selection.
+
+**Core Fields:**
+- `group_id`: Group identifier (FK)
+- `subscription_id`: Subscription identifier (FK)
+- `priority`: Selection priority (higher number = higher priority)
+- `assigned_at`: When subscription was assigned
+- `active`: Assignment status
+
+**Example:**
+```json
+{
+  "group_id": "grp-456e7890-e89b-12d3-a456-426614174111",
+  "subscription_id": "sub-enterprise-shared",
+  "priority": 100,
+  "assigned_at": "2024-01-01T00:00:00Z",
+  "active": true
+}
+```
+
+**Selection Logic:** When multiple subscriptions are available for a group, the system selects the highest priority subscription that allows the requested model.
+
+### 5. Policy
 Defines access control rules (NOT rate limits or quotas).
 
 **Core Fields:**
@@ -293,13 +340,13 @@ Defines access control rules (NOT rate limits or quotas).
 - Applies to Users or Groups (subject)
 - Controls access to Models (target)
 
-### 5. Subscription
-Defines entitlements and billing for a group.
+### 6. Subscription
+Defines entitlements and billing (can be shared by multiple groups).
 
 **Core Fields:**
 - `id`: Unique identifier (UUID)
 - `name`: Subscription name
-- `group_id`: Owning group (FK)
+- `description`: Subscription description
 - `tier`: Service level (free, pro, enterprise)
 - `entitlements`: Usage limits and access (JSON)
 - `billing_config`: Billing settings (JSON)
@@ -311,8 +358,8 @@ Defines entitlements and billing for a group.
 ```json
 {
   "id": "sub-abc1234-e89b-12d3-a456-426614174444",
-  "name": "ML Team Pro Subscription",
-  "group_id": "grp-456e7890-e89b-12d3-a456-426614174111",
+  "name": "Enterprise Shared Subscription",
+  "description": "Shared subscription for all engineering teams",
   "tier": "pro",
   "entitlements": {
     "rate_limits": {
@@ -340,10 +387,10 @@ Defines entitlements and billing for a group.
 **Important - Model Access**: The `model_access` list defines which models are **commercially available** to this subscription. However, users still need **Policy permission** to actually use these models. Both checks must pass.
 
 **Relationships:**
-- Owned by one Group
+- Shared by multiple Groups (via GroupSubscription)
 - Tracks UsageRecords
 
-### 6. Model
+### 7. Model
 Represents AI models available for use.
 
 **Core Fields:**
@@ -381,7 +428,7 @@ Represents AI models available for use.
 - Used in UsageRecords
 - Controlled by Policies
 
-### 7. UsageRecord
+### 8. UsageRecord
 Captures individual usage events for billing and tracking.
 
 **Core Fields:**
@@ -431,7 +478,9 @@ Let's see how these entities work together in a practical example:
 **Setup:**
 1. **User**: Alice (ML Engineer)
 2. **Group**: "ML Engineering Team"  
-3. **Subscription**: Pro tier owned by the group
+3. **Multiple Subscriptions**: 
+   - Development (priority: 10, models: ["gpt-3.5"])
+   - Production (priority: 20, models: ["gpt-4", "claude-3"])
 4. **Policy**: RBAC policy allowing ML engineers to use GPT-4
 5. **Model**: GPT-4 model
 6. **UsageRecord**: Generated when Alice uses GPT-4
@@ -451,30 +500,32 @@ sequenceDiagram
     PolicyEngine-->>API: Permission granted
     
     API->>SubscriptionService: Check subscription
-    Note over SubscriptionService: Subscription checks:<br/>✓ Commercial: GPT-4 in model_access list<br/>✓ Rate limit: 95/100 req/min<br/>✓ Quota: 45K/50K monthly requests
-    SubscriptionService-->>API: All checks OK
+    Note over SubscriptionService: Subscription selection:<br/>1. Find ML team subscriptions<br/>2. Filter by GPT-4 access: Production (20)<br/>3. Select highest priority: Production<br/>✓ Rate limit: 95/100 req/min<br/>✓ Quota: 45K/50K monthly requests
+    SubscriptionService-->>API: Production subscription selected
     
     API->>API: Call GPT-4
     API->>UsageTracker: Record usage
-    Note over UsageTracker: Create UsageRecord:<br/>- user_id: Alice<br/>- model_id: GPT-4<br/>- subscription_id: Pro<br/>- cost: $0.045
+    Note over UsageTracker: Create UsageRecord:<br/>- user_id: Alice<br/>- model_id: GPT-4<br/>- subscription_id: Production<br/>- cost: $0.045
     API-->>Alice: Return response
 ```
 
 **Data Created:**
-- **UsageRecord** links Alice → GPT-4 → Pro Subscription
-- **Cost** is attributed to the ML team's subscription
-- **Both policy and subscription checks** are logged for audit
+- **UsageRecord** links Alice → GPT-4 → Production Subscription
+- **Cost** is attributed to the Production subscription (shared by ML team)
+- **Subscription selection and policy checks** are logged for audit
 
-This demonstrates the **dual-check model access**:
+This demonstrates the **many-to-many subscription model**:
 1. **Policy Check**: WHO can access WHAT (Alice has permission for GPT-4)
-2. **Subscription Checks**: 
-   - **Commercial**: GPT-4 is included in the paid plan
+2. **Subscription Selection**: Which subscription to use (Production wins with priority 20)
+3. **Subscription Checks**: 
+   - **Commercial**: GPT-4 is included in Production subscription
    - **Limits**: HOW MUCH can be consumed (100 req/min, 50K/month)
 
-**All three checks must pass** for the request to succeed. This prevents:
-- Users accessing models not in their subscription (commercial control)
-- Unauthorized users accessing allowed models (permission control)  
-- Exceeding usage limits (resource control)
+**Benefits of Many-to-Many**:
+- **Shared Subscriptions**: Enterprise subscription used by multiple teams
+- **Multiple Plans**: Teams can have dev/prod/research subscriptions
+- **Priority Selection**: Automatic selection of best subscription for request
+- **Cost Attribution**: Usage tracked to specific subscription for billing
 
 ---
 
