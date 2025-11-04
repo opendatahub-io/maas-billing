@@ -174,15 +174,12 @@ kubectl apply -f - <<EOF
     name: opendatahub-operator
     namespace: openshift-operators
   spec:
-    channel: fast-3.x
+    channel: fast-3
     name: opendatahub-operator
     source: community-operators
     sourceNamespace: openshift-marketplace
 EOF
 ```
-
-!!! note
-    As of Oct 24th, 2025, ODH v3 is not released yet.
 
 Set up the inference Gateway, required by ODH's Model Serving, by creating the 
 following resources:

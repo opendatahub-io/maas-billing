@@ -51,11 +51,13 @@ nav:
   - Quick Start: quickstart.md
   - Architecture: architecture.md
   - Administrator Guide:
+    - Prerequisites:
+      - Overview: install/prerequisites.md
+      - Operators:
+        - Open Data Hub: install/odh-setup.md
+        - Red Hat OpenShift AI: install/rhoai-setup.md
     - Installation:
-      - Overview and Prerequisites: install/prerequisites.md
-      - install/odh-setup.md
-      - install/rhoai-setup.md
-      - install/maas-setup.md
+      - Model-as-a-Service: install/maas-setup.md
       - Validation: install/validation.md
     - Configuration & Management:
       - Tier Management: configuration-and-management/tier-overview.md

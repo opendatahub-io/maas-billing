@@ -67,3 +67,11 @@ spec:
             - $AUD
             - maas-default-gateway-sa")
 ```
+
+## Next steps
+
+* **Deploy models.** In the Quick Start, we provide
+  [sample deployments](../quickstart.md#deploy-sample-models-optional) that you 
+  can use to try the MaaS capability.
+* **Perform validation.** Follow the [validation guide](validation.md) to verify that 
+  MaaS is working correctly.
