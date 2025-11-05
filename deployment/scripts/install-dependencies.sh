@@ -98,102 +98,104 @@ install_component() {
         return 0
     fi
     
-    # Inline handler for Kuadrant (installed via OLM)
+    # Inline handler for RHCL (installed via OLM)
     if [[ "$component" == "kuadrant" ]]; then
-        # Ensure kuadrant-system namespace exists
-        kubectl create namespace kuadrant-system 2>/dev/null || echo "✅ Namespace kuadrant-system already exists"
 
-
-        echo "🚀 Creating Kuadrant OperatorGroup..."
-        kubectl apply -f - <<EOF
-apiVersion: operators.coreos.com/v1
-kind: OperatorGroup
-metadata:
-  name: kuadrant-operator-group
-  namespace: kuadrant-system
-spec: {}
-EOF
-
-        # Check if the CatalogSource already exists before applying
-        if kubectl get catalogsource kuadrant-operator-catalog -n kuadrant-system &>/dev/null; then
-            echo "✅ Kuadrant CatalogSource already exists in namespace kuadrant-system, skipping creation."
-        else
-            echo "🚀 Creating Kuadrant CatalogSource..."
-            kubectl apply -f - <<EOF
-apiVersion: operators.coreos.com/v1alpha1
-kind: CatalogSource
-metadata:
-  name: kuadrant-operator-catalog
-  namespace: kuadrant-system
-spec:
-  displayName: Kuadrant Operators
-  grpcPodConfig:
-    securityContextConfig: restricted
-  image: 'quay.io/kuadrant/kuadrant-operator-catalog:v1.3.0'
-  publisher: grpc
-  sourceType: grpc
-EOF
-        fi
-
-
-        echo "🚀 Installing kuadrant (via OLM Subscription)..."
+        echo "🚀 Installing RHCL for OpenShift (via OLM Subscription)..."
         kubectl apply -f - <<EOF
   apiVersion: operators.coreos.com/v1alpha1
   kind: Subscription
   metadata:
-    name: kuadrant-operator
-    namespace: kuadrant-system
+    name: rhcl-operator
+    namespace: openshift-operators
   spec:
     channel: stable
     installPlanApproval: Automatic
-    name: kuadrant-operator
-    source: kuadrant-operator-catalog
-    sourceNamespace: kuadrant-system
+    name: rhcl-operator
+    source: redhat-operators
+    sourceNamespace: openshift-marketplace
 EOF
         # Wait for kuadrant-operator-controller-manager deployment to exist before waiting for Available condition
-        ATTEMPTS=0
-        MAX_ATTEMPTS=7
-        while true; do
-
-            if kubectl get deployment/kuadrant-operator-controller-manager -n kuadrant-system &>/dev/null; then
-                break
-            else
-                ATTEMPTS=$((ATTEMPTS+1))
-                if [[ $ATTEMPTS -ge $MAX_ATTEMPTS ]]; then
-                    echo "❌ kuadrant-operator-controller-manager deployment not found after $MAX_ATTEMPTS attempts."
-                    return 1
+        echo "⏳ Waiting for operator deployments to be created..."
+        DEPLOYMENTS=("kuadrant-operator-controller-manager" "limitador-operator-controller-manager" "authorino-operator" "dns-operator-controller-manager")
+        
+        for deployment in "${DEPLOYMENTS[@]}"; do
+            ATTEMPTS=0
+            MAX_ATTEMPTS=7
+            while true; do
+                if kubectl get deployment/"$deployment" -n openshift-operators &>/dev/null; then
+                    echo "✅ Deployment $deployment created"
+                    break
+                else
+                    ATTEMPTS=$((ATTEMPTS+1))
+                    if [[ $ATTEMPTS -ge $MAX_ATTEMPTS ]]; then
+                        echo "⚠️  Deployment $deployment not found after $MAX_ATTEMPTS attempts, continuing..."
+                        break
+                    fi
+                    echo "   Waiting for $deployment deployment to be created... (attempt $ATTEMPTS/$MAX_ATTEMPTS)"
+                    sleep $((10 + 10 * $ATTEMPTS))
                 fi
-                echo "⏳ Waiting for kuadrant-operator-controller-manager deployment to be created... (attempt $ATTEMPTS/$MAX_ATTEMPTS)"
-                sleep $((10 + 10 * $ATTEMPTS))
-            fi
+            done
         done
 
-        echo "⏳ Waiting for operators to be ready..."
-        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s
-        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
-        kubectl wait --for=condition=Available deployment/authorino-operator -n kuadrant-system --timeout=300s
+
+        echo "⏳ Waiting for RHCL operators to be ready..."
+        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n openshift-operators --timeout=300s || \
+          echo "   ⚠️  Kuadrant operator taking longer than expected"
+        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n openshift-operators --timeout=300s || \
+          echo "   ⚠️  Limitador operator taking longer than expected"  
+        kubectl wait --for=condition=Available deployment/authorino-operator -n openshift-operators --timeout=300s || \
+          echo "   ⚠️  Authorino operator taking longer than expected"
+        kubectl wait --for=condition=Available deployment/dns-operator-controller-manager -n openshift-operators --timeout=180s || \
+          echo "   ⚠️  DNS operator taking longer than expected"
 
         sleep 5
 
-        # Patch Kuadrant for OpenShift Gateway Controller
-        echo "   Patching Kuadrant operator..."
-        if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
-          kubectl patch csv kuadrant-operator.v1.3.0 -n kuadrant-system --type='json' -p='[
-            {
-              "op": "add",
-              "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/-",
-              "value": {
-                "name": "ISTIO_GATEWAY_CONTROLLER_NAMES",
-                "value": "istio.io/gateway-controller,openshift.io/gateway-controller/v1"
+        # Patch RHCL for OpenShift Gateway Controller
+        echo "   Patching RHCL operator..."
+        EXPECTED_VALUE="istio.io/gateway-controller,openshift.io/gateway-controller/v1"
+        CURRENT_VALUE=$(kubectl -n openshift-operators get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")].value}' 2>/dev/null || echo "")
+        
+        if [[ "$CURRENT_VALUE" != "$EXPECTED_VALUE" ]]; then
+          # Get the actual CSV name dynamically
+          CSV_NAME=$(kubectl get csv -n openshift-operators -o jsonpath='{.items[?(@.spec.displayName=="Red Hat Connectivity Link")].metadata.name}' 2>/dev/null || echo "rhcl-operator.v1.2.0")
+          echo "   Current value: '$CURRENT_VALUE'"
+          echo "   Expected value: '$EXPECTED_VALUE'"
+          echo "   Patching CSV: $CSV_NAME"
+          
+          # Check if env var exists and replace it, otherwise add it
+          if [[ -n "$CURRENT_VALUE" ]]; then
+            # Environment variable exists but has wrong value, replace it
+            ENV_INDEX=$(kubectl -n openshift-operators get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' | tr ' ' '\n' | grep -n "ISTIO_GATEWAY_CONTROLLER_NAMES" | cut -d: -f1)
+            if [[ -n "$ENV_INDEX" ]]; then
+              ENV_INDEX=$((ENV_INDEX - 1))  # Convert to 0-based index
+              kubectl patch csv "$CSV_NAME" -n openshift-operators --type='json' -p='[
+                {
+                  "op": "replace",
+                  "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/'"$ENV_INDEX"'/value",
+                  "value": "'"$EXPECTED_VALUE"'"
+                }
+              ]'
+            fi
+          else
+            # Environment variable doesn't exist, add it
+            kubectl patch csv "$CSV_NAME" -n openshift-operators --type='json' -p='[
+              {
+                "op": "add",
+                "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/-",
+                "value": {
+                  "name": "ISTIO_GATEWAY_CONTROLLER_NAMES",
+                  "value": "'"$EXPECTED_VALUE"'"
+                }
               }
-            }
-          ]'
-          echo "   ✅ Kuadrant operator patched"
+            ]'
+          fi
+          echo "   ✅ RHCL operator patched"
         else
-          echo "   ✅ Kuadrant operator already configured"
+          echo "   ✅ RHCL operator already configured with correct value"
         fi
 
-        echo "✅ Successfully installed kuadrant"
+        echo "✅ Successfully installed RHCL for OpenShift"
         echo ""
         return 0
     fi

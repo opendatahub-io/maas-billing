@@ -30,9 +30,9 @@ spec:
         - --mode
         - random
         - --ssl-certfile
-        - /var/run/kserve/tls/tls.crt
+        - /etc/ssl/certs/tls.crt
         - --ssl-keyfile
-        - /var/run/kserve/tls/tls.key
+        - /etc/ssl/certs/tls.key
         env:
           - name: POD_NAME
             valueFrom:
