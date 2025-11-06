@@ -1,0 +1,56 @@
+name: Sync maas-exploration with main
+
+on:
+  schedule:
+    # Every hour, on the hour
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  sync-exploration:
+    runs-on: ubuntu-latest
+    if: github.repository == 'opendatahub-io/maas-billing'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Sync maas-exploration with main
+        run: |
+          # Fetch latest changes
+          git fetch origin main
+          git fetch origin maas-exploration
+          
+          # Switch to maas-exploration branch
+          git checkout maas-exploration
+          
+          # Check if main has new commits
+          if [ "$(git rev-list --count maas-exploration..origin/main)" -gt 0 ]; then
+            echo "New commits found in main, merging..."
+            
+            # Merge main into maas-exploration
+            git merge origin/main --no-ff -m "Auto-sync: Merge latest main into maas-exploration"
+            
+            # Push the updated branch
+            git push origin maas-exploration
+            
+            echo "Successfully synced maas-exploration with main"
+          else
+            echo "maas-exploration is already up to date with main"
+          fi
+      
+      - name: Check for merge conflicts
+        if: failure()
+        run: |
+          echo "❌ Merge conflict detected!"
+          echo "Manual intervention required to resolve conflicts between main and maas-exploration"
+          exit 1
