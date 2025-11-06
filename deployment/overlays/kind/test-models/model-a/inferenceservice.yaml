@@ -1,0 +1,43 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: model-a
+  namespace: llm
+  labels:
+    tier: free
+    model: qwen3-0.6b
+  annotations:
+    serving.kserve.io/deploymentMode: "Serverless"
+spec:
+  predictor:
+    containers:
+    - name: kserve-container
+      image: ghcr.io/vllm-project/semantic-router/llm-katan:latest
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      command: ["llm-katan"]
+      args:
+      - "--model"
+      - "Qwen/Qwen2.5-0.5B-Instruct"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--served-model-name"
+      - "model-a"
+      - "--no-quantize"
+      env:
+      - name: HUGGINGFACE_HUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: huggingface-token
+            key: token
+            optional: true
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "3Gi"

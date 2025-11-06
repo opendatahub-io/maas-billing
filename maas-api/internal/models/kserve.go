@@ -49,27 +49,44 @@ func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
 	return toModels(list)
 }
 
-// ListAvailableLLMs lists all LLMInferenceServices across all namespaces.
+// ListAvailableLLMs lists all LLMInferenceServices or InferenceServices.
+// Tries standard InferenceServices first, then adds LLMInferenceServices if available.
 func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
+	// Try standard InferenceServices first (works on any Kubernetes with KServe)
+	models, err := m.ListAvailableModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try to add LLMInferenceServices if OpenShift AI is installed
 	llmGVR := schema.GroupVersionResource{
 		Group:    "serving.kserve.io",
 		Version:  "v1alpha1",
 		Resource: "llminferenceservices",
 	}
 
-	log.Printf("DEBUG: Attempting to list LLMInferenceServices with GVR: %+v", llmGVR)
+	log.Printf("DEBUG: Attempting to list LLMInferenceServices")
 
-	list, err := m.k8sClient.Resource(llmGVR).
+	llmList, llmErr := m.k8sClient.Resource(llmGVR).
 		Namespace(metav1.NamespaceAll).
 		List(ctx, metav1.ListOptions{})
-	if err != nil {
-		log.Printf("DEBUG: Failed to list LLMInferenceServices: %v", err)
-		return nil, fmt.Errorf("failed to list LLMInferenceServices: %w", err)
+
+	if llmErr != nil {
+		// Expected when OpenShift AI is not installed
+		log.Printf("DEBUG: LLMInferenceServices not available: %v", llmErr)
+		return models, nil
 	}
 
-	log.Printf("DEBUG: Found %d LLMInferenceServices", len(list.Items))
+	log.Printf("DEBUG: Found %d LLMInferenceServices", len(llmList.Items))
 
-	return toModels(list)
+	// Add LLMInferenceServices to the list
+	llmModels, err := toModels(llmList)
+	if err != nil {
+		log.Printf("WARN: Failed to parse LLMInferenceServices: %v", err)
+		return models, nil // Return what we have
+	}
+
+	return append(models, llmModels...), nil
 }
 
 func toModels(list *unstructured.UnstructuredList) ([]Model, error) {
