@@ -6,6 +6,9 @@ brew "kubectl"
 brew "kind"
 brew "helm"
 
+# Container engines
+brew "podman"
+
 # Service mesh
 brew "istioctl"
 

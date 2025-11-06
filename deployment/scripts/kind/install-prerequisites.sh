@@ -65,17 +65,18 @@ install_mac() {
     log_info "Installing tools from Brewfile..."
     brew bundle --file="$brewfile"
 
-    # Check for Docker Desktop
-    if ! command_exists docker; then
-        log_warn "Docker Desktop is not installed"
+    # Check for container engines (Docker or Podman)
+    if ! command_exists docker && ! command_exists podman; then
+        log_warn "No container engine found (Docker or Podman)"
         echo ""
-        echo "Please install Docker Desktop manually:"
+        echo "Docker Desktop:"
         echo "  https://www.docker.com/products/docker-desktop"
+        echo "  Or: brew install --cask docker"
         echo ""
-        echo "Or use Homebrew Cask:"
-        echo "  brew install --cask docker"
+        echo "Podman (alternative):"
+        echo "  Already included in Brewfile"
         echo ""
-        read -p "Press Enter after installing Docker Desktop..."
+        read -p "Press Enter after installing a container engine..."
     fi
 
     log_success "Mac prerequisites installed successfully"
@@ -176,22 +177,19 @@ install_linux() {
         log_success "jq already installed"
     fi
 
-    # Check for Docker
-    if ! command_exists docker; then
-        log_warn "Docker is not installed"
+    # Check for container engines (Docker or Podman)
+    if ! command_exists docker && ! command_exists podman; then
+        log_warn "No container engine found (Docker or Podman)"
         echo ""
-        echo "Please install Docker Engine:"
-        echo ""
-        echo "Ubuntu/Debian:"
+        echo "Docker Engine:"
         echo "  curl -fsSL https://get.docker.com | sh"
         echo "  sudo usermod -aG docker \$USER"
         echo ""
-        echo "Fedora/RHEL:"
-        echo "  sudo dnf install docker"
-        echo "  sudo systemctl enable --now docker"
-        echo "  sudo usermod -aG docker \$USER"
+        echo "Podman (alternative):"
+        echo "  Ubuntu/Debian: sudo apt-get install -y podman"
+        echo "  Fedora/RHEL:   sudo dnf install -y podman"
         echo ""
-        read -p "Press Enter after installing Docker..."
+        read -p "Press Enter after installing a container engine..."
     fi
 
     # Cleanup
@@ -208,8 +206,10 @@ print_versions() {
 
     if command_exists docker; then
         echo "  Docker:     $(docker --version 2>&1 | head -1)"
+    elif command_exists podman; then
+        echo "  Podman:     $(podman --version 2>&1 | head -1)"
     else
-        echo "  Docker:     NOT INSTALLED"
+        echo "  Container:  NOT INSTALLED"
     fi
 
     if command_exists kubectl; then
@@ -279,9 +279,13 @@ main() {
     log_success "Prerequisites installation complete!"
     echo ""
     echo "Next steps:"
-    echo "  1. Restart your terminal (if Docker was just installed)"
-    echo "  2. Verify Docker is running: docker ps"
-    echo "  3. Run Kind setup: ./deployment/scripts/setup-kind.sh"
+    echo "  1. Restart your terminal (if container engine was just installed)"
+    if command_exists docker; then
+        echo "  2. Verify Docker is running: docker ps"
+    elif command_exists podman; then
+        echo "  2. Verify Podman is running: podman ps"
+    fi
+    echo "  3. Run MaaS setup: ./deployment/scripts/kind/install.sh"
     echo ""
 }
 

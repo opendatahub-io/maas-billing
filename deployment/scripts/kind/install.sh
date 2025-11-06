@@ -45,9 +45,9 @@ check_prerequisites() {
 
     local missing_tools=()
 
-    # Required tools
-    if ! command_exists docker; then
-        missing_tools+=("docker")
+    # Required tools (Docker or Podman)
+    if ! command_exists docker && ! command_exists podman; then
+        missing_tools+=("docker or podman")
     fi
 
     if ! command_exists kubectl; then
@@ -85,9 +85,13 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check Docker is running
-    if ! docker ps >/dev/null 2>&1; then
-        log_error "Docker is not running. Please start Docker Desktop (Mac) or Docker Engine (Linux)"
+    # Check container engine is running
+    if command_exists docker && docker ps >/dev/null 2>&1; then
+        log_success "Docker is running"
+    elif command_exists podman && podman ps >/dev/null 2>&1; then
+        log_success "Podman is running"
+    else
+        log_error "Container engine is not running. Please start Docker Desktop (Mac) or Docker/Podman Engine (Linux)"
         exit 1
     fi
 
@@ -239,10 +243,22 @@ build_maas_api_image() {
     log_info "Building local maas-api image with K8s-first code..."
 
     cd "$PROJECT_ROOT/maas-api"
-    make build-image REPO=localhost/maas-api TAG=dev || {
-        log_error "Failed to build maas-api image"
+    
+    # Determine container engine and build image
+    if command_exists docker && docker ps >/dev/null 2>&1; then
+        make build-image CONTAINER_ENGINE=docker REPO=localhost/maas-api TAG=dev || {
+            log_error "Failed to build maas-api image with Docker"
+            return 1
+        }
+    elif command_exists podman && podman ps >/dev/null 2>&1; then
+        make build-image CONTAINER_ENGINE=podman REPO=localhost/maas-api TAG=dev || {
+            log_error "Failed to build maas-api image with Podman"
+            return 1
+        }
+    else
+        log_error "No working container engine found"
         return 1
-    }
+    fi
 
     log_info "Loading maas-api image into Kind cluster..."
     kind load docker-image localhost/maas-api:dev --name "$CLUSTER_NAME" || {
