@@ -4,7 +4,7 @@ set -euo pipefail
 # -------- Config (overridable) --------
 NS="${NS:-llm}"
 MODEL_PATH="${MODEL_PATH:-docs/samples/models/facebook-opt-125m-cpu}"
-ARTIFACT_DIR="${ARTIFACT_DIR:-testing/e2e/reports}"
+ARTIFACT_DIR="${ARTIFACT_DIR:-test/e2e/reports}"
 
 # -------- Inputs we require --------
 : "${MODEL_NAME:?Export MODEL_NAME (LLMInferenceService name)}"
@@ -62,10 +62,10 @@ echo "[e2e] MAAS_API_BASE_URL=${MAAS_API_BASE_URL}"
 # -------- Run smoke --------
 mkdir -p "${ARTIFACT_DIR}"
 echo "[e2e] Running smoke tests…"
-( cd testing/e2e && bash ./smoke.sh )
+( cd test/e2e && bash ./smoke.sh )
 
 # Copy artifacts if a different dir was requested
-if [[ "testing/e2e/reports" != "${ARTIFACT_DIR}" ]]; then
-  cp -r testing/e2e/reports/. "${ARTIFACT_DIR}/"
+if [[ "test/e2e/reports" != "${ARTIFACT_DIR}" ]]; then
+  cp -r test/e2e/reports/. "${ARTIFACT_DIR}/"
 fi
 echo "[e2e] Done. Reports in ${ARTIFACT_DIR}"

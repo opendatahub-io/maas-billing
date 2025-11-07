@@ -99,9 +99,9 @@ The suite assumes **`FREE_OC_TOKEN`** holds the *current* user’s token.
 ### A) Admin (sanity / wiring)
 
 ```bash
-pytest -q testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
-pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
-pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
+pytest -q test/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
+pytest -q test/maas_billing_tests_independent/tests/test_models_user.py
+pytest -q test/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
 ```
 
 ### B) Free user (authz + request-rate burst + usage)
@@ -111,22 +111,22 @@ pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py
 export FREE_OC_TOKEN="$(oc whoami -t)"
 
 # basics
-pytest -q testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
-pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
-pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
+pytest -q test/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
+pytest -q test/maas_billing_tests_independent/tests/test_models_user.py
+pytest -q test/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
 
 # request-rate burst (expects some 429s after RATE_LIMIT_BURST_FREE)
-pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
+pytest -q test/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 
 # usage (optional; requires USAGE_API_BASE)
-pytest -q testing/maas_billing_tests_independent/tests/test_usage_logs.py
+pytest -q test/maas_billing_tests_independent/tests/test_usage_logs.py
 ```
 
 #### Token‑rate for Free
 Trigger token-based limiting by making each call expensive in tokens:
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
+pytest -q test/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 #### Interplay for Free — which limiter fires first?
@@ -134,12 +134,12 @@ pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```bash
 export TOKENS_PER_CALL_SMALL=16
 export BURST_SLEEP=0.05
-pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
+pytest -q test/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 ```
 **Token‑rate first:** few *expensive* calls
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
+pytest -q test/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 ### C) Premium user (same flow + Free-vs-Premium comparison)
@@ -149,18 +149,18 @@ pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 export FREE_OC_TOKEN="$(oc whoami -t)"     # current user’s token again
 export PREMIUM_OC_TOKEN="$FREE_OC_TOKEN"   # used by the test to mint for premium
 
-pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
+pytest -q test/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
 
 # Compare Free vs Premium burst; Premium must not be worse than Free
 # (uses RATE_LIMIT_BURST_FREE / RATE_LIMIT_BURST_PREMIUM)
-pytest -q testing/maas_billing_tests_independent/tests/test_quota_per_user.py::test_free_vs_premium_quota
+pytest -q test/maas_billing_tests_independent/tests/test_quota_per_user.py::test_free_vs_premium_quota
 ```
 
 #### Token‑rate for Premium
 Run the token limiter test while logged in as your Premium user:
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
+pytest -q test/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 #### Interplay for Premium — which limiter fires first?
@@ -168,12 +168,12 @@ pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```bash
 export TOKENS_PER_CALL_SMALL=16
 export BURST_SLEEP=0.05
-pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
+pytest -q test/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 ```
 **Token‑rate first:** few *expensive* calls
 ```bash
 export TOKENS_PER_CALL_LARGE=1200
-pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
+pytest -q test/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 ### D) Token-rate (current user – Free **or** Premium)
@@ -182,7 +182,7 @@ If you want to *exercise* token-rate limiting, increase tokens per call to make 
 
 ```bash
 export TOKENS_PER_CALL_LARGE=1200   # example value to drive token usage
-pytest -q testing/maas_billing_tests_independent/tests/test_token_ratelimit.py
+pytest -q test/maas_billing_tests_independent/tests/test_token_ratelimit.py
 ```
 
 ---
@@ -198,13 +198,13 @@ By shaping traffic as above (many *cheap* calls vs few *expensive* calls), you c
 
 ```bash
 # Create a timestamped artifacts folder
-REP_ROOT=testing/maas_billing_tests_independent/artifacts
+REP_ROOT=test/maas_billing_tests_independent/artifacts
 TS=$(date +%Y-%m-%d_%H-%M-%S)
 OUT="$REP_ROOT/$TS"
 mkdir -p "$OUT"
 
 # Example: run everything for the current user and produce reports
-pytest -q testing/maas_billing_tests_independent/tests \
+pytest -q test/maas_billing_tests_independent/tests \
   --html="$OUT/maas-test-report.html" --self-contained-html \
   --junitxml="$OUT/maas-test-report.xml"
 
@@ -216,20 +216,20 @@ echo "Reports saved in: $OUT"
 
 ```bash
 # 3 smoke tests → one report
-REP_ROOT=testing/maas_billing_tests_independent/artifacts
+REP_ROOT=test/maas_billing_tests_independent/artifacts
 TS=$(date +%Y-%m-%d_%H-%M-%S)
 OUT="$REP_ROOT/$TS"
 mkdir -p "$OUT"
 
 pytest -q \
-  testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt \
-  testing/maas_billing_tests_independent/tests/test_models_user.py \
-  testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works \
+  test/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt \
+  test/maas_billing_tests_independent/tests/test_models_user.py \
+  test/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works \
   --html="$OUT/smoke.html" --self-contained-html \
   --junitxml="$OUT/smoke.xml"
 
 # Single test → its own report
-pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works \
+pytest -q test/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works \
   --html="$OUT/chat.html" --self-contained-html \
   --junitxml="$OUT/chat.xml"
 ```
@@ -274,7 +274,7 @@ export MODEL_NAME="Qwen/Qwen3-0.6B"
 # Gate to enable these tests
 export TOOL_CALLING_ENABLED=true
 
-pytest -q testing/maas_billing_tests_independent/tests/test_tool_calling.py::test_tool_calling_forced -s \
+pytest -q test/maas_billing_tests_independent/tests/test_tool_calling.py::test_tool_calling_forced -s \
   --html="$OUT/tool-calling-forced.html" --self-contained-html \
   --junitxml="$OUT/tool-calling-forced.xml"
 ```
@@ -290,7 +290,7 @@ Validates that the model endpoint supports Server-Sent Events with `stream:true`
 ```bash
 # Enable the streaming test (and extra logs)
 STREAMING_ENABLED=true STREAMING_DEBUG=true \
-pytest -q testing/maas_billing_tests_independent/tests/test_streaming_chat.py::test_chat_completions_streaming \
+pytest -q test/maas_billing_tests_independent/tests/test_streaming_chat.py::test_chat_completions_streaming \
   -s --capture=tee-sys \
   --html="$OUT/streaming.html" --self-contained-html \
   --junitxml="$OUT/streaming.xml"
@@ -336,12 +336,12 @@ pytest -q tests/test_gateway_endpoints.py::test_chat_completion_works
 pytest -q tests/test_quota_global.py::test_rate_limit_burst
 
 # report (timestamped artifacts folder)
-$REP_ROOT = "testing\maas_billing_tests_independent\artifacts"
+$REP_ROOT = "test\maas_billing_tests_independent\artifacts"
 $TS = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $OUT = "$REP_ROOT\$TS"
 New-Item -ItemType Directory -Force -Path $OUT | Out-Null
 
-pytest -q testing/maas_billing_tests_independent/tests `
+pytest -q test/maas_billing_tests_independent/tests `
   --html="$OUT\maas-test-report.html" --self-contained-html `
   --junitxml="$OUT\maas-test-report.xml"
 
@@ -381,17 +381,17 @@ export TOKENS_PER_CALL_SMALL=16
 export BURST_SLEEP=0.05
 
 # run a few
-pytest -q testing/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
-pytest -q testing/maas_billing_tests_independent/tests/test_models_user.py
-pytest -q testing/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
-pytest -q testing/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
+pytest -q test/maas_billing_tests_independent/tests/test_tokens.py::test_minted_token_is_jwt
+pytest -q test/maas_billing_tests_independent/tests/test_models_user.py
+pytest -q test/maas_billing_tests_independent/tests/test_gateway_endpoints.py::test_chat_completion_works
+pytest -q test/maas_billing_tests_independent/tests/test_quota_global.py::test_rate_limit_burst
 
 # report (timestamped artifacts folder)
-REP_ROOT=testing/maas_billing_tests_independent/artifacts
+REP_ROOT=test/maas_billing_tests_independent/artifacts
 TS=$(date +%Y-%m-%d_%H-%M-%S)
 OUT="$REP_ROOT/$TS"
 mkdir -p "$OUT"
-pytest -q testing/maas_billing_tests_independent/tests \
+pytest -q test/maas_billing_tests_independent/tests \
   --html="$OUT/maas-test-report.html" --self-contained-html \
   --junitxml="$OUT/maas-test-report.xml"
 ```

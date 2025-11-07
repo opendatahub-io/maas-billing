@@ -4,14 +4,14 @@ trap 'echo "[bootstrap] ERROR line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # Repo/E2E dirs
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-E2E_DIR="${REPO_ROOT}/testing/e2e"
+E2E_DIR="${REPO_ROOT}/test/e2e"
 
 # Defaults (overridable via env)
 NS="${NS:-llm}"
 MODEL_PATH="${MODEL_PATH:-docs/samples/models/facebook-opt-125m-cpu}"
 GATEWAY_NAME="${GATEWAY_NAME:-maas-default-gateway}"
 GATEWAY_NS="${GATEWAY_NS:-openshift-ingress}"
-WRITE_ENV="${WRITE_ENV:-true}"     # write testing/e2e/.env
+WRITE_ENV="${WRITE_ENV:-true}"     # write test/e2e/.env
 SKIP_DEPLOY="${SKIP_DEPLOY:-true}" # default true (don’t redeploy model unless you want to)
 
 echo "[bootstrap] oc whoami: $(oc whoami || true)"

@@ -11,7 +11,7 @@ source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activat
 
 # install Python deps used by the tests
 pip install --upgrade pip
-pip install -r testing/e2e/requirements.txt
+pip install -r test/e2e/requirements.txt
 
 ## What Prow needs to provide (exports)
 - `CLUSTER_DOMAIN` – from cluster (e.g., `oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'`)
@@ -30,6 +30,6 @@ export MODEL_NAME="facebook/opt-125m"
 # export ISVC_NAME="facebook-opt-125m-cpu"
 
 # Deploy + smoke:
-bash testing/e2e/run-model-and-smoke.sh
+bash test/e2e/run-model-and-smoke.sh
 # Or only smoke (if model is already there):
-bash testing/e2e/smoke.sh
+bash test/e2e/smoke.sh
