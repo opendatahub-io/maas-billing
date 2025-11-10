@@ -46,6 +46,7 @@ EOF
     pushd ./opendatahub-operator
     cp config/manager/kustomization.yaml.in config/manager/kustomization.yaml
     sed -i 's#REPLACE_IMAGE#quay.io/opendatahub/opendatahub-operator#' config/manager/kustomization.yaml
+    make manifests
     kustomize build --load-restrictor LoadRestrictionsNone config/default | kubectl apply --namespace $ODH_OPERATOR_NS -f -
     popd
     popd
