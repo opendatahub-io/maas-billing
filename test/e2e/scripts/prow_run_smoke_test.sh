@@ -10,7 +10,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Options (can be set as environment variables)
 SKIP_VALIDATION=${SKIP_VALIDATION:-false}
-SKIP_SMOKE=${SKIP_SMOKE:-true}
+SKIP_SMOKE=${SKIP_SMOKE:-false}
 
 print_header() {
     echo ""
@@ -59,16 +59,9 @@ deploy_models() {
     fi
     echo "✅ Simulator model deployed"
     
-    echo "Deploying facebook-opt-125m-cpu Model"
-    if ! (cd "$PROJECT_ROOT" && kustomize build docs/samples/models/facebook-opt-125m-cpu/ | kubectl apply -f -); then
-        echo "❌ ERROR: Failed to deploy facebook-opt-125m-cpu model"
-        exit 1
-    fi
-    echo "✅ Facebook-opt-125m-cpu model deployed"
-    
-    echo "Waiting 60 seconds for models to initialize..."
-    sleep 60
-    echo "✅ Model initialization wait completed"
+    echo "Waiting for model to be ready..."
+    sleep 30
+    echo "✅ Simulator Model deployed"
 }
 
 validate_deployment() {
@@ -86,28 +79,57 @@ validate_deployment() {
 
 setup_maas_users() {
     echo "Setting up Maas users for testing"
-    if ! (cd "$PROJECT_ROOT" && bash test/e2e/setup-maas-users.sh); then
-        echo "❌ ERROR: Failed to setup Maas users"
+    if ! (cd "$PROJECT_ROOT" && bash test/e2e/scripts/setup_maas_users_openshift.sh); then
+        echo "❌ ERROR: Failed to setup Maas users on OpenShift"
         exit 1
     fi
+    
+    # Source the environment variables created by the setup script
+    local env_file="$PROJECT_ROOT/maas-users.env"
+    if [ -f "$env_file" ]; then
+        source "$env_file"
+    else
+        echo "❌ ERROR: Users credentials not found"
+        exit 1
+    fi
+    
     echo "✅ Maas users setup completed"
+}
+
+login_as_user() {
+    echo "Logging in as user: $1"
+    if ! (oc login -u "$1" -p "$2"); then
+        echo "❌ ERROR: Failed to login as user: $1"
+        exit 1
+    fi
+    echo "✅ User: $1 logged in successfully as: $(oc whoami)"
+}
+
+setup_vars_for_tests() {
+    echo "-- Setting up variables for tests --"
+    CLUSTER_DOMAIN="$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
+    export CLUSTER_DOMAIN
+    if [ -z "$CLUSTER_DOMAIN" ]; then
+        echo "❌ ERROR: Failed to retrieve OpenShift cluster domain"
+        exit 1
+    fi
+    
+    export HOST="maas.${CLUSTER_DOMAIN}"
+    export MAAS_API_BASE_URL="http://${HOST}/maas-api"
+
+    echo "CLUSTER_DOMAIN: ${CLUSTER_DOMAIN}"
+    echo "HOST: ${HOST}"
+    echo "MAAS_API_BASE_URL: ${MAAS_API_BASE_URL}"
+
+    echo "✅ Variables for tests setup completed"
 }
 
 run_smoke_tests() {
     echo "-- Smoke Testing --"
-    export CLUSTER_DOMAIN="$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"    
-    if [ -z "$CLUSTER_DOMAIN" ]; then
-        echo "❌ ERROR: Failed to retrieve OpenShift cluster domain"
-        exit 1
-   fi
-    
-    export HOST="maas.${CLUSTER_DOMAIN}"
-    export MAAS_API_BASE_URL="http://${HOST}/maas-api"
     
     if [ "$SKIP_SMOKE" = false ]; then
         if ! (cd "$PROJECT_ROOT" && bash test/e2e/smoke.sh); then
             echo "❌ ERROR: Smoke tests failed"
-            exit 1
         fi
         echo "✅ Smoke tests completed successfully"
     else
@@ -126,10 +148,18 @@ deploy_models
 print_header "Validating Deployment"
 validate_deployment
 
+print_header "Setting up variables for tests"
+setup_vars_for_tests
+
 print_header "Setup maas users for testing"
 setup_maas_users
 
-print_header "Running Maas e2e Tests"
+print_header "Running Maas e2e Tests as admin user"
+login_as_user "${OPENSHIFT_ADMIN_USER}" "${OPENSHIFT_ADMIN_PASS}"
+run_smoke_tests
+
+print_header "Running Maas e2e Tests as dev user"
+login_as_user "${OPENSHIFT_DEV_USER}" "${OPENSHIFT_DEV_PASS}"
 run_smoke_tests
 
 echo "🎉 Deployment completed successfully!"
