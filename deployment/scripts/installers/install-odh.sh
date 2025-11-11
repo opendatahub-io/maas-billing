@@ -50,7 +50,14 @@ EOF
     cp config/manager/kustomization.yaml.in config/manager/kustomization.yaml
     make manifests
     # Replace the image placeholder in manager.yaml after manifests are generated
-    sed -i "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" config/manager/manager.yaml
+    # Detect OS and use appropriate sed syntax
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS (BSD sed) - requires empty string after -i and different syntax
+        sed -i '' "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" config/manager/manager.yaml
+    else
+        # Linux (GNU sed)
+        sed -i "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" config/manager/manager.yaml
+    fi
     if grep -q "REPLACE_IMAGE" config/manager/manager.yaml; then
         echo "   Failed to update manager image in config/manager/manager.yaml"
         exit 1
