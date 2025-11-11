@@ -16,6 +16,8 @@ elif [[ $# -ne 0 ]]; then
     exit 1
 fi
 
+ODH_OPERATOR_IMAGE="${ODH_OPERATOR_IMAGE:-quay.io/opendatahub/opendatahub-operator:latest}"
+
 echo "========================================="
 echo "🚀 OpenDataHub (ODH) Installation"
 echo "========================================="
@@ -25,6 +27,7 @@ echo ""
 if [[ "$DEV_INSTALL" == true ]]; then
     ODH_OPERATOR_NS="opendatahub-operator-system"
     echo "1️⃣ Installing ODH Operator from repository manifests..."
+    echo "   Using operator image: $ODH_OPERATOR_IMAGE"
     cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Namespace
@@ -45,8 +48,13 @@ EOF
 
     pushd ./opendatahub-operator
     cp config/manager/kustomization.yaml.in config/manager/kustomization.yaml
-    sed -i 's#REPLACE_IMAGE#quay.io/opendatahub/opendatahub-operator#' config/manager/kustomization.yaml
     make manifests
+    # Replace the image placeholder in manager.yaml after manifests are generated
+    sed -i "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" config/manager/manager.yaml
+    if grep -q "REPLACE_IMAGE" config/manager/manager.yaml; then
+        echo "   Failed to update manager image in config/manager/manager.yaml"
+        exit 1
+    fi
     kustomize build --load-restrictor LoadRestrictionsNone config/default | kubectl apply --namespace $ODH_OPERATOR_NS -f -
     popd
     popd
