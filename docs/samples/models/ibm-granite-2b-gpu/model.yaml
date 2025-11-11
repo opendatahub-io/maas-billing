@@ -1,0 +1,91 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: granite-2b-gpu
+  annotations:
+    alpha.maas.opendatahub.io/tiers: '[]'
+spec:
+  model:
+    uri: hf://ibm-granite/granite-3.1-2b-instruct
+    name: ibm-granite/granite-3.1-2b-instruct
+  replicas: 1
+  router:
+    route: { }
+    # Connect to MaaS-enabled gateway
+    gateway:
+      refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+  template:
+    containers:
+      - name: main
+        image: vllm/vllm-openai:v0.6.3.post1
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+          - "--model=/mnt/models"
+          - "--served-model-name=granite-2b-instruct"
+          - "--max-model-len=4096"
+          - "--trust-remote-code"
+          - "--ssl-keyfile=/var/run/kserve/tls/tls.key"
+          - "--ssl-certfile=/var/run/kserve/tls/tls.crt"
+          - "--port=8000"
+          - "--dtype=float16"
+        env:
+          - name: VLLM_LOGGING_LEVEL
+            value: INFO
+          - name: HF_HUB_CACHE
+            value: /models-cache
+          - name: VLLM_ATTENTION_BACKEND
+            value: XFORMERS
+          - name: VLLM_USE_V1
+            value: "false"
+        volumeMounts:
+          - name: cache
+            mountPath: /models-cache
+          - name: tls-certs
+            mountPath: /var/run/kserve/tls
+            readOnly: true
+        resources:
+          limits:
+            cpu: '2'
+            memory: 12Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '500m'
+            memory: 8Gi
+            nvidia.com/gpu: '1'
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 30
+    volumes:
+      - name: cache
+        emptyDir: {}
+      - name: tls-certs
+        secret:
+          secretName: kserve-tls
+  autoscaler:
+    metrics:
+      - type: Pod
+        pod:
+          metric:
+            name: kernel-saturation-pct-below-50
+          target:
+            type: AverageValue
+            averageValue: "1"
+    targetRequests: 100
+    scaleUpRate: 10
