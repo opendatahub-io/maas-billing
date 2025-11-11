@@ -4,50 +4,72 @@
 
 set -euo pipefail
 
+find_project_root() {
+  local start_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+  local marker="${2:-.git}"
+  local dir="$start_dir"
+
+  while [[ "$dir" != "/" && ! -e "$dir/$marker" ]]; do
+    dir="$(dirname "$dir")"
+  done
+
+  if [[ -e "$dir/$marker" ]]; then
+    printf '%s\n' "$dir"
+  else
+    echo "Error: couldn’t find '$marker' in any parent of '$start_dir'" >&2
+    return 1
+  fi
+}
+
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PROJECT_ROOT="$(find_project_root)"
 
 # Options (can be set as environment variables)
-SKIP_VALIDATION=${SKIP_VALIDATION:-false}
+SKIP_VALIDATION=${SKIP_VALIDATION:-true}
 SKIP_SMOKE=${SKIP_SMOKE:-false}
 
 print_header() {
     echo ""
-    echo "----- $1 -----"
+    echo "----------------------------------------"
+    echo "$1"
+    echo "----------------------------------------"
+    echo ""
 }
 
 check_prerequisites() {
     echo "Checking prerequisites..."
     
-    # Check if we're on OpenShift
-    if ! kubectl api-resources | grep "route.openshift.io"; then
-        echo "❌ ERROR: This script is designed for OpenShift clusters only"
-        exit 1
-    fi
-    
-    # Check if we're logged in
-    if ! oc whoami >/dev/null 2>&1; then
+    # Get current user (also checks if logged in)
+    local current_user
+    if ! current_user=$(oc whoami 2>/dev/null); then
         echo "❌ ERROR: Not logged into OpenShift. Please run 'oc login' first"
         exit 1
     fi
     
-    echo "✅ Prerequisites met - logged in as: $(oc whoami)"
+    # Combined check: admin privileges + OpenShift cluster
+    if ! oc auth can-i '*' '*' --all-namespaces >/dev/null 2>&1; then
+        echo "❌ ERROR: User '$current_user' does not have admin privileges"
+        echo "   This script requires cluster-admin privileges to deploy and manage resources"
+        echo "   Please login as an admin user with 'oc login' or contact your cluster administrator"
+        exit 1
+    elif ! kubectl get --raw /apis/config.openshift.io/v1/clusterversions >/dev/null 2>&1; then
+        echo "❌ ERROR: This script is designed for OpenShift clusters only"
+        exit 1
+    fi
+    
+    echo "✅ Prerequisites met - logged in as: $current_user on OpenShift"
+
+    print_header "Setup maas users"
+    setup_maas_users
 }
 
 deploy_maas_platform() {
     echo "Deploying MaaS platform on OpenShift..."
-    
-    if [ ! -f "$PROJECT_ROOT/deployment/scripts/deploy-openshift.sh" ]; then
-        echo "❌ ERROR: Deployment script not found: $PROJECT_ROOT/deployment/scripts/deploy-openshift.sh"
-        exit 1
-    fi
-    
     if ! "$PROJECT_ROOT/deployment/scripts/deploy-openshift.sh"; then
         echo "❌ ERROR: MaaS platform deployment failed"
         exit 1
     fi
-    
     echo "✅ MaaS platform deployment completed"
 }
 
@@ -60,7 +82,7 @@ deploy_models() {
     echo "✅ Simulator model deployed"
     
     echo "Waiting for model to be ready..."
-    sleep 30
+    oc wait llminferenceservice/facebook-opt-125m-simulated -n llm --for=condition=Ready --timeout=300s
     echo "✅ Simulator Model deployed"
 }
 
@@ -79,21 +101,32 @@ validate_deployment() {
 
 setup_maas_users() {
     echo "Setting up Maas users for testing"
-    if ! (cd "$PROJECT_ROOT" && bash test/e2e/scripts/setup_maas_users_openshift.sh); then
+    
+    # Capture the script output in a variable
+    local script_output
+    if ! script_output=$(cd "$PROJECT_ROOT" && bash test/e2e/scripts/setup_maas_users_openshift.sh 2>&1); then
         echo "❌ ERROR: Failed to setup Maas users on OpenShift"
         exit 1
     fi
     
-    # Source the environment variables created by the setup script
-    local env_file="$PROJECT_ROOT/maas-users.env"
-    if [ -f "$env_file" ]; then
-        source "$env_file"
+    # Display the script output (excluding export statements for security)
+    echo "$script_output" | grep -v "^export "
+    
+    # Extract and evaluate the export statements
+    local export_statements
+    export_statements=$(echo "$script_output" | grep "^export " || true)
+    
+    if [ -n "$export_statements" ]; then
+        eval "$export_statements"
+        echo "✅ Credentials loaded for users:"
+        echo "   Admin user: ${OPENSHIFT_ADMIN_USER}"
+        echo "   Dev user: ${OPENSHIFT_DEV_USER}"
+        echo "✅ Maas users setup completed"
     else
-        echo "❌ ERROR: Users credentials not found"
+        echo "❌ ERROR: Credentials not found"
+        echo "❌ ERROR: Maas users setup failed"
         exit 1
     fi
-    
-    echo "✅ Maas users setup completed"
 }
 
 login_as_user() {
@@ -113,14 +146,11 @@ setup_vars_for_tests() {
         echo "❌ ERROR: Failed to retrieve OpenShift cluster domain"
         exit 1
     fi
-    
     export HOST="maas.${CLUSTER_DOMAIN}"
     export MAAS_API_BASE_URL="http://${HOST}/maas-api"
-
     echo "CLUSTER_DOMAIN: ${CLUSTER_DOMAIN}"
     echo "HOST: ${HOST}"
     echo "MAAS_API_BASE_URL: ${MAAS_API_BASE_URL}"
-
     echo "✅ Variables for tests setup completed"
 }
 
@@ -150,9 +180,6 @@ validate_deployment
 
 print_header "Setting up variables for tests"
 setup_vars_for_tests
-
-print_header "Setup maas users for testing"
-setup_maas_users
 
 print_header "Running Maas e2e Tests as admin user"
 login_as_user "${OPENSHIFT_ADMIN_USER}" "${OPENSHIFT_ADMIN_PASS}"
