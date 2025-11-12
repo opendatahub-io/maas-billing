@@ -3,7 +3,7 @@
 ## Environment Setup
 
 ### Prerequisites
- 
+
 - kubectl
 - jq
 - kustomize 5.7
