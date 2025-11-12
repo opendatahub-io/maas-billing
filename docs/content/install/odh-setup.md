@@ -8,7 +8,7 @@ versions are not suitable.
 
 MaaS requires ODH's Model Serving component configured for deploying models with
 `LLMInferenceService` resources. The prerequisites for this ODH setup are Kuadrant and the
-LeaderWorkerSet API (LWS). Kuadrant, in turn, requires cert-manager.
+LeaderWorkerSet API (LWS).
 
 Tools you will need:
 
@@ -20,31 +20,6 @@ Tools you will need:
     You should choose either to install the ODH project, or Red Hat OpenShift AI (RHOAI). 
     Follow this guide only if your cluster does not have RHOAI installed.  
 
-## Install cert-manager
-
-Install the latest version of cert-manager by using the _kubectl_ method from
-[cert-manager's official documentation](https://cert-manager.io/docs/installation/kubectl/).
-The following script will do so:
-
-```shell
-GH_LATEST_CM_ENTRY_URL="https://api.github.com/repos/cert-manager/cert-manager/releases/latest"
-LATEST_CM_VERSION=$(curl -sSf ${GH_LATEST_CM_ENTRY_URL} | jq -r '.tag_name')
-
-kubectl apply --server-side -f https://github.com/cert-manager/cert-manager/releases/download/${LATEST_CM_VERSION}/cert-manager.yaml
-```
-
-### Verification
-
-Check that cert-manager deployments are ready:
-
-```shell
-kubectl get deployments --namespace cert-manager
-
-NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
-cert-manager              1/1     1            1           16s
-cert-manager-cainjector   1/1     1            1           16s
-cert-manager-webhook      1/1     1            1           15s
-```
 
 ## Install LeaderWorkerSet API
 

@@ -219,14 +219,6 @@ else
     echo "   ✅ Kuadrant operator already installed, skipping CRD cleanup"
 fi
 
-echo "   Installing cert-manager..."
-"$SCRIPT_DIR/install-dependencies.sh" --cert-manager
-
-# Wait for cert-manager CRDs to be ready
-echo "   Waiting for cert-manager CRDs to be established..."
-wait_for_crd "certificates.cert-manager.io" 120 || \
-    echo "   ⚠️  Certificate CRD not yet available"
-
 echo "   Installing Kuadrant..."
 "$SCRIPT_DIR/install-dependencies.sh" --kuadrant
 

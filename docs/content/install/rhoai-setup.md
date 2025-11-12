@@ -8,7 +8,7 @@ not suitable.
 
 MaaS requires RHOAI Model Serving component configured for deploying models with
 `LLMInferenceService` resources. The prerequisites for this setup are Red Hat Connectivity
-Link (RHCL) and the LeaderWorkerSet API (LWS). RHCL, in turn, requires cert-manager.
+Link (RHCL) and the LeaderWorkerSet API (LWS).
 
 Tools you will need:
 
@@ -22,51 +22,6 @@ Tools you will need:
     This guide is provided for convenience. In case of any issues or more advanced
     setups, refer to the Red Hat documentation of the installed components.
 
-## Install cert-manager
-
-Install Red Hat build of cert-manager from OpenShift's built-in OperatorHub. This can be
-achieved by applying the following YAML in the cluster:
-
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cert-manager-operator
----
-apiVersion: operators.coreos.com/v1
-kind: OperatorGroup
-metadata:
-  name: cert-manager-operator
-  namespace: cert-manager-operator
----
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: openshift-cert-manager-operator
-  namespace: cert-manager-operator
-spec:
-  channel: stable-v1
-  installPlanApproval: Automatic
-  name: openshift-cert-manager-operator
-  source: redhat-operators
-  sourceNamespace: openshift-marketplace
-```
-
-Check [Red Hat cert-manager documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/latest/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift)
-if you need further guidance.
-
-### Verification
-
-Check that cert-manager deployments are ready:
-
-```shell
-kubectl get deployments --namespace cert-manager
-
-NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
-cert-manager              1/1     1            1           16s
-cert-manager-cainjector   1/1     1            1           16s
-cert-manager-webhook      1/1     1            1           15s
-```
 
 ## Install LeaderWorkerSet API
 
