@@ -15,20 +15,48 @@ if ! command -v oc &> /dev/null; then
     exit 1
 fi
 
+if ! command -v yq &> /dev/null; then
+    echo -e "${RED}Error: 'yq' command not found!${NC}"
+    echo "This script requires yq to parse YAML. Install it from: https://github.com/mikefarah/yq"
+    exit 1
+fi
+
 if [ -z "${GATEWAY_URL:-}" ]; then
-    ROUTE_HOST=$(oc get route gateway-route -n openshift-ingress -o jsonpath='{.spec.host}' 2>/dev/null)
-    if [ -n "$ROUTE_HOST" ]; then
-            GATEWAY_URL="https://${ROUTE_HOST}"
+    echo -e "${BLUE}Looking up gateway configuration...${NC}"
+    
+    GATEWAY_YAML=$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o yaml 2>/dev/null)
+    
+    if [ -z "$GATEWAY_YAML" ]; then
+        echo -e "${RED}Failed to find gateway with label app.kubernetes.io/instance=maas-default-gateway${NC}" >&2
+        exit 1
     fi
     
-    # Fallback to gateway status address if route not available
-    if [ -z "${GATEWAY_URL:-}" ]; then
-        HOST=$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.addresses[0].value}')
-        if [ -z "$HOST" ]; then
-            echo "Failed to resolve gateway host; set GATEWAY_URL explicitly." >&2
-            exit 1
+    LISTENERS=$(echo "$GATEWAY_YAML" | yq eval '.items[0].spec.listeners[]' - 2>/dev/null)
+    
+    HTTPS_HOSTNAME=$(echo "$LISTENERS" | yq eval 'select(.protocol == "HTTPS") | .hostname' - 2>/dev/null | head -1)
+    
+    if [ -n "$HTTPS_HOSTNAME" ] && [ "$HTTPS_HOSTNAME" != "null" ]; then
+        GATEWAY_URL="https://${HTTPS_HOSTNAME}"
+        echo -e "${GREEN}✓ Found HTTPS listener with hostname: ${HTTPS_HOSTNAME}${NC}"
+    else
+        HTTP_HOSTNAME=$(echo "$LISTENERS" | yq eval 'select(.protocol == "HTTP") | .hostname' - 2>/dev/null | head -1)
+        
+        if [ -n "$HTTP_HOSTNAME" ] && [ "$HTTP_HOSTNAME" != "null" ]; then
+            GATEWAY_URL="http://${HTTP_HOSTNAME}"
+            echo -e "${GREEN}✓ Found HTTP listener with hostname: ${HTTP_HOSTNAME}${NC}"
+        else
+            # Fall back to gateway status address
+            STATUS_ADDRESS=$(echo "$GATEWAY_YAML" | yq eval '.items[0].status.addresses[0].value' - 2>/dev/null)
+            
+            if [ -z "$STATUS_ADDRESS" ] || [ "$STATUS_ADDRESS" = "null" ]; then
+                echo -e "${RED}Failed to resolve gateway hostname or address${NC}" >&2
+                echo -e "${RED}Please set GATEWAY_URL explicitly${NC}" >&2
+                exit 1
+            fi
+            
+            GATEWAY_URL="http://${STATUS_ADDRESS}"
+            echo -e "${YELLOW}⚠ No listener hostname found, using status address: ${STATUS_ADDRESS}${NC}"
         fi
-        GATEWAY_URL="${HOST}"
     fi
 fi
 
@@ -313,7 +341,7 @@ else
 fi
 echo ""
 
-echo -e "${BLUE}Gateway URL:${NC} ${HOST}"
+echo -e "${BLUE}Gateway URL:${NC} ${GATEWAY_URL}"
 echo -e "${BLUE}User:${NC} $USER_NAME"
 echo ""
 
