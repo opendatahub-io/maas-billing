@@ -95,7 +95,7 @@ jobs:
           # Deploy as 'dev' version (main branch development docs)
           # Note: 'dev' is intentionally not added to any alias to keep it hidden from the version selector
           # Users can still access it directly at /dev/ but it won't show in the dropdown
-          mike deploy --push dev
+          mike deploy --push dev --prop-set "hidden=true"
           # Ensure dev does NOT appear in version selector by not aliasing it
 
       - name: Summary
