@@ -17,13 +17,22 @@ spec:
         - name: maas-default-gateway
           namespace: openshift-ingress
   template:
+    # Ensure the pod is scheduled on GPU nodes
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
     containers:
       - name: main
         image: vllm/vllm-openai:v0.6.3.post1
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
           - "--model=/mnt/models"
-          - "--served-model-name=granite-2b-instruct"
+          # Model name used in API calls (e.g., in the "model" field of requests)
+          # Uses the model name from spec.model.name
+          - "--served-model-name={{ .Spec.Model.Name }}"
           - "--max-model-len=4096"
           - "--trust-remote-code"
           - "--ssl-keyfile=/var/run/kserve/tls/tls.key"
@@ -78,14 +87,17 @@ spec:
       - name: tls-certs
         secret:
           secretName: kserve-tls
-  autoscaler:
-    metrics:
-      - type: Pod
-        pod:
-          metric:
-            name: kernel-saturation-pct-below-50
-          target:
-            type: AverageValue
-            averageValue: "1"
-    targetRequests: 100
-    scaleUpRate: 10
+  # Autoscaling can be configured based on your monitoring setup
+  # Uncomment and adjust the following section if you have GPU metrics available
+  # autoscaler:
+  #   metrics:
+  #     # Example: Custom GPU utilization metric (requires GPU monitoring like NVIDIA DCGM)
+  #     - type: Pod
+  #       pod:
+  #         metric:
+  #           name: gpu-utilization  # Replace with your actual metric name
+  #         target:
+  #           type: AverageValue
+  #           averageValue: "80"  # Scale when GPU utilization exceeds 80%
+  #   targetRequests: 100
+  #   scaleUpRate: 10
