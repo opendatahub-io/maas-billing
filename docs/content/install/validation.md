@@ -57,7 +57,7 @@ Send a request to the model endpoint (should get a 200 OK response):
 curl -sSk -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-  "${MODEL_URL}"
+  "${MODEL_URL}/v1/chat/completions"
 ```
 
 ### 5. Test Authorization Enforcement
@@ -67,7 +67,7 @@ Send a request to the model endpoint without a token (should get a 401 Unauthori
 ```bash
 curl -sSk -H "Content-Type: application/json" \
   -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-  "${MODEL_URL}" -v
+  "${MODEL_URL}/v1/chat/completions" -v
 ```
 
 ### 6. Test Rate Limiting
@@ -80,7 +80,7 @@ for i in {1..16}; do
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-    "${MODEL_URL}"
+    "${MODEL_URL}/v1/chat/completions"
 done
 ```
 
