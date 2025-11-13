@@ -5,6 +5,9 @@ type Request struct {
 	// - String: Go-style duration starting from seconds (e.g. `"30s"`, `"2h45m"`)
 	// - Number: Seconds (e.g. `3600`)
 	Expiration *Duration `json:"expiration,omitempty"`
+	// Name is an optional identifier for the token. If provided, a Kubernetes
+	// secret will be created to track the token's metadata (not the token itself)
+	Name string `json:"name,omitempty"`
 }
 
 type Response struct {

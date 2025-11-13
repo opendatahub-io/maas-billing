@@ -247,6 +247,11 @@ paths:
                                 summary: Minimum allowed expiration (10 minutes)
                                 value:
                                     expiration: 10m
+                            named_token:
+                                summary: Named token for tracking
+                                value:
+                                    expiration: 24h
+                                    name: my-production-app
             responses:
                 "201":
                     description: Created response.
@@ -502,6 +507,10 @@ components:
                           description: Number of seconds
                           example: 14400
                     description: Token expiration - accepts either Go-style duration string or number of seconds. Minimum 10 minutes. Default is 4 hours.
+                name:
+                    type: string
+                    description: Optional name for the token. If provided, a Kubernetes secret will be created to track the token's metadata (username, creation date, expiration date, status). The actual token value is NOT stored in the secret.
+                    example: my-application-token
         
         # Token response
         TokenResponse:

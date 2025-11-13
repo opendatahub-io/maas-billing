@@ -84,7 +84,7 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
-	token, err := g.manager.GenerateToken(c.Request.Context(), user, expiration)
+	token, err := g.manager.GenerateToken(c.Request.Context(), user, expiration, req.Name)
 	if err != nil {
 		log.Printf("Failed to generate token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
