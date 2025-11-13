@@ -234,15 +234,15 @@ fi
 
 # Check Kuadrant pods
 print_check "Kuadrant system pods"
-if kubectl get namespace kuadrant-system &>/dev/null; then
-    KUADRANT_PODS=$(kubectl get pods -n kuadrant-system --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+if kubectl get namespace openshift-operators &>/dev/null; then
+    KUADRANT_PODS=$(kubectl get pods -n openshift-operators --no-headers 2>/dev/null | grep -E "(kuadrant|rhcl|authorino|limitador|dns-operator)" | grep -c "Running" || echo "0")
     if [ "$KUADRANT_PODS" -gt 0 ]; then
-        print_success "Kuadrant has $KUADRANT_PODS running pod(s)"
+        print_success "Kuadrant has $KUADRANT_PODS running pod(s) in openshift-operators"
     else
-        print_fail "No Kuadrant pods running" "Kuadrant operators may not be installed" "Check: kubectl get pods -n kuadrant-system"
+        print_fail "No Kuadrant pods running" "Kuadrant operators may not be installed" "Check: kubectl get pods -n openshift-operators | grep -E '(kuadrant|rhcl|authorino|limitador|dns-operator)'"
     fi
 else
-    print_fail "Kuadrant namespace not found" "Kuadrant may not be installed" "Run: ./deployment/scripts/install-dependencies.sh --kuadrant"
+    print_fail "openshift-operators namespace not found" "This should not happen on OpenShift" "Check cluster status"
 fi
 
 # Check OpenDataHub/KServe pods
@@ -250,12 +250,12 @@ print_check "OpenDataHub/KServe pods"
 ODH_FOUND=false
 ODH_TOTAL_PODS=0
 
-if kubectl get namespace opendatahub &>/dev/null; then
-    ODH_PODS=$(kubectl get pods -n opendatahub --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+if kubectl get namespace rhods-ods-operator &>/dev/null; then
+    ODH_PODS=$(kubectl get pods -n rhods-ods-operator --no-headers 2>/dev/null | grep -c "Running" || echo "0")
     ODH_TOTAL_PODS=$((ODH_TOTAL_PODS + ODH_PODS))
     ODH_FOUND=true
     if [ "$ODH_PODS" -gt 0 ]; then
-        print_info "  opendatahub namespace: $ODH_PODS running pod(s)"
+        print_info "  rhods-ods-operator namespace: $ODH_PODS running pod(s)"
     fi
 fi
 

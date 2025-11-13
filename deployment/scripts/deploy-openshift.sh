@@ -30,7 +30,7 @@ wait_for_crd() {
 # Helper function to wait for CSV to reach Succeeded state
 wait_for_csv() {
   local csv_name="$1"
-  local namespace="${2:-kuadrant-system}"
+  local namespace="${2:-openshift-operators}"
   local timeout="${3:-180}"  # timeout in seconds
   local interval=5
   local elapsed=0
@@ -194,41 +194,52 @@ fi
 
 echo ""
 echo "2️⃣ Creating namespaces..."
-echo "   ℹ️  Note: If ODH/RHOAI is already installed, some namespaces may already exist"
-for ns in opendatahub kserve kuadrant-system llm maas-api; do
+echo "   ℹ️  Note: If RHCL and RHOAI is already installed, some namespaces may already exist"
+for ns in kserve llm maas-api; do
     kubectl create namespace $ns 2>/dev/null || echo "   Namespace $ns already exists"
 done
 
 echo ""
-echo "3️⃣ Installing dependencies..."
+echo "3️⃣ Checking prerequisites..."
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Only clean up leftover CRDs if Kuadrant operators are NOT already installed
-echo "   Checking for existing Kuadrant installation..."
-if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&1; then
-    echo "   No existing installation found, checking for leftover CRDs..."
-    LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
-    if [ -n "$LEFTOVER_CRDS" ]; then
-        echo "   Found leftover CRDs, cleaning up before installation..."
-        echo "$LEFTOVER_CRDS" | xargs -r kubectl delete crd --timeout=30s 2>/dev/null || true
-        sleep 5  # Brief wait for cleanup to complete
-    fi
+# Check all prerequisites
+MISSING_PREREQUISITES=()
+
+# Check for RHCL (Red Hat Connectivity Link) operator prerequisite
+echo "   Checking for RHCL operator..."
+if kubectl get subscription rhcl-operator -n openshift-operators &>/dev/null; then
+    echo "   ✅ RHCL operator is installed"
 else
-    echo "   ✅ Kuadrant operator already installed, skipping CRD cleanup"
+    echo "   ❌ RHCL (Red Hat Connectivity Link) operator is not installed"
+    echo "   ⚠️ Note: RHCL minimum version required is 1.2.0"
+    MISSING_PREREQUISITES+=("RHCL")
 fi
 
-echo "   Installing cert-manager..."
-"$SCRIPT_DIR/install-dependencies.sh" --cert-manager
+# Check for RHOAI operator prerequisite  
+echo "   Checking for RHOAI operator..."
+if kubectl get subscription rhods-operator -n redhat-ods-operator &>/dev/null; then
+    echo "   ✅ RHOAI operator is installed"
+else
+    echo "   ❌ RHOAI (Red Hat OpenShift AI) operator is not installed"
+    echo "   ⚠️ Note: RHOAI minimum version required is 3.0.0"
+    MISSING_PREREQUISITES+=("RHOAI")
+fi
 
-# Wait for cert-manager CRDs to be ready
-echo "   Waiting for cert-manager CRDs to be established..."
-wait_for_crd "certificates.cert-manager.io" 120 || \
-    echo "   ⚠️  Certificate CRD not yet available"
+# If any prerequisites are missing, show comprehensive error and exit
+if [ ${#MISSING_PREREQUISITES[@]} -gt 0 ]; then
+    echo ""
+    echo "❌ Missing required operators:"
+    echo ""
+    echo "Please install the missing operators first:"
+    echo "📖 Installation guide: https://github.com/opendatahub-io/maas-billing/blob/main/docs/content/install/rhoai-setup.md#install-red-hat-openshift-ai"
+    echo ""
+    exit 1
+fi
 
-echo "   Installing Kuadrant..."
-"$SCRIPT_DIR/install-dependencies.sh" --kuadrant
+echo "   ✅ All prerequisites are satisfied"
 
 echo ""
 echo "4️⃣ Deploying Gateway infrastructure..."
@@ -257,16 +268,16 @@ fi
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
 # Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
-wait_for_csv "kuadrant-operator.v1.3.0" "kuadrant-system" 300 || \
+wait_for_csv "rhcl-operator.v1.2.0" "openshift-operators" 300 || \
     echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
 
-wait_for_csv "authorino-operator.v0.22.0" "kuadrant-system" 60 || \
+wait_for_csv "authorino-operator.v1.2.4" "openshift-operators" 60 || \
     echo "   ⚠️  Authorino operator CSV did not succeed"
 
-wait_for_csv "limitador-operator.v0.16.0" "kuadrant-system" 60 || \
+wait_for_csv "limitador-operator.v1.2.0" "openshift-operators" 60 || \
     echo "   ⚠️  Limitador operator CSV did not succeed"
 
-wait_for_csv "dns-operator.v0.15.0" "kuadrant-system" 60 || \
+wait_for_csv "dns-operator.v1.2.0" "openshift-operators" 60 || \
     echo "   ⚠️  DNS operator CSV did not succeed"
 
 # Verify CRDs are present
@@ -288,9 +299,9 @@ kustomize build deployment/base/maas-api | envsubst | kubectl apply -f -
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
-kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system
+kubectl rollout restart deployment/kuadrant-operator-controller-manager -n openshift-operators
 echo "   Waiting for Kuadrant operator to be ready..."
-kubectl rollout status deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s || \
+kubectl rollout status deployment/kuadrant-operator-controller-manager -n openshift-operators --timeout=60s || \
   echo "   ⚠️  Kuadrant operator taking longer than expected, continuing..."
 
 echo ""
@@ -338,7 +349,7 @@ fi
 
 echo ""
 echo "1️⃣4️⃣ Updating Limitador image for metrics exposure..."
-kubectl -n kuadrant-system patch limitador limitador --type merge \
+kubectl -n openshift-operators patch limitador limitador --type merge \
   -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}' 2>/dev/null && \
   echo "   ✅ Limitador image updated" || \
   echo "   ⚠️  Could not update Limitador image (may not be critical)"
@@ -351,24 +362,24 @@ echo ""
 echo "Applying temporary workarounds for known issues..."
 
 echo "   🔧 Restarting Kuadrant, Authorino, and Limitador operators to refresh webhook configurations..."
-kubectl delete pod -n kuadrant-system -l control-plane=controller-manager 2>/dev/null && \
+kubectl delete pod -n openshift-operators -l control-plane=controller-manager 2>/dev/null && \
   echo "   ✅ Kuadrant operator restarted" || \
   echo "   ⚠️  Could not restart Kuadrant operator"
 
-kubectl rollout restart deployment authorino-operator -n kuadrant-system 2>/dev/null && \
+kubectl rollout restart deployment authorino-operator -n openshift-operators 2>/dev/null && \
   echo "   ✅ Authorino operator restarted" || \
   echo "   ⚠️  Could not restart Authorino operator"
 
-kubectl rollout restart deployment limitador-operator-controller-manager -n kuadrant-system 2>/dev/null && \
+kubectl rollout restart deployment limitador-operator-controller-manager -n openshift-operators 2>/dev/null && \
   echo "   ✅ Limitador operator restarted" || \
   echo "   ⚠️  Could not restart Limitador operator"
 
 echo "   Waiting for operators to be ready..."
-kubectl rollout status deployment kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
+kubectl rollout status deployment kuadrant-operator-controller-manager -n openshift-operators --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Kuadrant operator taking longer than expected"
-kubectl rollout status deployment authorino-operator -n kuadrant-system --timeout=60s 2>/dev/null || \
+kubectl rollout status deployment authorino-operator -n openshift-operators --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Authorino operator taking longer than expected"
-kubectl rollout status deployment limitador-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
+kubectl rollout status deployment limitador-operator-controller-manager -n openshift-operators --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Limitador operator taking longer than expected"
 
 echo ""
@@ -390,8 +401,8 @@ echo ""
 # Check component status
 echo "Component Status:"
 kubectl get pods -n maas-api --no-headers | grep Running | wc -l | xargs echo "  MaaS API pods running:"
-kubectl get pods -n kuadrant-system --no-headers | grep Running | wc -l | xargs echo "  Kuadrant pods running:"
-kubectl get pods -n opendatahub --no-headers | grep Running | wc -l | xargs echo "  KServe pods running:"
+kubectl get pods -n openshift-operators --no-headers | grep Running | wc -l | xargs echo "  Kuadrant pods running:"
+kubectl get pods -n redhat-ods-operator --no-headers | grep Running | wc -l | xargs echo "  KServe pods running:"
 
 echo ""
 echo "Gateway Status:"
@@ -422,30 +433,30 @@ echo "1. Check if Gateway API provider is recognized:"
 echo "   kubectl describe authpolicy gateway-auth-policy -n openshift-ingress | grep -A 5 'Status:'"
 echo ""
 echo "2. If Gateway API provider is not installed, restart all Kuadrant operators:"
-echo "   kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system"
-echo "   kubectl rollout restart deployment/authorino-operator -n kuadrant-system"
-echo "   kubectl rollout restart deployment/limitador-operator-controller-manager -n kuadrant-system"
+echo "   kubectl rollout restart deployment/kuadrant-operator-controller-manager -n openshift-operators"
+echo "   kubectl rollout restart deployment/authorino-operator -n openshift-operators"
+echo "   kubectl rollout restart deployment/limitador-operator-controller-manager -n openshift-operators"
 echo ""
 echo "3. Check if OpenShift Gateway Controller is available:"
 echo "   kubectl get gatewayclass"
 echo ""
 echo "4. If policies still show 'MissingDependency', ensure environment variable is set:"
-echo "   kubectl get deployment kuadrant-operator-controller-manager -n kuadrant-system -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"ISTIO_GATEWAY_CONTROLLER_NAMES\")]}'"
+echo "   kubectl get deployment kuadrant-operator-controller-manager -n openshift-operators -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"ISTIO_GATEWAY_CONTROLLER_NAMES\")]}'"
 echo ""
 echo "5. If environment variable is missing, patch the deployment:"
-echo "   kubectl -n kuadrant-system patch deployment kuadrant-operator-controller-manager --type='json' \\"
+echo "   kubectl -n openshift-operators patch deployment kuadrant-operator-controller-manager --type='json' \\"
 echo "     -p='[{\"op\": \"add\", \"path\": \"/spec/template/spec/containers/0/env/-\", \"value\": {\"name\": \"ISTIO_GATEWAY_CONTROLLER_NAMES\", \"value\": \"openshift.io/gateway-controller/v1\"}}]'"
 echo ""
 echo "6. Restart Kuadrant operator after patching:"
-echo "   kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system"
-echo "   kubectl rollout status deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s"
+echo "   kubectl rollout restart deployment/kuadrant-operator-controller-manager -n openshift-operators"
+echo "   kubectl rollout status deployment/kuadrant-operator-controller-manager -n openshift-operators --timeout=60s"
 echo ""
 echo "7. Wait for policies to be enforced (may take 1-2 minutes):"
 echo "   kubectl describe authpolicy gateway-auth-policy -n openshift-ingress | grep -A 10 'Status:'"
 echo ""
 echo "If metrics are not visible in Prometheus:"
 echo "1. Check ServiceMonitor:"
-echo "   kubectl get servicemonitor limitador-metrics -n kuadrant-system"
+echo "   kubectl get servicemonitor limitador-metrics -n openshift-operators"
 echo ""
 echo "2. Check Prometheus targets:"
 echo "   kubectl port-forward -n openshift-monitoring svc/prometheus-k8s 9090:9091 &"
@@ -483,7 +494,7 @@ echo "   kubectl describe authpolicy gateway-auth-policy -n openshift-ingress | 
 echo "   kubectl describe ratelimitpolicy gateway-rate-limits -n openshift-ingress | grep -A 5 'Enforced'"
 echo ""
 echo "2. Check Limitador metrics directly:"
-echo "   kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080 &"
+echo "   kubectl port-forward -n openshift-operators svc/limitador-limitador 8080:8080 &"
 echo "   curl http://localhost:8080/metrics | grep -E '(authorized_hits|authorized_calls|limited_calls)'"
 echo ""
 echo "3. Make test API calls to trigger metrics:"
@@ -522,7 +533,7 @@ echo "7. Run validation script (Runs all the checks again):"
 echo "   ./deployment/scripts/validate-deployment.sh"
 echo ""
 echo "8. Check metrics generation:"
-echo "   kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080 &"
+echo "   kubectl port-forward -n openshift-operators svc/limitador-limitador 8080:8080 &"
 echo "   curl http://localhost:8080/metrics | grep -E '(authorized_hits|authorized_calls|limited_calls)'"
 echo ""
 echo "9. Access Prometheus to view metrics:"
