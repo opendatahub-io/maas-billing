@@ -328,41 +328,6 @@ get_secret_field() {
         -o jsonpath="{.data.${field}}" 2>/dev/null | base64 -d 2>/dev/null
 }
 
-# Validate secret has all required fields
-validate_secret_metadata() {
-    local namespace="$1"
-    local secret_name="$2"
-    
-    local required_fields=("username" "creationDate" "expirationDate" "name" "status")
-    local all_present=true
-    
-    for field in "${required_fields[@]}"; do
-        local value=$(get_secret_field "$namespace" "$secret_name" "$field")
-        if [ -z "$value" ]; then
-            log_error "Required field '$field' not found in secret $secret_name"
-            all_present=false
-        else
-            log_info "  ${field}: ${value}"
-        fi
-    done
-    
-    # Security check: ensure actual token is NOT stored
-    local token_field=$(kubectl get secret "$secret_name" -n "$namespace" \
-        -o jsonpath='{.data.token}' 2>/dev/null || echo "")
-    
-    if [ -n "$token_field" ]; then
-        log_error "SECURITY ISSUE: Secret contains actual token value!" \
-            "Token should NOT be stored in metadata secrets"
-        all_present=false
-    fi
-    
-    if [ "$all_present" = true ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 # Delete a secret
 delete_secret() {
     local namespace="$1"
@@ -375,23 +340,6 @@ delete_secret() {
         log_warning "Failed to delete secret $secret_name from namespace $namespace"
         return 1
     fi
-}
-
-# Delete secret by token name
-delete_secret_by_token_name() {
-    local token_name="$1"
-    
-    local secret_location=$(find_secret_by_token_name "$token_name")
-    
-    if [ -z "$secret_location" ]; then
-        log_warning "No secret found for token: $token_name"
-        return 1
-    fi
-    
-    local secret_namespace=$(echo "$secret_location" | cut -d: -f1)
-    local secret_name=$(echo "$secret_location" | cut -d: -f2)
-    
-    delete_secret "$secret_namespace" "$secret_name"
 }
 
 # ==========================================
@@ -463,8 +411,7 @@ export -f api_get api_post api_delete
 export -f parse_response get_response_body get_response_code cleanup_response_files
 export -f mint_token revoke_tokens
 export -f find_tier_namespaces find_secret_by_token_name
-export -f get_secret_field validate_secret_metadata
-export -f delete_secret delete_secret_by_token_name
+export -f get_secret_field delete_secret
 export -f print_summary
 export -f is_openshift get_cluster_domain auto_detect_base_url
 

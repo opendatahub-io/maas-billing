@@ -57,6 +57,45 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ==========================================
+# Named Token Specific Functions
+# ==========================================
+
+# Validate secret has all required fields for named tokens
+validate_secret_metadata() {
+    local namespace="$1"
+    local secret_name="$2"
+    
+    local required_fields=("username" "creationDate" "expirationDate" "name" "status")
+    local all_present=true
+    
+    for field in "${required_fields[@]}"; do
+        local value=$(get_secret_field "$namespace" "$secret_name" "$field")
+        if [ -z "$value" ]; then
+            log_error "Required field '$field' not found in secret $secret_name"
+            all_present=false
+        else
+            log_info "  ${field}: ${value}"
+        fi
+    done
+    
+    # Security check: ensure actual token is NOT stored
+    local token_field=$(kubectl get secret "$secret_name" -n "$namespace" \
+        -o jsonpath='{.data.token}' 2>/dev/null || echo "")
+    
+    if [ -n "$token_field" ]; then
+        log_error "SECURITY ISSUE: Secret contains actual token value!" \
+            "Token should NOT be stored in metadata secrets"
+        all_present=false
+    fi
+    
+    if [ "$all_present" = true ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# ==========================================
 # Test Functions
 # ==========================================
 
@@ -181,6 +220,69 @@ test_secret_metadata() {
     fi
 }
 
+# Test 5: Verify expiredAt field is added when tokens are revoked
+test_expiredat_on_revocation() {
+    print_subheader "Test 5: Verifying expiredAt field on revocation"
+    
+    log_check "Checking current status (should be 'active')"
+    local status=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "status")
+    if [ "$status" != "active" ]; then
+        log_warning "Expected status 'active', got '$status'"
+    else
+        log_success "Secret status is 'active'"
+    fi
+    
+    log_check "Verifying expiredAt does not exist yet"
+    local expired_at=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "expiredAt" 2>/dev/null || echo "")
+    if [ -n "$expired_at" ]; then
+        log_warning "expiredAt already exists before revocation: $expired_at"
+    else
+        log_info "expiredAt does not exist yet (expected)"
+    fi
+    
+    log_check "Revoking all tokens"
+    if ! revoke_tokens "$OC_TOKEN"; then
+        log_error "Failed to revoke tokens"
+        return 1
+    fi
+    log_success "Tokens revoked"
+    
+    # Wait for secret to be updated
+    log_info "Waiting for secret to be updated..."
+    sleep 3
+    
+    log_check "Verifying status changed to 'expired'"
+    status=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "status")
+    if [ "$status" != "expired" ]; then
+        log_error "Expected status 'expired', got '$status'" \
+            "Secret may not have been updated during revocation"
+        return 1
+    fi
+    log_success "Secret status is now 'expired'"
+    
+    log_check "Verifying expiredAt field was added"
+    expired_at=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "expiredAt")
+    if [ -z "$expired_at" ]; then
+        log_error "expiredAt field is NOT set!" \
+            "This should be set when tokens are revoked" \
+            "Check maas-api logs for errors during token revocation"
+        return 1
+    fi
+    
+    log_success "expiredAt field found: $expired_at"
+    
+    # Validate timestamp format
+    log_check "Validating timestamp format"
+    if date -d "$expired_at" &>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$expired_at" &>/dev/null 2>&1; then
+        log_success "expiredAt is valid RFC3339 timestamp"
+    else
+        log_error "expiredAt has invalid timestamp format: $expired_at"
+        return 1
+    fi
+    
+    return 0
+}
+
 # ==========================================
 # Cleanup
 # ==========================================
@@ -245,6 +347,11 @@ main() {
     
     if [ $TEST_FAILED -eq 0 ]; then
         test_secret_metadata || TEST_FAILED=1
+        echo ""
+    fi
+    
+    if [ $TEST_FAILED -eq 0 ]; then
+        test_expiredat_on_revocation || TEST_FAILED=1
         echo ""
     fi
     

@@ -340,22 +340,24 @@ func (m *Manager) markUserSecretsAsExpired(ctx context.Context, namespace, usern
 
 	for _, secret := range secrets.Items {
 		// Update the status field to "expired" and add expiredAt timestamp
+		// Note: When retrieving secrets, they have Data (base64), not StringData
+		// StringData is write-only and must be nil when updating
 		if secret.Data == nil {
 			secret.Data = make(map[string][]byte)
 		}
 
-		if secret.StringData == nil {
-			secret.StringData = make(map[string]string)
-		}
-		secret.StringData["status"] = "expired"
-		secret.StringData["expiredAt"] = time.Now().Format(time.RFC3339)
+		// Clear StringData (it's write-only and can interfere with updates)
+		secret.StringData = nil
+
+		secret.Data["status"] = []byte("expired")
+		secret.Data["expiredAt"] = []byte(time.Now().Format(time.RFC3339))
 
 		_, err := m.clientset.CoreV1().Secrets(namespace).Update(ctx, &secret, metav1.UpdateOptions{})
 		if err != nil {
 			log.Printf("Failed to update secret %s status to expired: %v", secret.Name, err)
 			continue
 		}
-		log.Printf("Marked secret %s as expired for user %s", secret.Name, username)
+		log.Printf("Marked secret %s as expired for user %s at %s", secret.Name, username, time.Now().Format(time.RFC3339))
 	}
 
 	return nil

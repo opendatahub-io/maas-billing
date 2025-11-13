@@ -1,8 +1,0 @@
-# Requirements for Named Token Smoke Tests
-
-# HTTP client library
-requests>=2.31.0
-
-# Optional: For better output formatting
-colorama>=0.4.6; sys_platform == 'win32'
-
