@@ -15,7 +15,7 @@ Complete automated deployment script for OpenShift clusters.
 **What it does:**
 - Checks OpenShift version and applies necessary feature gates
 - Creates required namespaces
-- Installs dependencies (cert-manager, Kuadrant)
+- Installs dependencies (Kuadrant)
 - Deploys Gateway infrastructure
 - Deploys KServe components (if not already present)
 - Configures MaaS API
@@ -107,7 +107,7 @@ Results:
 ---
 
 ### `install-dependencies.sh`
-Installs individual dependencies (cert-manager, Kuadrant, ODH, etc.).
+Installs individual dependencies (Kuadrant, ODH, etc.).
 
 **Usage:**
 ```bash
@@ -115,12 +115,10 @@ Installs individual dependencies (cert-manager, Kuadrant, ODH, etc.).
 ./deployment/scripts/install-dependencies.sh
 
 # Install specific dependency
-./deployment/scripts/install-dependencies.sh --cert-manager
 ./deployment/scripts/install-dependencies.sh --kuadrant
 ```
 
 **Options:**
-- `--cert-manager`: Install cert-manager
 - `--kuadrant`: Install Kuadrant operator and dependencies
 - `--istio`: Install Istio
 - `--grafana`: Install Grafana

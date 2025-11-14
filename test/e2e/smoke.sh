@@ -33,9 +33,12 @@ if [[ -n "${MODEL_NAME}" ]]; then
   echo "[smoke] Using MODEL_NAME=${MODEL_NAME}"
 fi
 
+USER="$(oc whoami)"
+echo "[smoke] Performing smoke test for user: ${USER}"
+
 # 1) Mint a MaaS token using your cluster token
 mkdir -p "${DIR}/reports"
-LOG="${DIR}/reports/smoke.log"
+LOG="${DIR}/reports/smoke-${USER}.log"
 : > "${LOG}"
 
 FREE_OC_TOKEN="$(oc whoami -t || true)"
@@ -82,8 +85,8 @@ export MODEL_NAME="${MODEL_ID}"
 echo "[smoke] Using MODEL_URL=${MODEL_URL}" | tee -a "${LOG}"
 
 # 3) Pytest outputs
-HTML="${DIR}/reports/smoke.html"
-XML="${DIR}/reports/smoke.xml"
+HTML="${DIR}/reports/smoke-${USER}.html"
+XML="${DIR}/reports/smoke-${USER}.xml"
 
 PYTEST_ARGS=(
   -q
