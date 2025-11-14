@@ -65,37 +65,49 @@ func main() {
 
 	registerHandlers(ctx, router, cfg, store)
 
-	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           router,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    1 << 20,
-	}
+	listeners := buildListeners(cfg, router)
 
-	go func() {
-		log.Printf("Server starting on port %s", cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen: %s\n", err)
-		}
-	}()
+	listenerErrors := make(chan listenerError, len(listeners))
+	for _, l := range listeners {
+		go func(l serverListener) {
+			log.Printf("%s server starting on %s", l.protocol, l.server.Addr)
+			var err error
+			if l.tls {
+				err = l.server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+			} else {
+				err = l.server.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				listenerErrors <- listenerError{listener: l, err: err}
+			}
+		}(l)
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Println("Shutdown signal received, shutting down server...")
 
-	cancel()
-
-	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancelShutdown()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatal("Server forced to shutdown:", err) //nolint:gocritic // exits immediately
+	var listenerFailed bool
+	select {
+	case sig := <-quit:
+		log.Printf("Shutdown signal (%s) received, shutting down server(s)...", sig)
+	case listenerErr := <-listenerErrors:
+		log.Printf("%s server failed: %v", listenerErr.listener.protocol, listenerErr.err)
+		listenerFailed = true
 	}
 
-	log.Println("Server exited gracefully")
+	cancel()
+	for _, l := range listeners {
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := l.server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("%s server forced to shutdown: %v", l.protocol, err)
+		}
+		cancelShutdown()
+	}
+
+	if listenerFailed {
+		log.Fatal("exiting due to listener failure") //nolint:gocritic // exits immediately after graceful cleanup
+	}
+	log.Println("Server(s) exited gracefully")
 }
 
 func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store) {
@@ -167,4 +179,53 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	apiKeyRoutes.GET("", apiKeyHandler.ListAPIKeys)
 	apiKeyRoutes.GET("/:id", apiKeyHandler.GetAPIKey)
 	// Note: Single key deletion removed for initial release - use DELETE /v1/tokens to revoke all tokens
+}
+
+type serverListener struct {
+	server   *http.Server
+	protocol string
+	tls      bool
+}
+
+type listenerError struct {
+	listener serverListener
+	err      error
+}
+
+func buildListeners(cfg *config.Config, handler http.Handler) []serverListener {
+	listeners := make([]serverListener, 0, 2)
+
+	if !cfg.DisableHTTP {
+		listeners = append(listeners, serverListener{
+			server:   newHTTPServer(cfg.Port, handler),
+			protocol: "HTTP",
+			tls:      false,
+		})
+	}
+
+	if cfg.TLSEnabled() {
+		listeners = append(listeners, serverListener{
+			server:   newHTTPServer(cfg.TLSPort, handler),
+			protocol: "HTTPS",
+			tls:      true,
+		})
+	}
+
+	if len(listeners) == 0 {
+		log.Fatal("no listeners configured; enable HTTP or provide TLS configuration")
+	}
+
+	return listeners
+}
+
+func newHTTPServer(port string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 }

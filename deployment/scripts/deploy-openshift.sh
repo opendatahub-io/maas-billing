@@ -163,6 +163,7 @@ echo "  - oc: $(oc version --client --short 2>/dev/null | head -n1 || echo 'not 
 echo "  - jq: $(jq --version 2>/dev/null || echo 'not found')"
 echo "  - kustomize: $(kustomize version --short 2>/dev/null || echo 'not found')"
 echo "  - git: $(git --version 2>/dev/null || echo 'not found')"
+echo "  - openssl: $(openssl version 2>/dev/null || echo 'not found')"
 echo ""
 echo "ℹ️  Note: OpenShift Service Mesh should be automatically installed when GatewayClass is created."
 echo "   If the Gateway gets stuck in 'Waiting for controller', you may need to manually"
@@ -209,6 +210,8 @@ done
 
 echo ""
 echo "3️⃣ Installing dependencies..."
+
+TLS_SCRIPT="$PROJECT_ROOT/deployment/scripts/create-maas-api-cert.sh"
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
@@ -314,19 +317,32 @@ cd "$PROJECT_ROOT"
 kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 
 echo ""
-echo "8️⃣ Deploying MaaS API..."
+echo "8️⃣ Deploying MaaS API with in-cluster TLS..."
 cd "$PROJECT_ROOT"
-# Process kustomization.yaml to replace hardcoded namespace, then build
+
+# Check if TLS secret already exists
+if kubectl -n "$MAAS_API_NAMESPACE" get secret maas-api-backend-tls >/dev/null 2>&1; then
+    echo "   ✅ TLS secret maas-api-backend-tls already present"
+else
+    echo "   Generating self-signed TLS materials for MaaS API..."
+    "$TLS_SCRIPT"
+fi
+
+echo "   Applying MaaS API TLS overlay..."
+# Process kustomization.yaml to replace hardcoded namespace, then build with TLS overlay
 TMP_DIR=$(mktemp -d)
-cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
-# Replace hardcoded "namespace: maas-api" with "namespace: ${MAAS_API_NAMESPACE}" in kustomization.yaml
-sed -i "s|namespace: maas-api|namespace: \${MAAS_API_NAMESPACE}|g" "$TMP_DIR/kustomization.yaml"
-# Replace ${MAAS_API_NAMESPACE} placeholder with actual value
-envsubst '$MAAS_API_NAMESPACE' < "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
-mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
+cp -r "$PROJECT_ROOT/deployment/overlays/tls-backend"/* "$TMP_DIR/"
+# Replace hardcoded "namespace: maas-api" with the configured namespace
+sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/kustomization.yaml" 2>/dev/null || true
 # Build and replace any remaining hardcoded namespace references in the output
-kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
+kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | envsubst '$MAAS_API_NAMESPACE' | kubectl apply -f -
 rm -rf "$TMP_DIR"
+
+echo "   Restarting MaaS API to pick up TLS configuration..."
+kubectl rollout restart deployment/maas-api -n "$MAAS_API_NAMESPACE"
+echo "   Waiting for MaaS API rollout to complete..."
+kubectl rollout status deployment/maas-api -n "$MAAS_API_NAMESPACE" --timeout=180s || \
+  echo "   ⚠️  MaaS API rollout is taking longer than expected, continuing..."
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
@@ -571,7 +587,7 @@ echo "   CLUSTER_DOMAIN=\$(kubectl get ingresses.config.openshift.io cluster -o 
 echo "   HOST=\"maas.\${CLUSTER_DOMAIN}\""
 echo ""
 echo "3. Get authentication token:"
-echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"\${HOST}/maas-api/v1/tokens\")"
+echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"https://\${HOST}/maas-api/v1/tokens\")"
 echo "   TOKEN=\$(echo \$TOKEN_RESPONSE | jq -r .token)"
 echo ""
 echo "4. Test model endpoint:"
