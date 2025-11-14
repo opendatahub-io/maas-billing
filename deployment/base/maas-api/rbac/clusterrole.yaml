@@ -18,6 +18,11 @@ rules:
   resources: ["serviceaccounts/token"]
   verbs: ["create"]
 
+# Token metadata secrets
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "patch"]
+
 # Token review for authentication
 - apiGroups: ["authentication.k8s.io"]
   resources: ["tokenreviews"]
