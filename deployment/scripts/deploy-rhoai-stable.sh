@@ -36,11 +36,14 @@ waitsubscriptioninstalled() {
   echo "  * Waiting for Subscription $ns/$name to start setup..."
   kubectl wait subscription --timeout=300s -n $ns $name --for=jsonpath='{.status.currentCSV}'
   local csv=$(kubectl get subscription -n $ns $name -o jsonpath='{.status.currentCSV}')
-  sleep 5 # Because, sometimes, the CSV is not there immediately.
+
+  # Because, sometimes, the CSV is not there immediately.
+  while ! kubectl get -n $ns csv $csv > /dev/null 2>&1; do
+    sleep 1
+  done
 
   echo "  * Waiting for Subscription setup to finish setup. CSV = $csv ..."
-  kubectl wait -n $ns --for=jsonpath="{.status.phase}"=Succeeded csv $csv --timeout=600s
-  if [ $? -ne 0 ]; then
+  if ! kubectl wait -n $ns --for=jsonpath="{.status.phase}"=Succeeded csv $csv --timeout=600s; then
     echo "    * ERROR: Timeout while waiting for Subscription to finish installation."
     exit 1
   fi
