@@ -1,7 +1,7 @@
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
-  name: ibm-granite-2b-gpu-granite-2b-gpu
+  name: ibm-granite-2b-gpu
   namespace: llm
   annotations:
     alpha.maas.opendatahub.io/tiers: '[]'
