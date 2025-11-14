@@ -1,7 +1,8 @@
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
-  name: granite-2b-gpu
+  name: ibm-granite-2b-gpu-granite-2b-gpu
+  namespace: llm
   annotations:
     alpha.maas.opendatahub.io/tiers: '[]'
 spec:
@@ -26,25 +27,14 @@ spec:
         operator: Exists
     containers:
       - name: main
-        # Specific vLLM version for Tesla T4 compatibility
-        image: vllm/vllm-openai:v0.6.3.post1
-        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
-        args:
-          - "--model=/mnt/models"
-          - "--served-model-name=ibm-granite/granite-3.1-2b-instruct"
-          - "--port=8000"
-          - "--ssl-keyfile=/etc/ssl/certs/tls.key"
-          - "--ssl-certfile=/etc/ssl/certs/tls.crt"
-          # Granite-specific overrides
-          - "--max-model-len=4096"
-          - "--trust-remote-code"
-          - "--dtype=float16"
         env:
-          # Granite-specific environment variables for Tesla T4 compatibility
+          # Granite-specific configuration via environment variables
+          - name: VLLM_ADDITIONAL_ARGS
+            value: "--max-model-len 4096 --trust-remote-code --dtype float16"
           - name: VLLM_ATTENTION_BACKEND
             value: XFORMERS
           - name: VLLM_USE_V1
-            value: "false"
+            value: "0"
         resources:
           limits:
             cpu: '2'
