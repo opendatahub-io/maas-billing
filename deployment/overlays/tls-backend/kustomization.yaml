@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base/maas-api
+  - networking/token-service-destinationrule.yaml
+
+patches:
+  - path: patches/deployment-https.yaml
+  - path: patches/service-https.yaml
+  - target:
+      group: gateway.networking.k8s.io
+      version: v1
+      kind: HTTPRoute
+      name: maas-api-route
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/backendRefs/0/port
+        value: 8443
+      - op: replace
+        path: /spec/rules/1/backendRefs/0/port
+        value: 8443
+    options:
+      allowNameChange: false

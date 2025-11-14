@@ -18,6 +18,7 @@ This guide provides quickstart instructions for deploying the MaaS Platform infr
   - `kubectl`
   - `jq`
   - `kustomize` (v5.7.0+)
+  - `openssl`
 
 ## Quick Start
 

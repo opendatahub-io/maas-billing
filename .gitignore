@@ -42,3 +42,10 @@ CLAUDE.md
 # Docs build and site directories
 docs/build/
 docs/site/
+
+# TLS
+*.crt
+*.key
+*.csr
+*.pem
+
