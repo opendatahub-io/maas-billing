@@ -21,6 +21,7 @@ theme:
     - content.code.annotate
     - search.suggest
     - search.boost
+    - navigation.instant
   palette:
     - scheme: slate
       primary: white
@@ -69,6 +70,11 @@ nav:
       - Limitador Persistence: advanced-administration/limitador-persistence.md
   - End User Guide:
     - Self Service Model Access: user-guide/self-service-model-access.md
+
+extra:
+  version:
+    provider: mike
+    default: latest
 
 markdown_extensions:
   - pymdownx.highlight:
