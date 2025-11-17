@@ -47,22 +47,22 @@ EOF
     fi
 
     pushd ./opendatahub-operator
-    cp odh-config/manager/kustomization.yaml.in odh-config/manager/kustomization.yaml
+    cp config/manager/kustomization.yaml.in config/manager/kustomization.yaml
     make manifests
     # Replace the image placeholder in manager.yaml after manifests are generated
     # Detect OS and use appropriate sed syntax
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS (BSD sed) - requires empty string after -i and different syntax
-        sed -i '' "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" odh-config/manager/manager.yaml
+        sed -i '' "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" config/manager/manager.yaml
     else
         # Linux (GNU sed)
-        sed -i "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" odh-config/manager/manager.yaml
+        sed -i "s#REPLACE_IMAGE:latest#${ODH_OPERATOR_IMAGE}#g" config/manager/manager.yaml
     fi
-    if grep -q "REPLACE_IMAGE" odh-config/manager/manager.yaml; then
-        echo "   Failed to update manager image in odh-config/manager/manager.yaml"
+    if grep -q "REPLACE_IMAGE" config/manager/manager.yaml; then
+        echo "   Failed to update manager image in config/manager/manager.yaml"
         exit 1
     fi
-    kustomize build --load-restrictor LoadRestrictionsNone odh-config/default | kubectl apply --namespace $ODH_OPERATOR_NS -f -
+    kustomize build config/default | kubectl apply --namespace $ODH_OPERATOR_NS -f -
     popd
     popd
 
