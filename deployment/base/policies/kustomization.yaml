@@ -8,4 +8,4 @@ resources:
 # Gateway policies - default for all models
 - gateway-auth-policy.yaml
 - token-limit-policy.yaml
-- rate-limit-policy.yaml
+# - rate-limit-policy.yaml - RateLimitPolicy can be run in tandem with TokenRateLimitPolicy if desired

@@ -1,3 +1,4 @@
+# disabled by the default deployment, enable in  deployment/base/policies/kustomization.yaml
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy
 metadata:
