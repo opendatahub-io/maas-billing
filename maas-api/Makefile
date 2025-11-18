@@ -17,7 +17,8 @@ BUILD_DIR := $(PROJECT_DIR)/bin
 GO_VERSION := 1.24.2
 GOOS ?= linux
 GOARCH ?= amd64
-CGO_ENABLED ?= 0
+CGO_ENABLED ?= 1
+GOEXPERIMENT ?= strictfipsruntime
 
 # Git settings
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
@@ -80,7 +81,7 @@ deps: ## Download Go dependencies
 build: deps fmt test ## Build the maas-api binary
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
 	@echo "Built $(BUILD_DIR)/$(BINARY_NAME)"
 
 SRC_DIRS := $(PROJECT_DIR)/cmd $(PROJECT_DIR)/internal

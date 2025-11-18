@@ -9,7 +9,7 @@ RUN go mod download
 COPY . .
 
 USER root
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o maas-api ./cmd/
+RUN CGO_ENABLED=1 GOEXPERIMENT=strictfipsruntime GOOS=linux go build -trimpath -ldflags="-s -w" -o maas-api ./cmd/
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
