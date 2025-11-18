@@ -4,10 +4,27 @@ kind: Kustomization
 resources:
   - ../../base/maas-api
   - networking/token-service-destinationrule.yaml
+  - authorino-deployment.yaml
+  - authorino-volume.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: maas-api-ca-cert
+    namespace: kuadrant-system
+    files:
+      - ca-bundle.crt=certs/maas-api-server.crt
 
 patches:
   - path: patches/deployment-https.yaml
   - path: patches/service-https.yaml
+  - target:
+      group: kuadrant.io
+      version: v1
+      kind: AuthPolicy
+      name: gateway-auth-policy
+    path: patches/authpolicy-https.yaml
   - target:
       group: gateway.networking.k8s.io
       version: v1

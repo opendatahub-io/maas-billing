@@ -5,6 +5,21 @@
 
 set -e
 
+ENABLE_TLS_BACKEND=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --disable-tls-backend)
+      ENABLE_TLS_BACKEND=0
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
 # Helper function to wait for CRD to be established
 wait_for_crd() {
   local crd="$1"
@@ -319,30 +334,34 @@ kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 echo ""
 echo "8️⃣ Deploying MaaS API with in-cluster TLS..."
 cd "$PROJECT_ROOT"
+echo "   Ensuring self-signed TLS materials and CA ConfigMap for MaaS API..."
+"$TLS_SCRIPT"
 
-# Check if TLS secret already exists
-if kubectl -n "$MAAS_API_NAMESPACE" get secret maas-api-backend-tls >/dev/null 2>&1; then
-    echo "   ✅ TLS secret maas-api-backend-tls already present"
+if [[ "$ENABLE_TLS_BACKEND" -eq 1 ]]; then
+  echo "   Applying MaaS API TLS overlay..."
+  # Process kustomization.yaml to replace hardcoded namespace, then build with TLS overlay
+  TMP_DIR=$(mktemp -d)
+  cp -r "$PROJECT_ROOT/deployment/overlays/tls-backend"/* "$TMP_DIR/"
+  # Replace hardcoded "namespace: maas-api" with the configured namespace
+  sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/kustomization.yaml" 2>/dev/null || true
+  # Build and replace any remaining hardcoded namespace references in the output
+  kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | envsubst '$MAAS_API_NAMESPACE' | kubectl apply -f -
+  rm -rf "$TMP_DIR"
+
+  echo "   Restarting MaaS API to pick up TLS configuration..."
+  kubectl rollout restart deployment/maas-api -n "$MAAS_API_NAMESPACE"
+  echo "   Waiting for MaaS API rollout to complete..."
+  kubectl rollout status deployment/maas-api -n "$MAAS_API_NAMESPACE" --timeout=180s || \
+    echo "   ⚠️  MaaS API rollout is taking longer than expected, continuing..."
 else
-    echo "   Generating self-signed TLS materials for MaaS API..."
-    "$TLS_SCRIPT"
+  echo "   ⚠️  TLS backend disabled via flag; applying base (HTTP) MaaS API instead."
+  # Process kustomization.yaml to replace hardcoded namespace for base deployment
+  TMP_DIR=$(mktemp -d)
+  cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
+  sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/kustomization.yaml" 2>/dev/null || true
+  kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
+  rm -rf "$TMP_DIR"
 fi
-
-echo "   Applying MaaS API TLS overlay..."
-# Process kustomization.yaml to replace hardcoded namespace, then build with TLS overlay
-TMP_DIR=$(mktemp -d)
-cp -r "$PROJECT_ROOT/deployment/overlays/tls-backend"/* "$TMP_DIR/"
-# Replace hardcoded "namespace: maas-api" with the configured namespace
-sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/kustomization.yaml" 2>/dev/null || true
-# Build and replace any remaining hardcoded namespace references in the output
-kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | envsubst '$MAAS_API_NAMESPACE' | kubectl apply -f -
-rm -rf "$TMP_DIR"
-
-echo "   Restarting MaaS API to pick up TLS configuration..."
-kubectl rollout restart deployment/maas-api -n "$MAAS_API_NAMESPACE"
-echo "   Waiting for MaaS API rollout to complete..."
-kubectl rollout status deployment/maas-api -n "$MAAS_API_NAMESPACE" --timeout=180s || \
-  echo "   ⚠️  MaaS API rollout is taking longer than expected, continuing..."
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
@@ -376,6 +395,18 @@ echo ""
 echo "1️⃣1️⃣ Applying Gateway Policies..."
 cd "$PROJECT_ROOT"
 kustomize build deployment/base/policies | envsubst '$MAAS_API_NAMESPACE' | kubectl apply --server-side=true --force-conflicts -f -
+
+if [[ "$ENABLE_TLS_BACKEND" -eq 1 ]]; then
+  echo "   TLS backend enabled; patching AuthPolicy metadata lookup to HTTPS"
+  kubectl patch authpolicy gateway-auth-policy -n openshift-ingress --type='json' -p "[
+    {\"op\":\"replace\",\"path\":\"/spec/rules/metadata/matchedTier/http/url\",\"value\":\"https://maas-api.${MAAS_API_NAMESPACE}.svc.cluster.local:8443/v1/tiers/lookup\"}
+  ]"
+else
+  echo "   TLS backend disabled; ensuring AuthPolicy metadata lookup uses HTTP"
+  kubectl patch authpolicy gateway-auth-policy -n openshift-ingress --type='json' -p "[
+    {\"op\":\"replace\",\"path\":\"/spec/rules/metadata/matchedTier/http/url\",\"value\":\"http://maas-api.${MAAS_API_NAMESPACE}.svc.cluster.local:8080/v1/tiers/lookup\"}
+  ]"
+fi
 
 echo ""
 echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."

@@ -3,7 +3,8 @@ set -euo pipefail
 
 SECRET_NAME=${SECRET_NAME:-maas-api-backend-tls}
 NAMESPACE=${NAMESPACE:-maas-api}
-CERT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tls-certs"
+# Store certs under the TLS overlay so kustomize can bundle the CA without relaxed load restrictions
+CERT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../overlays/tls-backend/certs" && pwd)"
 CERT_PATH="${CERT_DIR}/maas-api-server.crt"
 KEY_PATH="${CERT_DIR}/maas-api-server.key"
 DAYS=${DAYS:-365}

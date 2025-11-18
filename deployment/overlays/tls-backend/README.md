@@ -2,11 +2,11 @@
 
 > The TLS overlay will be reworked with [BackendTLSPolicy](https://gateway-api.sigs.k8s.io/api-types/backendtlspolicy/) once Gateway API v1.4 is supported.
 
-This overlay enables end-to-end TLS between the OpenShift ingress Envoy and the `maas-api` Service without relying on Istio sidecars or ServiceEntries. It patches the MaaS API Deployment/Service to expose both HTTP and HTTPS ports, mounts a secret named `maas-api-backend-tls`, and adds a DestinationRule so that the ingress gateway originates HTTPS directly to `maas-api.maas-api.svc.cluster.local`.
+This overlay enables end-to-end TLS between the OpenShift ingress Envoy and the `maas-api` Service without relying on Istio sidecars or ServiceEntries. It patches the MaaS API Deployment/Service to use HTTPS-only communication, mounts a secret named `maas-api-backend-tls`, and configures both the ingress gateway and Authorino to communicate with the backend over TLS.
 
-## Dual-Port Architecture
+## TLS-Only Architecture
 
-This implementation temporarily uses a dual-port strategy to support both external TLS security and internal metadata access:
+This implementation uses HTTPS-only communication with the maas-api backend:
 
 **External Traffic Flow (TLS):**
 
@@ -14,11 +14,20 @@ This implementation temporarily uses a dual-port strategy to support both extern
 Client HTTPS:443 → Gateway (TLS Termination) → HTTPRoute:8443 → Pod HTTPS:8443
 ```
 
-**Temporary Internal Metadata Flow non-TLS until resolved (HTTP):**
+**Internal Metadata Flow (TLS):**
 
 ```
-Authorino → Service:8080 → Pod HTTP:8080 → /v1/tiers/lookup
+Authorino → Service:8443 → Pod HTTPS:8443 → /v1/tiers/lookup
 ```
+
+## Authorino TLS Configuration
+
+The overlay configures Authorino to trust the maas-api backend certificate for secure metadata lookups:
+
+- Creates a CA ConfigMap (`maas-api-ca-cert`) containing the self-signed certificate
+- Mounts the CA bundle in the Authorino deployment at `/etc/ssl/certs/maas-api-ca.pem`
+- Sets `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` environment variables to use the mounted CA
+- Patches the AuthPolicy to use HTTPS URL for tier metadata lookups
 
 ## Generate or Rotate TLS
 
@@ -44,8 +53,11 @@ kubectl rollout status deployment/maas-api -n maas-api --timeout=180s
 
 The overlay patches:
 
-- `Deployment/maas-api` — adds HTTPS env vars, probes, volume mounts, and exposes container port `8443`
-- `Service/maas-api` — publishes both `http` (`8080`) and `https` (`8443`) ports; routes now point to `https`
+- `Deployment/maas-api` — adds HTTPS-only configuration with TLS env vars, HTTPS probes, volume mounts, and disables HTTP listener
+- `Service/maas-api` — configures HTTPS port `8443` as primary service port
 - `HTTPRoute/maas-api-route` — backend references point to port `8443`
+- `AuthPolicy/gateway-auth-policy` — updates metadata lookup URL to use HTTPS
 - `DestinationRule/maas-api-backend-tls` (in `openshift-ingress`) — configures Envoy to originate TLS with `mode: SIMPLE` and skips verification for the self-signed cert
+- `Deployment/authorino` (in `kuadrant-system`) — mounts CA certificate and configures TLS trust for backend communication
+- `ConfigMap/maas-api-ca-cert` (in `kuadrant-system`) — contains the CA certificate for backend TLS validation
 
