@@ -18,6 +18,7 @@ Complete automated deployment script for OpenShift clusters.
 - Installs dependencies (Kuadrant)
 - Deploys Gateway infrastructure
 - Deploys KServe components (if not already present)
+- Configures MaaS API
 - Generates a self-signed backend certificate and configures MaaS API for HTTPS
 - Applies policies (AuthPolicy, RateLimitPolicy, TelemetryPolicy)
 - Creates OpenShift Routes

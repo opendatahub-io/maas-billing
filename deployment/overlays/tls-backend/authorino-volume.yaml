@@ -1,0 +1,15 @@
+apiVersion: operator.authorino.kuadrant.io/v1beta1
+kind: Authorino
+metadata:
+  name: authorino
+  namespace: kuadrant-system
+spec:
+  volumes:
+    items:
+      - name: maas-api-ca-cert
+        mountPath: /etc/ssl/certs
+        configMaps:
+          - maas-api-ca-cert
+        items:
+          - key: ca-bundle.crt
+            path: maas-api-ca.pem

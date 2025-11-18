@@ -15,11 +15,12 @@ spec:
         - name: TLS_PORT
           value: "8443"
         - name: DISABLE_HTTP
-          value: "false"
+          value: "true"
         ports:
-        - containerPort: 8080
-          name: http
-          protocol: TCP
+        # HTTP port intentionally disabled; keep the reference for context
+        # - containerPort: 8080
+        #   name: http
+        #   protocol: TCP
         - containerPort: 8443
           name: https
           protocol: TCP
