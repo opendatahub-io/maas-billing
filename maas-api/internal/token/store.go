@@ -57,7 +57,7 @@ func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, token
 	// Retry loop for optimistic locking
 	for i := 0; i < 3; i++ {
 		secret, err := s.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
-		
+
 		if errors.IsNotFound(err) {
 			// Create new secret
 			return s.createNewUserSecret(ctx, namespace, secretName, username, tokenName, expiresAt)
@@ -80,7 +80,7 @@ func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, token
 // createNewUserSecret creates a new secret with the first token
 func (s *Store) createNewUserSecret(ctx context.Context, namespace, secretName, username, tokenName string, expiresAt int64) error {
 	newToken := s.createNamedTokenObj(tokenName, expiresAt)
-	
+
 	userData := UserTokenData{
 		Username: username,
 		Tokens:   []NamedToken{newToken},
@@ -123,7 +123,7 @@ func (s *Store) createNewUserSecret(ctx context.Context, namespace, secretName, 
 // updateExistingUserSecret appends a token to an existing secret
 func (s *Store) updateExistingUserSecret(ctx context.Context, secret *corev1.Secret, username, tokenName string, expiresAt int64) error {
 	var userData UserTokenData
-	
+
 	if data, ok := secret.Data["tokens.json"]; ok {
 		if err := json.Unmarshal(data, &userData); err != nil {
 			log.Printf("Warning: failed to unmarshal existing token data for %s, resetting: %v", username, err)
@@ -177,7 +177,7 @@ func (s *Store) MarkTokensAsExpired(ctx context.Context, namespace, username str
 
 	updated := false
 	now := time.Now().Format(time.RFC3339)
-	
+
 	for i := range userData.Tokens {
 		if userData.Tokens[i].Status == "active" {
 			userData.Tokens[i].Status = "expired"
@@ -224,7 +224,7 @@ func (s *Store) getUserSecretName(username string) (string, error) {
 	reInvalid := regexp.MustCompile(`[^a-z0-9-]+`)
 	name = reInvalid.ReplaceAllString(name, "-")
 	name = strings.Trim(name, "-")
-	
+
 	if name == "" {
 		return "", fmt.Errorf("invalid username %q", username)
 	}
@@ -232,7 +232,7 @@ func (s *Store) getUserSecretName(username string) (string, error) {
 	// Add hash to ensure uniqueness and valid length
 	sum := sha1.Sum([]byte(username))
 	suffix := hex.EncodeToString(sum[:])[:8]
-	
+
 	// Format: maas-tokens-{sanitized-user}-{hash}
 	prefix := "maas-tokens-"
 	combined := prefix + name + "-" + suffix
@@ -244,7 +244,6 @@ func (s *Store) getUserSecretName(username string) (string, error) {
 			combined = combined[:maxBase] + "-" + suffix
 		}
 	}
-	
+
 	return combined, nil
 }
-

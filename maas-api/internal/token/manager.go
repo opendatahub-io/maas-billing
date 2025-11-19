@@ -2,8 +2,8 @@ package token
 
 import (
 	"context"
-	"encoding/hex"
 	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"regexp"
