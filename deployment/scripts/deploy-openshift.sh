@@ -27,6 +27,30 @@ wait_for_crd() {
   return 1
 }
 
+# Helper function to find CSV by operator name pattern
+find_csv_by_operator() {
+  local operator_prefix="$1"
+  local namespace="${2:-kuadrant-system}"
+  
+  kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}' || echo ""
+}
+
+# Helper function to wait for any CSV matching operator prefix to reach Succeeded state
+wait_for_csv_by_prefix() {
+  local operator_prefix="$1"
+  local namespace="${2:-kuadrant-system}"
+  local timeout="${3:-180}"  # timeout in seconds
+  
+  local csv_name=$(find_csv_by_operator "$operator_prefix" "$namespace")
+  if [ -z "$csv_name" ]; then
+    echo "⚠️  No CSV found for operator ${operator_prefix} in namespace ${namespace}"
+    return 1
+  fi
+  
+  echo "📋 Found CSV: ${csv_name} for operator ${operator_prefix}"
+  wait_for_csv "$csv_name" "$namespace" "$timeout"
+}
+
 # Helper function to wait for CSV to reach Succeeded state
 wait_for_csv() {
   local csv_name="$1"
@@ -207,7 +231,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
-if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&1; then
+EXISTING_KUADRANT_CSV=$(find_csv_by_operator "kuadrant-operator" "kuadrant-system")
+if [ -z "$EXISTING_KUADRANT_CSV" ]; then
     echo "   No existing installation found, checking for leftover CRDs..."
     LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
     if [ -n "$LEFTOVER_CRDS" ]; then
@@ -216,7 +241,7 @@ if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&
         sleep 5  # Brief wait for cleanup to complete
     fi
 else
-    echo "   ✅ Kuadrant operator already installed, skipping CRD cleanup"
+    echo "   ✅ Kuadrant operator already installed ($EXISTING_KUADRANT_CSV), skipping CRD cleanup"
 fi
 
 echo "   Installing Kuadrant..."
@@ -249,16 +274,16 @@ fi
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
 # Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
-wait_for_csv "kuadrant-operator.v1.3.0" "kuadrant-system" 300 || \
+wait_for_csv_by_prefix "kuadrant-operator" "kuadrant-system" 300 || \
     echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
 
-wait_for_csv "authorino-operator.v0.22.0" "kuadrant-system" 60 || \
+wait_for_csv_by_prefix "authorino-operator" "kuadrant-system" 60 || \
     echo "   ⚠️  Authorino operator CSV did not succeed"
 
-wait_for_csv "limitador-operator.v0.16.0" "kuadrant-system" 60 || \
+wait_for_csv_by_prefix "limitador-operator" "kuadrant-system" 60 || \
     echo "   ⚠️  Limitador operator CSV did not succeed"
 
-wait_for_csv "dns-operator.v0.15.0" "kuadrant-system" 60 || \
+wait_for_csv_by_prefix "dns-operator" "kuadrant-system" 60 || \
     echo "   ⚠️  DNS operator CSV did not succeed"
 
 # Verify CRDs are present
