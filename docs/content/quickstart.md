@@ -8,16 +8,18 @@ This guide provides quickstart instructions for deploying the MaaS Platform infr
 ## Prerequisites
 
 - **OpenShift cluster** (4.19.9+) with kubectl/oc access
-  - **Recommended** 16 vCPUs, 32GB RAM, 100GB storage
+      - **Recommended** 16 vCPUs, 32GB RAM, 100GB storage
 - **ODH/RHOAI requirements**:
-  - KServe enabled in DataScienceCluster (RawDeployment mode enabled)
-  - Service Mesh installed (automatically installed with ODH/RHOAI)
+      - RHOAI 3.0 +
+      - ODH 3.0 +
+- **RHCL requirements**:
+      - RHCL 1.2 +
 - **Cluster admin** or equivalent permissions
 - **Required tools**:
-  - `oc` (OpenShift CLI)
-  - `kubectl`
-  - `jq`
-  - `kustomize` (v5.7.0+)
+      - `oc` (OpenShift CLI)
+      - `kubectl`
+      - `jq`
+      - `kustomize` (v5.7.0+)
 
 ## Quick Start
 
