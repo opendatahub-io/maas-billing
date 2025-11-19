@@ -5,6 +5,21 @@
 
 set -e
 
+ENABLE_TLS_BACKEND=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --disable-tls-backend)
+      ENABLE_TLS_BACKEND=0
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
 # Helper function to wait for CRD to be established
 wait_for_crd() {
   local crd="$1"
@@ -163,6 +178,7 @@ echo "  - oc: $(oc version --client --short 2>/dev/null | head -n1 || echo 'not 
 echo "  - jq: $(jq --version 2>/dev/null || echo 'not found')"
 echo "  - kustomize: $(kustomize version --short 2>/dev/null || echo 'not found')"
 echo "  - git: $(git --version 2>/dev/null || echo 'not found')"
+echo "  - openssl: $(openssl version 2>/dev/null || echo 'not found')"
 echo ""
 echo "ℹ️  Note: OpenShift Service Mesh should be automatically installed when GatewayClass is created."
 echo "   If the Gateway gets stuck in 'Waiting for controller', you may need to manually"
@@ -204,6 +220,7 @@ echo "3️⃣ Installing dependencies..."
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TLS_SCRIPT="$PROJECT_ROOT/deployment/scripts/create-maas-api-cert.sh"
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
@@ -274,9 +291,25 @@ cd "$PROJECT_ROOT"
 kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 
 echo ""
-echo "8️⃣ Deploying MaaS API..."
+echo "8️⃣ Deploying MaaS API with in-cluster TLS..."
 cd "$PROJECT_ROOT"
-kustomize build deployment/base/maas-api | envsubst | kubectl apply -f -
+echo "   Ensuring self-signed TLS materials and CA ConfigMap for MaaS API..."
+"$TLS_SCRIPT"
+
+if [[ "$ENABLE_TLS_BACKEND" -eq 1 ]]; then
+  echo "   Applying MaaS API TLS overlay..."
+  kustomize build deployment/overlays/tls-backend | envsubst | kubectl apply -f -
+
+  echo "   Restarting MaaS API to pick up TLS configuration..."
+  kubectl rollout restart deployment/maas-api -n maas-api
+  echo "   Waiting for MaaS API rollout to complete..."
+  kubectl rollout status deployment/maas-api -n maas-api --timeout=180s || \
+    echo "   ⚠️  MaaS API rollout is taking longer than expected, continuing..."
+else
+  echo "   ⚠️  TLS backend disabled via flag; applying base (HTTP) MaaS API instead."
+  kustomize build deployment/base/maas-api | kubectl apply -f -
+fi
+
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
@@ -310,6 +343,18 @@ echo ""
 echo "1️⃣1️⃣ Applying Gateway Policies..."
 cd "$PROJECT_ROOT"
 kustomize build deployment/base/policies | kubectl apply --server-side=true --force-conflicts -f -
+
+if [[ "$ENABLE_TLS_BACKEND" -eq 1 ]]; then
+  echo "   TLS backend enabled; patching AuthPolicy metadata lookup to HTTPS"
+  kubectl patch authpolicy gateway-auth-policy -n openshift-ingress --type='json' -p '[
+    {"op":"replace","path":"/spec/rules/metadata/matchedTier/http/url","value":"https://maas-api.maas-api.svc.cluster.local:8443/v1/tiers/lookup"}
+  ]'
+else
+  echo "   TLS backend disabled; ensuring AuthPolicy metadata lookup uses HTTP"
+  kubectl patch authpolicy gateway-auth-policy -n openshift-ingress --type='json' -p '[
+    {"op":"replace","path":"/spec/rules/metadata/matchedTier/http/url","value":"http://maas-api.maas-api.svc.cluster.local:8080/v1/tiers/lookup"}
+  ]'
+fi
 
 echo ""
 echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
@@ -495,7 +540,7 @@ echo "   CLUSTER_DOMAIN=\$(kubectl get ingresses.config.openshift.io cluster -o 
 echo "   HOST=\"maas.\${CLUSTER_DOMAIN}\""
 echo ""
 echo "3. Get authentication token:"
-echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"\${HOST}/maas-api/v1/tokens\")"
+echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"https://\${HOST}/maas-api/v1/tokens\")"
 echo "   TOKEN=\$(echo \$TOKEN_RESPONSE | jq -r .token)"
 echo ""
 echo "4. Test model endpoint:"
