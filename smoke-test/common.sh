@@ -294,25 +294,27 @@ find_tier_namespaces() {
     echo "$namespaces"
 }
 
-# Find a secret by token name annotation
+# Find a secret by token name inside the JSON blob
 find_secret_by_token_name() {
     local token_name="$1"
     local namespaces=$(find_tier_namespaces)
     
     for ns in $namespaces; do
-        local secrets=$(kubectl get secrets -n "$ns" \
+        # Get all token secrets in this namespace
+        local secret_names=$(kubectl get secrets -n "$ns" \
             -l "maas.opendatahub.io/token-secret=true" \
-            -o json 2>/dev/null || echo '{"items":[]}')
-        
-        local secret_name=$(echo "$secrets" | jq -r \
-            --arg TOKEN_NAME "$token_name" \
-            '.items[] | select(.metadata.annotations["maas.opendatahub.io/token-name"] == $TOKEN_NAME) | .metadata.name' \
-            | head -n1)
-        
-        if [ -n "$secret_name" ] && [ "$secret_name" != "null" ]; then
-            echo "${ns}:${secret_name}"
-            return 0
-        fi
+            -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+            
+        for secret in $secret_names; do
+             # Decode JSON content
+             local token_json=$(kubectl get secret "$secret" -n "$ns" -o jsonpath='{.data.tokens\.json}' | base64 -d 2>/dev/null)
+             
+             # Check if token exists
+             if echo "$token_json" | jq -e --arg NAME "$token_name" '.tokens[] | select(.name == $NAME)' > /dev/null; then
+                 echo "${ns}:${secret}"
+                 return 0
+             fi
+        done
     done
     
     return 1

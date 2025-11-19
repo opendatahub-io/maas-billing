@@ -2,8 +2,8 @@ package token
 
 import (
 	"context"
-	"crypto/sha1"
 	"encoding/hex"
+	"crypto/sha1"
 	"fmt"
 	"log"
 	"regexp"
@@ -25,6 +25,7 @@ type Manager struct {
 	clientset            kubernetes.Interface
 	namespaceLister      corelistersv1.NamespaceLister
 	serviceAccountLister corelistersv1.ServiceAccountLister
+	store                *Store
 }
 
 func NewManager(
@@ -40,6 +41,7 @@ func NewManager(
 		clientset:            clientset,
 		namespaceLister:      namespaceLister,
 		serviceAccountLister: serviceAccountLister,
+		store:                NewStore(clientset, tenantName),
 	}
 }
 
@@ -76,10 +78,10 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		ExpiresAt:  token.Status.ExpirationTimestamp.Unix(),
 	}
 
-	// If name is provided, create a metadata secret to track the token
+	// If name is provided, add to the user's metadata secret
 	if name != "" {
-		if err := m.createTokenMetadataSecret(ctx, namespace, user.Username, name, result.ExpiresAt); err != nil {
-			log.Printf("Failed to create metadata secret for token %s: %v", name, err)
+		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, result.ExpiresAt); err != nil {
+			log.Printf("Failed to update metadata for token %s: %v", name, err)
 			// Log error but don't fail token generation
 		}
 	}
@@ -88,7 +90,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 }
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account
-// and marking all their token metadata secrets as expired
+// and marking all their token metadata as expired in the user's secret
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -109,8 +111,8 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	if errors.IsNotFound(err) {
 		log.Printf("Service account %s not found in namespace %s, nothing to revoke", saName, namespace)
 		// Still try to mark secrets as expired even if SA doesn't exist
-		if err := m.markUserSecretsAsExpired(ctx, namespace, user.Username); err != nil {
-			log.Printf("Failed to mark secrets as expired for user %s: %v", user.Username, err)
+		if err := m.store.MarkTokensAsExpired(ctx, namespace, user.Username); err != nil {
+			log.Printf("Failed to mark tokens as expired for user %s: %v", user.Username, err)
 		}
 		return nil
 	}
@@ -119,9 +121,9 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 		return fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	// Mark all token metadata secrets as expired before revoking tokens
-	if err := m.markUserSecretsAsExpired(ctx, namespace, user.Username); err != nil {
-		log.Printf("Failed to mark secrets as expired for user %s: %v", user.Username, err)
+	// Mark all token metadata as expired before revoking tokens
+	if err := m.store.MarkTokensAsExpired(ctx, namespace, user.Username); err != nil {
+		log.Printf("Failed to mark tokens as expired for user %s: %v", user.Username, err)
 		// Don't fail the revocation if secret updates fail
 	}
 
@@ -243,161 +245,6 @@ func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName st
 
 	log.Printf("Deleted service account %s in namespace %s", saName, namespace)
 	return nil
-}
-
-// createTokenMetadataSecret creates a Kubernetes secret to track token metadata (NOT the token itself)
-func (m *Manager) createTokenMetadataSecret(ctx context.Context, namespace, username, tokenName string, expiresAt int64) error {
-	// Sanitize the token name for use in a Kubernetes secret name
-	sanitizedName, err := m.sanitizeSecretName(username, tokenName)
-	if err != nil {
-		return fmt.Errorf("failed to sanitize secret name: %w", err)
-	}
-
-	// Get the user's tier for labels
-	userTier := "unknown"
-	// Try to extract tier from namespace if it follows the pattern
-	if strings.HasPrefix(namespace, m.tenantName+"-tier-") {
-		userTier = strings.TrimPrefix(namespace, m.tenantName+"-tier-")
-	}
-
-	creationTime := time.Now().Unix()
-	expirationTime := time.Unix(expiresAt, 0).Format(time.RFC3339)
-	creationTimeStr := time.Unix(creationTime, 0).Format(time.RFC3339)
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      sanitizedName,
-			Namespace: namespace,
-			Labels:    tokenMetadataSecretLabels(m.tenantName, userTier, username),
-			Annotations: map[string]string{
-				"maas.opendatahub.io/token-name": tokenName,
-			},
-		},
-		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			"username":       username,
-			"creationDate":   creationTimeStr,
-			"expirationDate": expirationTime,
-			"name":           tokenName,
-			"status":         "active",
-		},
-	}
-
-	_, err = m.clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			// Update existing secret
-			return m.updateTokenMetadataSecret(ctx, namespace, sanitizedName, map[string]string{
-				"username":       username,
-				"creationDate":   creationTimeStr,
-				"expirationDate": expirationTime,
-				"name":           tokenName,
-				"status":         "active",
-			})
-		}
-		return fmt.Errorf("failed to create metadata secret %s: %w", sanitizedName, err)
-	}
-
-	log.Printf("Created token metadata secret %s for user %s in namespace %s", sanitizedName, username, namespace)
-	return nil
-}
-
-// updateTokenMetadataSecret updates an existing token metadata secret
-func (m *Manager) updateTokenMetadataSecret(ctx context.Context, namespace, secretName string, data map[string]string) error {
-	secret, err := m.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to get secret %s: %w", secretName, err)
-	}
-
-	if secret.StringData == nil {
-		secret.StringData = make(map[string]string)
-	}
-
-	for key, value := range data {
-		secret.StringData[key] = value
-	}
-
-	_, err = m.clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to update secret %s: %w", secretName, err)
-	}
-
-	log.Printf("Updated token metadata secret %s in namespace %s", secretName, namespace)
-	return nil
-}
-
-// markUserSecretsAsExpired marks all token metadata secrets for a user as expired
-func (m *Manager) markUserSecretsAsExpired(ctx context.Context, namespace, username string) error {
-	// List all secrets in the namespace with the token-secret label and matching username
-	listOptions := metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("maas.opendatahub.io/token-secret=true,maas.opendatahub.io/token-owner=%s", username),
-	}
-
-	secrets, err := m.clientset.CoreV1().Secrets(namespace).List(ctx, listOptions)
-	if err != nil {
-		return fmt.Errorf("failed to list secrets for user %s: %w", username, err)
-	}
-
-	for _, secret := range secrets.Items {
-		// Update the status field to "expired" and add expiredAt timestamp
-		// Note: When retrieving secrets, they have Data (base64), not StringData
-		// StringData is write-only and must be nil when updating
-		if secret.Data == nil {
-			secret.Data = make(map[string][]byte)
-		}
-
-		// Clear StringData (it's write-only and can interfere with updates)
-		secret.StringData = nil
-
-		secret.Data["status"] = []byte("expired")
-		secret.Data["expiredAt"] = []byte(time.Now().Format(time.RFC3339))
-
-		_, err := m.clientset.CoreV1().Secrets(namespace).Update(ctx, &secret, metav1.UpdateOptions{})
-		if err != nil {
-			log.Printf("Failed to update secret %s status to expired: %v", secret.Name, err)
-			continue
-		}
-		log.Printf("Marked secret %s as expired for user %s at %s", secret.Name, username, time.Now().Format(time.RFC3339))
-	}
-
-	return nil
-}
-
-// sanitizeSecretName creates a sanitized secret name for token metadata from username and token name
-func (m *Manager) sanitizeSecretName(username, tokenName string) (string, error) {
-	// Kubernetes Secret names must be valid DNS-1123 subdomain:
-	// [a-z0-9-], 1-253 chars, start/end alphanumeric.
-	combined := username + "-" + tokenName
-	name := strings.ToLower(combined)
-
-	// Replace any invalid runes with '-'
-	reInvalid := regexp.MustCompile(`[^a-z0-9-]+`)
-	name = reInvalid.ReplaceAllString(name, "-")
-
-	// Collapse consecutive dashes
-	reDash := regexp.MustCompile(`-+`)
-	name = reDash.ReplaceAllString(name, "-")
-	name = strings.Trim(name, "-")
-	if name == "" {
-		return "", fmt.Errorf("invalid username %q or token name %q", username, tokenName)
-	}
-
-	// Append a stable short hash to ensure uniqueness
-	sum := sha1.Sum([]byte(combined))
-	suffix := hex.EncodeToString(sum[:])[:8]
-
-	// Prefix for identification
-	prefix := "token-"
-
-	// Ensure total length <= 63 including prefix, hyphen and suffix
-	const maxLen = 63
-	baseMax := maxLen - len(prefix) - 1 - len(suffix)
-	if len(name) > baseMax {
-		name = name[:baseMax]
-		name = strings.Trim(name, "-")
-	}
-
-	return prefix + name + "-" + suffix, nil
 }
 
 // sanitizeServiceAccountName ensures the service account name follows Kubernetes naming conventions.

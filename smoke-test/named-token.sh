@@ -65,13 +65,37 @@ validate_secret_metadata() {
     local namespace="$1"
     local secret_name="$2"
     
-    local required_fields=("username" "creationDate" "expirationDate" "name" "status")
+    # Get JSON blob
+    local json_data=$(kubectl get secret "$secret_name" -n "$namespace" -o jsonpath='{.data.tokens\.json}' | base64 -d 2>/dev/null)
+    
+    if [ -z "$json_data" ]; then
+        log_error "Secret does not contain tokens.json data"
+        return 1
+    fi
+
+    # Validate root username
+    local username=$(echo "$json_data" | jq -r '.username')
+    if [ -z "$username" ] || [ "$username" == "null" ]; then
+        log_error "JSON does not contain username"
+        return 1
+    fi
+    log_info "  username: $username"
+
+    # Find token by name
+    local token_entry=$(echo "$json_data" | jq --arg NAME "$TOKEN_NAME" '.tokens[] | select(.name == $NAME)')
+    
+    if [ -z "$token_entry" ]; then
+        log_error "Token '$TOKEN_NAME' not found in secret JSON"
+        return 1
+    fi
+
+    local required_fields=("creationDate" "expirationDate" "name" "status" "id")
     local all_present=true
     
     for field in "${required_fields[@]}"; do
-        local value=$(get_secret_field "$namespace" "$secret_name" "$field")
-        if [ -z "$value" ]; then
-            log_error "Required field '$field' not found in secret $secret_name"
+        local value=$(echo "$token_entry" | jq -r ".$field")
+        if [ -z "$value" ] || [ "$value" == "null" ]; then
+            log_error "Required field '$field' not found in token entry"
             all_present=false
         else
             log_info "  ${field}: ${value}"
@@ -79,10 +103,7 @@ validate_secret_metadata() {
     done
     
     # Security check: ensure actual token is NOT stored
-    local token_field=$(kubectl get secret "$secret_name" -n "$namespace" \
-        -o jsonpath='{.data.token}' 2>/dev/null || echo "")
-    
-    if [ -n "$token_field" ]; then
+    if echo "$token_entry" | jq -e '.token' > /dev/null; then
         log_error "SECURITY ISSUE: Secret contains actual token value!" \
             "Token should NOT be stored in metadata secrets"
         all_present=false
@@ -224,20 +245,16 @@ test_secret_metadata() {
 test_expiredat_on_revocation() {
     print_subheader "Test 5: Verifying expiredAt field on revocation"
     
+    # Get JSON and find token
+    local get_status_cmd="kubectl get secret $SECRET_NAME -n $SECRET_NAMESPACE -o jsonpath='{.data.tokens\.json}' | base64 -d | jq -r --arg NAME \"$TOKEN_NAME\" '.tokens[] | select(.name == \$NAME).status'"
+    
     log_check "Checking current status (should be 'active')"
-    local status=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "status")
+    local status=$(eval $get_status_cmd)
+    
     if [ "$status" != "active" ]; then
         log_warning "Expected status 'active', got '$status'"
     else
         log_success "Secret status is 'active'"
-    fi
-    
-    log_check "Verifying expiredAt does not exist yet"
-    local expired_at=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "expiredAt" 2>/dev/null || echo "")
-    if [ -n "$expired_at" ]; then
-        log_warning "expiredAt already exists before revocation: $expired_at"
-    else
-        log_info "expiredAt does not exist yet (expected)"
     fi
     
     log_check "Revoking all tokens"
@@ -252,7 +269,7 @@ test_expiredat_on_revocation() {
     sleep 3
     
     log_check "Verifying status changed to 'expired'"
-    status=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "status")
+    status=$(eval $get_status_cmd)
     if [ "$status" != "expired" ]; then
         log_error "Expected status 'expired', got '$status'" \
             "Secret may not have been updated during revocation"
@@ -261,8 +278,10 @@ test_expiredat_on_revocation() {
     log_success "Secret status is now 'expired'"
     
     log_check "Verifying expiredAt field was added"
-    expired_at=$(get_secret_field "$SECRET_NAMESPACE" "$SECRET_NAME" "expiredAt")
-    if [ -z "$expired_at" ]; then
+    local get_expired_at_cmd="kubectl get secret $SECRET_NAME -n $SECRET_NAMESPACE -o jsonpath='{.data.tokens\.json}' | base64 -d | jq -r --arg NAME \"$TOKEN_NAME\" '.tokens[] | select(.name == \$NAME).expiredAt'"
+    local expired_at=$(eval $get_expired_at_cmd)
+    
+    if [ -z "$expired_at" ] || [ "$expired_at" == "null" ]; then
         log_error "expiredAt field is NOT set!" \
             "This should be set when tokens are revoked" \
             "Check maas-api logs for errors during token revocation"
