@@ -95,7 +95,7 @@ func TestListingModels(t *testing.T) {
 		name          string
 		expectedModel models.Model
 	}
-	var testCases []expectedModel
+	testCases := make([]expectedModel, 0, len(llmTestScenarios))
 
 	for _, llmTestScenario := range llmTestScenarios {
 		// expected ID mirrors toModels(): fallback to metadata.name unless spec.model.name is non-empty

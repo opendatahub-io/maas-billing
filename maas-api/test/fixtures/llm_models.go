@@ -142,7 +142,7 @@ type LLMTestScenario struct {
 
 // CreateLLMInferenceServices creates a set of test LLM objects for testing
 func CreateLLMInferenceServices(scenarios ...LLMTestScenario) []runtime.Object {
-	var objects []runtime.Object
+	objects := make([]runtime.Object, 0, len(scenarios))
 	for _, scenario := range scenarios {
 		var opts []LLMInferenceServiceOption
 		if scenario.SpecModelName != nil {
