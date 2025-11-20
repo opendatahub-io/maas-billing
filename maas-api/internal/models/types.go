@@ -34,7 +34,7 @@ func (m *Model) extractFieldsFromExtraFields() error {
 	modelValue := reflect.ValueOf(m).Elem()
 	modelType := modelValue.Type()
 
-	for i := 0; i < modelType.NumField(); i++ {
+	for i := range modelType.NumField() {
 		field := modelType.Field(i)
 		fieldValue := modelValue.Field(i)
 
