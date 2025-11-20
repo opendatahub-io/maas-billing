@@ -56,6 +56,7 @@ help: ## Show this help message
 LINT_FIX ?= false
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Executes golangci linters (use LINT_FIX=true to fix lint issues)
+	$(GOLANGCI_LINT) fmt
 	$(GOLANGCI_LINT) run $(if $(filter true,$(LINT_FIX)),--fix)
 
 .PHONY: tidy
@@ -70,7 +71,7 @@ deps: ## Download Go dependencies
 	go mod download
 
 .PHONY: build
-build: deps fmt test binary ## Build the maas-api binary
+build: deps lint test binary ## Build the maas-api binary
 
 .PHONY: binary
 binary: $(BUILD_DIR)

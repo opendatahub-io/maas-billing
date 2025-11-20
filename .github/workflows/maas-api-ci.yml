@@ -54,9 +54,6 @@ jobs:
           cache: true
           cache-dependency-path: ${{ env.PROJECT_DIR }}/go.sum
 
-      - name: Check code formatting
-        run: make fmt-check
-
       - name: Run tests
         run: make test
 
