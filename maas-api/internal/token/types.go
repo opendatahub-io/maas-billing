@@ -2,6 +2,7 @@ package token
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"time"
@@ -61,7 +62,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	}
 
 	if d.Duration < 10*time.Minute {
-		return fmt.Errorf("token expiration must be at least 10 minutes")
+		return errors.New("token expiration must be at least 10 minutes")
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package fixtures
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -210,10 +211,10 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 			return true, nil, fmt.Errorf("expected TokenRequest, got %T", createAction.GetObject())
 		}
 
-		tokenRequest.Status = authv1.TokenRequestStatus{
-			Token:               "mock-service-account-token-" + fmt.Sprintf("%d", time.Now().Unix()),
-			ExpirationTimestamp: metav1.NewTime(time.Now().Add(time.Hour)),
-		}
+	tokenRequest.Status = authv1.TokenRequestStatus{
+		Token:               "mock-service-account-token-" + strconv.FormatInt(time.Now().Unix(), 10),
+		ExpirationTimestamp: metav1.NewTime(time.Now().Add(time.Hour)),
+	}
 
 		return true, tokenRequest, nil
 	})
