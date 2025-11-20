@@ -142,7 +142,6 @@ version: ## Show version information
 ## Tools
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.6.2
-GOLANGCI_LINT_TIMEOUT ?= 5m0s
 
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
