@@ -168,7 +168,7 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 	if !ok {
 		panic("StubTokenReview: clientset is not a *k8sfake.Clientset")
 	}
-	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) { //nolint:nonamedreturns // Signature defined by k8s testing API
 		createAction, ok := action.(k8stesting.CreateAction)
 		if !ok {
 			return true, nil, fmt.Errorf("expected CreateAction, got %T", action)
@@ -200,7 +200,7 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 		return true, tokenReview, nil
 	})
 
-	fakeClient.PrependReactor("create", "serviceaccounts/token", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+	fakeClient.PrependReactor("create", "serviceaccounts/token", func(action k8stesting.Action) (bool, runtime.Object, error) { //nolint:nonamedreturns // Signature defined by k8s testing API
 		createAction, ok := action.(k8stesting.CreateAction)
 		if !ok {
 			return true, nil, fmt.Errorf("expected CreateAction, got %T", action)
