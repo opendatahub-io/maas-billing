@@ -1,0 +1,46 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: ibm-granite-2b-gpu
+  namespace: llm
+  annotations:
+    alpha.maas.opendatahub.io/tiers: '[]'
+spec:
+  model:
+    uri: hf://ibm-granite/granite-3.1-2b-instruct
+    name: ibm-granite/granite-3.1-2b-instruct
+  replicas: 1
+  router:
+    route: { }
+    # Connect to MaaS-enabled gateway
+    gateway:
+      refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+  template:
+    # Ensure the pod is scheduled on GPU nodes
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+    containers:
+      - name: main
+        env:
+          # Granite-specific configuration via environment variables
+          - name: VLLM_ADDITIONAL_ARGS
+            value: "--max-model-len 4096 --trust-remote-code --dtype float16"
+          - name: VLLM_ATTENTION_BACKEND
+            value: XFORMERS
+          - name: VLLM_USE_V1
+            value: "0"
+        resources:
+          limits:
+            cpu: '2'
+            memory: 12Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '500m'
+            memory: 8Gi
+            nvidia.com/gpu: '1'

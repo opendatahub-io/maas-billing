@@ -24,7 +24,7 @@ First, we need to deploy the core infrastructure. That includes:
 ```shell
 PROJECT_DIR=$(git rev-parse --show-toplevel) 
 for ns in opendatahub kuadrant-system llm maas-api; do kubectl create ns $ns || true; done
-"${PROJECT_DIR}/deployment/scripts/install-dependencies.sh" --cert-manager --kuadrant
+"${PROJECT_DIR}/deployment/scripts/install-dependencies.sh" --kuadrant
 ```
 
 #### Enabling GW API

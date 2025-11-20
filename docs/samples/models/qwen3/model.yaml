@@ -39,7 +39,7 @@ spec:
             # Run vLLM with HTTPS using KServe certificates
             # Use enforce-eager to avoid Triton compilation issues on Tesla T4
             exec vllm serve /mnt/models \
-              --served-model-name "Qwen/Qwen3-0.6B" \
+              --served-model-name "{{ .Spec.Model.Name }}" \
               --port 8000 \
               --trust-remote-code \
               --disable-log-requests \

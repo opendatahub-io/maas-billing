@@ -7,7 +7,7 @@ set -euo pipefail
 # Supports both vanilla Kubernetes and OpenShift deployments
 
 # Component definitions with installation order
-COMPONENTS=("istio" "cert-manager" "odh" "kserve" "prometheus" "kuadrant"  "grafana")
+COMPONENTS=("istio" "odh" "kserve" "prometheus" "kuadrant"  "grafana")
 
 # OpenShift flag
 OCP=false
@@ -20,7 +20,6 @@ INSTALLERS_DIR="$SCRIPT_DIR/installers"
 get_component_description() {
     case "$1" in
         istio) echo "Service mesh and Gateway API configuration" ;;
-        cert-manager) echo "Certificate management for TLS and webhooks" ;;
         odh) echo "OpenDataHub operator for ML/AI platform (OpenShift only)" ;;
         kserve) 
             if [[ "$OCP" == true ]]; then
@@ -56,7 +55,6 @@ usage() {
     echo "Options:"
     echo "  --all                    Install all components"
     echo "  --istio                  Install Istio service mesh"
-    echo "  --cert-manager           Install cert-manager"
     echo "  --odh                    Install OpenDataHub operator (OpenShift only)"
     echo "  --kserve                 Install KServe model serving platform"
     echo "  --prometheus             Install Prometheus operator"
@@ -310,10 +308,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --istio)
             install_component "istio"
-            COMPONENT_SELECTED=true
-            ;;
-        --cert-manager)
-            install_component "cert-manager"
             COMPONENT_SELECTED=true
             ;;
         --odh)

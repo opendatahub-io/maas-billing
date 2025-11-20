@@ -14,54 +14,96 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  build:
+  # Build job for PRs - just validates the docs build
+  build-pr:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install MkDocs and plugins
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('docs/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
         run: |
-          pip install mkdocs
-          pip install mkdocs-material
-          pip install mkdocs-git-revision-date-localized-plugin
+          pip install -r docs/requirements.txt
 
       - name: Build documentation
         run: |
-          # Build with MkDocs using the configuration in docs/mkdocs.yml
           cd docs
-          mkdocs build --site-dir ../build/site
+          mkdocs build --strict
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./build/site
+      - name: Summary
+        run: |
+          echo "✅ Documentation built successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The documentation has been validated and builds without errors." >> $GITHUB_STEP_SUMMARY
 
+  # Deploy job for main/master branch - deploys as 'dev' version
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for mike
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('docs/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install -r docs/requirements.txt
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy dev version with mike (hidden)
+        run: |
+          cd docs
+          # Deploy as 'dev' version (main branch development docs)
+          # Note: 'dev' is intentionally not added to any alias to keep it hidden from the version selector
+          # Users can still access it directly at /dev/ but it won't show in the dropdown
+          mike deploy --push dev --prop-set "hidden=true"
+          # Ensure dev does NOT appear in version selector by not aliasing it
+
+      - name: Summary
+        run: |
+          echo "✅ Development documentation deployed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: \`dev\` (hidden from version selector)" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`gh-pages\`" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://opendatahub-io.github.io/maas-billing/dev/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ℹ️ The dev version is accessible directly but won't appear in the version dropdown." >> $GITHUB_STEP_SUMMARY

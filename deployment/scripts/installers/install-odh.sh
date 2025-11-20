@@ -62,7 +62,7 @@ EOF
         echo "   Failed to update manager image in config/manager/manager.yaml"
         exit 1
     fi
-    kustomize build --load-restrictor LoadRestrictionsNone config/default | kubectl apply --namespace $ODH_OPERATOR_NS -f -
+    kustomize build config/default | kubectl apply --namespace $ODH_OPERATOR_NS -f -
     popd
     popd
 
