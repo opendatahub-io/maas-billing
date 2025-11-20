@@ -48,13 +48,13 @@ func (m *Model) extractFieldsFromExtraFields() error {
 			continue
 		}
 
-	jsonFieldName := strings.Split(jsonTag, ",")[0]
-	if jsonFieldName == "" {
-		jsonFieldName = strings.ToLower(field.Name)
-	}
+		jsonFieldName := strings.Split(jsonTag, ",")[0]
+		if jsonFieldName == "" {
+			jsonFieldName = strings.ToLower(field.Name)
+		}
 
-	if extraField, exists := m.JSON.ExtraFields[jsonFieldName]; exists {
-		if err := m.setFieldFromExtraField(fieldValue, field.Type, extraField); err != nil {
+		if extraField, exists := m.JSON.ExtraFields[jsonFieldName]; exists {
+			if err := m.setFieldFromExtraField(fieldValue, field.Type, extraField); err != nil {
 				return fmt.Errorf("failed setting %s: %w", jsonFieldName, err)
 			}
 		}
