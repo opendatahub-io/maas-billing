@@ -134,7 +134,7 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 		tierMapper,
 		clusterConfig.ClientSet,
 		namespaceInformer.Lister(),
-		serviceAccountLister.Lister(),
+		serviceAccountInformer.Lister(),
 		store,
 	)
 	tokenHandler := token.NewHandler(cfg.Name, manager)

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -71,8 +72,11 @@ func (s *Store) initSchema() error {
 	_, err := s.db.Exec(query)
 	if err != nil {
 		// Try adding column if table exists but column doesn't (migration)
-		if err.Error() != "" {
-			log.Printf("Attempting migration for token_hash: %v", err)
+		if strings.Contains(err.Error(), "duplicate column name") {
+			// Column already exists, ignore
+		} else {
+			log.Printf("Schema init failed/incomplete, attempting migration for token_hash: %v", err)
+			// Attempt migration anyway (e.g. if table existed but column didn't)
 			_, _ = s.db.Exec("ALTER TABLE tokens ADD COLUMN token_hash TEXT")
 			_, _ = s.db.Exec("CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash)")
 		}

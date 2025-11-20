@@ -110,7 +110,10 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
 	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
-	store, _ := token.NewStore(dbPath)
+	store, err := token.NewStore(dbPath)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test store: %v", err))
+	}
 
 	tierMapper := tier.NewMapper(fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
