@@ -1,9 +1,10 @@
 package fixtures
 
 import (
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 )
 
 // Standard tier configuration used across tests

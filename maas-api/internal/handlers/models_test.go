@@ -8,12 +8,13 @@ import (
 
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/pagination"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"knative.dev/pkg/apis"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
 func TestListingModels(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openai/openai-go/v2/packages/pagination"
+
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
 )
 
