@@ -134,6 +134,7 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	)
 	tokenHandler := token.NewHandler(cfg.Name, manager)
 
+	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	tokenRoutes := v1Routes.Group("/tokens", token.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
