@@ -13,8 +13,9 @@ import (
 // Model extends openai.Model with additional fields.
 type Model struct {
 	openai.Model `json:",inline"`
-	URL          *apis.URL `json:"url,omitempty"`
-	Ready        bool      `json:"ready"`
+
+	URL   *apis.URL `json:"url,omitempty"`
+	Ready bool      `json:"ready"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshalling to work around openai.Model's
