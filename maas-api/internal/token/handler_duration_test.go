@@ -162,22 +162,22 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			if !tt.expirationInRawSeconds {
 				expiration = fmt.Sprintf("\"%s\"", expiration)
 			}
-		jsonPayload := fmt.Sprintf(`
+			jsonPayload := fmt.Sprintf(`
 {
 		"expiration": %s
 }`, expiration)
 
-		request, _ := http.NewRequest("POST", "/v1/tokens", bytes.NewBufferString(jsonPayload))
+			request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/tokens", bytes.NewBufferString(jsonPayload))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer duration-test-token")
 			router.ServeHTTP(w, request)
 
-		if w.Code != tt.expectedStatus {
-			t.Errorf("expected status %d, got %d. Description: %s", tt.expectedStatus, w.Code, tt.description)
-		}
+			if w.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d. Description: %s", tt.expectedStatus, w.Code, tt.description)
+			}
 
-		var response map[string]any
-		err := json.Unmarshal(w.Body.Bytes(), &response)
+			var response map[string]any
+			err := json.Unmarshal(w.Body.Bytes(), &response)
 			if err != nil {
 				t.Errorf("failed to unmarshal response: %v", err)
 			}
