@@ -7,6 +7,7 @@ toolchain go1.24.7
 require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/openai/openai-go/v2 v2.3.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1

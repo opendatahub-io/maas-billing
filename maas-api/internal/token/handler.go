@@ -21,8 +21,8 @@ func NewHandler(name string, manager *Manager) *Handler {
 	}
 }
 
-// ExtractUserInfo validates kubernetes tokens
-func ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
+// ExtractUserInfo validates kubernetes tokens and checks against deny list
+func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -38,7 +38,9 @@ func ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		userContext, err := reviewer.ExtractUserInfo(c.Request.Context(), token)
+
+		// Validate with Manager (K8s + Deny List)
+		userContext, err := h.manager.ValidateToken(c.Request.Context(), token, reviewer)
 		if err != nil {
 			log.Printf("Token validation failed: %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "validation failed"})
@@ -59,7 +61,7 @@ func ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 }
 
 // IssueToken handles POST /v1/tokens
-func (g *Handler) IssueToken(c *gin.Context) {
+func (h *Handler) IssueToken(c *gin.Context) {
 	var req Request
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -84,7 +86,7 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
-	token, err := g.manager.GenerateToken(c.Request.Context(), user, expiration, req.Name)
+	token, err := h.manager.GenerateToken(c.Request.Context(), user, expiration, req.Name)
 	if err != nil {
 		log.Printf("Failed to generate token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
@@ -98,8 +100,8 @@ func (g *Handler) IssueToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// RevokeAllTokens handles DELETE /v1/tokens
-func (g *Handler) RevokeAllTokens(c *gin.Context) {
+// ListTokens handles GET /v1/tokens
+func (h *Handler) ListTokens(c *gin.Context) {
 	userCtx, exists := c.Get("user")
 	if !exists {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -107,7 +109,52 @@ func (g *Handler) RevokeAllTokens(c *gin.Context) {
 	}
 
 	user := userCtx.(*UserContext)
-	err := g.manager.RevokeTokens(c.Request.Context(), user)
+	tokens, err := h.manager.GetTokens(c.Request.Context(), user)
+	if err != nil {
+		log.Printf("Failed to list tokens for user %s: %v", user.Username, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list tokens"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tokens)
+}
+
+// RevokeToken handles DELETE /v1/tokens/:id
+func (h *Handler) RevokeToken(c *gin.Context) {
+	tokenID := c.Param("id")
+	if tokenID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token ID required"})
+		return
+	}
+
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user := userCtx.(*UserContext)
+	err := h.manager.RevokeToken(c.Request.Context(), user, tokenID)
+	if err != nil {
+		log.Printf("Failed to revoke token %s for user %s: %v", tokenID, user.Username, err)
+		// 404 if not found?
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke token"})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, nil)
+}
+
+// RevokeAllTokens handles DELETE /v1/tokens
+func (h *Handler) RevokeAllTokens(c *gin.Context) {
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user := userCtx.(*UserContext)
+	err := h.manager.RevokeTokens(c.Request.Context(), user)
 	if err != nil {
 		log.Printf("Failed to revoke tokens for user %s: %v", user.Username, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke tokens"})

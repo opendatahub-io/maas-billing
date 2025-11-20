@@ -167,6 +167,23 @@ paths:
                                 error: internal_error
                                 message: "failed to lookup tier: connection to configmap failed"
     /v1/tokens:
+        get:
+            tags:
+                - tokens
+            summary: List active tokens for the authenticated user
+            description: Returns a list of all active tokens for the current user with their metadata.
+            operationId: tokens#list
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/TokenMetadata'
+                "401":
+                    description: Unauthorized response.
         delete:
             tags:
                 - tokens
@@ -297,6 +314,27 @@ paths:
                                         error: "invalid character 'x' looking for beginning of value"
                 "401":
                     description: Unauthorized response.
+    /v1/tokens/{id}:
+        delete:
+            tags:
+                - tokens
+            summary: Revoke a specific token
+            description: Revokes a single named token by ID. The token will be marked as expired and rejected in future requests.
+            operationId: tokens#revoke
+            parameters:
+                - in: path
+                  name: id
+                  schema:
+                      type: string
+                  required: true
+                  description: ID of the token metadata to revoke
+            responses:
+                "204":
+                    description: No Content response. Token revoked.
+                "404":
+                    description: Not Found. Token not found.
+                "500":
+                    description: Internal Server Error.
                     content:
                         application/json:
                             schema:
@@ -509,9 +547,41 @@ components:
                     description: Token expiration - accepts either Go-style duration string or number of seconds. Minimum 10 minutes. Default is 4 hours.
                 name:
                     type: string
-                    description: Optional name for the token. If provided, a Kubernetes secret will be created to track the token's metadata (username, creation date, expiration date, status). The actual token value is NOT stored in the secret.
+                    description: Optional name for the token. If provided, the token will be tracked in the metadata store.
                     example: my-application-token
         
+        # Token metadata
+        TokenMetadata:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique identifier for the token metadata
+                name:
+                    type: string
+                    description: User-friendly name
+                creationDate:
+                    type: string
+                    format: date-time
+                    description: When the token was created
+                expirationDate:
+                    type: string
+                    format: date-time
+                    description: When the token expires
+                status:
+                    type: string
+                    description: Current status (active, expired)
+                expiredAt:
+                    type: string
+                    format: date-time
+                    description: When the token was revoked/expired (if applicable)
+            required:
+                - id
+                - name
+                - creationDate
+                - expirationDate
+                - status
+
         # Token response
         TokenResponse:
             type: object

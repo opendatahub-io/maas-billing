@@ -3,18 +3,13 @@ package token
 import (
 	"context"
 	"crypto/sha1"
+	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
-	"regexp"
-	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // NamedToken represents metadata for a single token
@@ -27,223 +22,168 @@ type NamedToken struct {
 	ExpiredAt      string `json:"expiredAt,omitempty"`
 }
 
-// UserTokenData represents the JSON structure stored in the user's secret
-type UserTokenData struct {
-	Username string       `json:"username"`
-	Tokens   []NamedToken `json:"tokens"`
-}
-
-// Store handles the persistence of token metadata
+// Store handles the persistence of token metadata using SQLite
 type Store struct {
-	clientset  kubernetes.Interface
-	tenantName string
+	db *sql.DB
 }
 
-// NewStore creates a new TokenStore
-func NewStore(clientset kubernetes.Interface, tenantName string) *Store {
-	return &Store{
-		clientset:  clientset,
-		tenantName: tenantName,
-	}
-}
-
-// AddTokenMetadata adds a new token to the user's metadata secret
-func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, tokenName string, expiresAt int64) error {
-	secretName, err := s.getUserSecretName(username)
+// NewStore creates a new TokenStore backed by SQLite
+func NewStore(dbPath string) (*Store, error) {
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return fmt.Errorf("failed to generate secret name: %w", err)
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Retry loop for optimistic locking
-	for i := 0; i < 3; i++ {
-		secret, err := s.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
-
-		if errors.IsNotFound(err) {
-			// Create new secret
-			return s.createNewUserSecret(ctx, namespace, secretName, username, tokenName, expiresAt)
-		} else if err != nil {
-			return fmt.Errorf("failed to get secret %s: %w", secretName, err)
-		}
-
-		// Update existing secret
-		if err := s.updateExistingUserSecret(ctx, secret, username, tokenName, expiresAt); err != nil {
-			if errors.IsConflict(err) {
-				continue // Retry on conflict
-			}
-			return err
-		}
-		return nil
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
-	return fmt.Errorf("failed to update token metadata after retries")
+
+	s := &Store{db: db}
+	if err := s.initSchema(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	return s, nil
 }
 
-// createNewUserSecret creates a new secret with the first token
-func (s *Store) createNewUserSecret(ctx context.Context, namespace, secretName, username, tokenName string, expiresAt int64) error {
-	newToken := s.createNamedTokenObj(tokenName, expiresAt)
-
-	userData := UserTokenData{
-		Username: username,
-		Tokens:   []NamedToken{newToken},
-	}
-
-	jsonData, err := json.Marshal(userData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal user data: %w", err)
-	}
-
-	// Extract tier from namespace for labels if possible
-	tier := "unknown"
-	if strings.HasPrefix(namespace, s.tenantName+"-tier-") {
-		tier = strings.TrimPrefix(namespace, s.tenantName+"-tier-")
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/component":      "token-metadata",
-				"app.kubernetes.io/part-of":        "maas-api",
-				"maas.opendatahub.io/instance":     s.tenantName,
-				"maas.opendatahub.io/tier":         tier,
-				"maas.opendatahub.io/token-owner":  username,
-				"maas.opendatahub.io/token-secret": "true",
-			},
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{
-			"tokens.json": jsonData,
-		},
-	}
-
-	_, err = s.clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
-	return err
+// Close closes the database connection
+func (s *Store) Close() error {
+	return s.db.Close()
 }
 
-// updateExistingUserSecret appends a token to an existing secret
-func (s *Store) updateExistingUserSecret(ctx context.Context, secret *corev1.Secret, username, tokenName string, expiresAt int64) error {
-	var userData UserTokenData
-
-	if data, ok := secret.Data["tokens.json"]; ok {
-		if err := json.Unmarshal(data, &userData); err != nil {
-			log.Printf("Warning: failed to unmarshal existing token data for %s, resetting: %v", username, err)
-			userData = UserTokenData{Username: username}
-		}
-	} else {
-		userData = UserTokenData{Username: username}
-	}
-
-	// Add new token
-	newToken := s.createNamedTokenObj(tokenName, expiresAt)
-	userData.Tokens = append(userData.Tokens, newToken)
-
-	jsonData, err := json.Marshal(userData)
+func (s *Store) initSchema() error {
+	query := `
+	CREATE TABLE IF NOT EXISTS tokens (
+		id TEXT PRIMARY KEY,
+		username TEXT NOT NULL,
+		name TEXT NOT NULL,
+		namespace TEXT,
+		creation_date TEXT NOT NULL,
+		expiration_date TEXT NOT NULL,
+		status TEXT DEFAULT 'active',
+		expired_at TEXT,
+		token_hash TEXT
+	);
+	CREATE INDEX IF NOT EXISTS idx_tokens_username ON tokens(username);
+	CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash);
+	`
+	_, err := s.db.Exec(query)
 	if err != nil {
-		return fmt.Errorf("failed to marshal user data: %w", err)
+		// Try adding column if table exists but column doesn't (migration)
+		if err.Error() != "" {
+			log.Printf("Attempting migration for token_hash: %v", err)
+			_, _ = s.db.Exec("ALTER TABLE tokens ADD COLUMN token_hash TEXT")
+			_, _ = s.db.Exec("CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash)")
+		}
 	}
+	return nil
+}
 
-	if secret.Data == nil {
-		secret.Data = make(map[string][]byte)
+// AddTokenMetadata adds a new token to the database
+func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, tokenName, tokenHash string, expiresAt int64) error {
+	now := time.Now()
+	tokenID := s.generateTokenID(username, tokenName, now)
+	creationDate := now.Format(time.RFC3339)
+	expirationDate := time.Unix(expiresAt, 0).Format(time.RFC3339)
+
+	query := `
+	INSERT INTO tokens (id, username, name, namespace, creation_date, expiration_date, status, token_hash)
+	VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+	`
+	_, err := s.db.ExecContext(ctx, query, tokenID, username, tokenName, namespace, creationDate, expirationDate, tokenHash)
+	if err != nil {
+		return fmt.Errorf("failed to insert token metadata: %w", err)
 	}
-	secret.Data["tokens.json"] = jsonData
-
-	_, err = s.clientset.CoreV1().Secrets(secret.Namespace).Update(ctx, secret, metav1.UpdateOptions{})
-	return err
+	return nil
 }
 
 // MarkTokensAsExpired marks all active tokens for a user as expired
 func (s *Store) MarkTokensAsExpired(ctx context.Context, namespace, username string) error {
-	secretName, err := s.getUserSecretName(username)
-	if err != nil {
-		return fmt.Errorf("failed to generate secret name: %w", err)
-	}
-
-	secret, err := s.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
-		// No metadata secret found, nothing to do
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to get secret %s: %w", secretName, err)
-	}
-
-	var userData UserTokenData
-	if data, ok := secret.Data["tokens.json"]; ok {
-		if err := json.Unmarshal(data, &userData); err != nil {
-			return fmt.Errorf("failed to unmarshal user data: %w", err)
-		}
-	} else {
-		return nil // Empty data
-	}
-
-	updated := false
 	now := time.Now().Format(time.RFC3339)
-
-	for i := range userData.Tokens {
-		if userData.Tokens[i].Status == "active" {
-			userData.Tokens[i].Status = "expired"
-			userData.Tokens[i].ExpiredAt = now
-			updated = true
-		}
-	}
-
-	if !updated {
-		return nil
-	}
-
-	jsonData, err := json.Marshal(userData)
+	query := `
+	UPDATE tokens 
+	SET status = 'expired', expired_at = ? 
+	WHERE username = ? AND status = 'active'
+	`
+	result, err := s.db.ExecContext(ctx, query, now, username)
 	if err != nil {
-		return fmt.Errorf("failed to marshal user data: %w", err)
+		return fmt.Errorf("failed to expire tokens: %w", err)
 	}
 
-	secret.Data["tokens.json"] = jsonData
-	_, err = s.clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
-	return err
+	rows, _ := result.RowsAffected()
+	log.Printf("Expired %d tokens for user %s", rows, username)
+	return nil
 }
 
-func (s *Store) createNamedTokenObj(name string, expiresAt int64) NamedToken {
-	creationTime := time.Now()
-	return NamedToken{
-		ID:             s.generateTokenID(name, creationTime),
-		Name:           name,
-		CreationDate:   creationTime.Format(time.RFC3339),
-		ExpirationDate: time.Unix(expiresAt, 0).Format(time.RFC3339),
-		Status:         "active",
+// MarkTokenAsExpired marks a single token as expired by ID
+func (s *Store) MarkTokenAsExpired(ctx context.Context, tokenID, username string) error {
+	now := time.Now().Format(time.RFC3339)
+	query := `
+	UPDATE tokens 
+	SET status = 'expired', expired_at = ? 
+	WHERE id = ? AND username = ? AND status = 'active'
+	`
+	result, err := s.db.ExecContext(ctx, query, now, tokenID, username)
+	if err != nil {
+		return fmt.Errorf("failed to expire token %s: %w", tokenID, err)
 	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("token not found or already expired")
+	}
+	return nil
 }
 
-func (s *Store) generateTokenID(name string, t time.Time) string {
-	// Create a unique ID for the token entry
-	data := fmt.Sprintf("%s-%d", name, t.UnixNano())
+// GetTokensForUser retrieves all tokens for a user
+func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedToken, error) {
+	query := `
+	SELECT id, name, creation_date, expiration_date, status, expired_at 
+	FROM tokens 
+	WHERE username = ?
+	ORDER BY creation_date DESC
+	`
+	rows, err := s.db.QueryContext(ctx, query, username)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []NamedToken
+	for rows.Next() {
+		var t NamedToken
+		var expiredAt sql.NullString
+		if err := rows.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate, &t.Status, &expiredAt); err != nil {
+			return nil, err
+		}
+		if expiredAt.Valid {
+			t.ExpiredAt = expiredAt.String
+		}
+		tokens = append(tokens, t)
+	}
+	return tokens, nil
+}
+
+// IsTokenActive checks if a token with the given hash is active
+func (s *Store) IsTokenActive(ctx context.Context, tokenHash string) (bool, error) {
+	query := `SELECT status FROM tokens WHERE token_hash = ?`
+	var status string
+	err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(&status)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Token not found in metadata (might be an old token or non-tracked one)
+			// Decide policy: Allow untracked?
+			// For now, we return true (allow) if it's not explicitly revoked in DB.
+			// However, the "Deny List" logic implies we only block if it IS in DB and is EXPIRED.
+			return true, nil
+		}
+		return false, err
+	}
+	return status == "active", nil
+}
+
+func (s *Store) generateTokenID(username, name string, t time.Time) string {
+	data := fmt.Sprintf("%s-%s-%d", username, name, t.UnixNano())
 	sum := sha1.Sum([]byte(data))
 	return hex.EncodeToString(sum[:])[:12]
-}
-
-func (s *Store) getUserSecretName(username string) (string, error) {
-	// Sanitize username
-	name := strings.ToLower(username)
-	reInvalid := regexp.MustCompile(`[^a-z0-9-]+`)
-	name = reInvalid.ReplaceAllString(name, "-")
-	name = strings.Trim(name, "-")
-
-	if name == "" {
-		return "", fmt.Errorf("invalid username %q", username)
-	}
-
-	// Add hash to ensure uniqueness and valid length
-	sum := sha1.Sum([]byte(username))
-	suffix := hex.EncodeToString(sum[:])[:8]
-
-	// Format: maas-tokens-{sanitized-user}-{hash}
-	prefix := "maas-tokens-"
-	combined := prefix + name + "-" + suffix
-
-	if len(combined) > 63 {
-		// Truncate middle if too long, keeping prefix and suffix
-		maxBase := 63 - len(suffix) - 1
-		if maxBase > len(prefix) {
-			combined = combined[:maxBase] + "-" + suffix
-		}
-	}
-
-	return combined, nil
 }

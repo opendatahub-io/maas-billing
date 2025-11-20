@@ -124,16 +124,24 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 		log.Fatalf("Failed to sync informer caches")
 	}
 
+	store, err := token.NewStore(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize token store: %v", err)
+	}
+
 	manager := token.NewManager(
 		cfg.Name,
 		tierMapper,
 		clusterConfig.ClientSet,
 		namespaceInformer.Lister(),
-		serviceAccountInformer.Lister(),
+		serviceAccountLister.Lister(),
+		store,
 	)
 	tokenHandler := token.NewHandler(cfg.Name, manager)
 
-	tokenRoutes := v1Routes.Group("/tokens", token.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
+	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
+	tokenRoutes.GET("", tokenHandler.ListTokens)
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
+	tokenRoutes.DELETE("/:id", tokenHandler.RevokeToken)
 }

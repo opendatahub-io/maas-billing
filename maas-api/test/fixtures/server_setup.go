@@ -17,7 +17,9 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
-	k8stesting "k8s.io/client-go/testing"
+	k8stesting 	"k8s.io/client-go/testing"
+    "os"
+    "path/filepath"
 )
 
 // TokenReviewScenario defines how TokenReview should respond for a given token
@@ -107,6 +109,9 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
+	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
+	store, _ := token.NewStore(dbPath)
+
 	tierMapper := tier.NewMapper(fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
 		TestTenant,
@@ -114,6 +119,7 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 		fakeClient,
 		namespaceLister,
 		serviceAccountLister,
+		store,
 	)
 	reviewer := token.NewReviewer(fakeClient)
 
@@ -129,7 +135,7 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engi
 
 	protected := router.Group("/v1")
 	if reviewer != nil {
-		protected.Use(token.ExtractUserInfo(reviewer))
+		protected.Use(handler.ExtractUserInfo(reviewer))
 	}
 	protected.POST("/tokens", handler.IssueToken)
 	protected.DELETE("/tokens", handler.RevokeAllTokens)

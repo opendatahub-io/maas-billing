@@ -2,7 +2,7 @@ package token
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -34,6 +34,7 @@ func NewManager(
 	clientset kubernetes.Interface,
 	namespaceLister corelistersv1.NamespaceLister,
 	serviceAccountLister corelistersv1.ServiceAccountLister,
+	store *Store,
 ) *Manager {
 	return &Manager{
 		tenantName:           tenantName,
@@ -41,7 +42,7 @@ func NewManager(
 		clientset:            clientset,
 		namespaceLister:      namespaceLister,
 		serviceAccountLister: serviceAccountLister,
-		store:                NewStore(clientset, tenantName),
+		store:                store,
 	}
 }
 
@@ -80,7 +81,8 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 	// If name is provided, add to the user's metadata secret
 	if name != "" {
-		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, result.ExpiresAt); err != nil {
+		tokenHash := hashToken(result.Token)
+		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, tokenHash, result.ExpiresAt); err != nil {
 			log.Printf("Failed to update metadata for token %s: %v", name, err)
 			// Log error but don't fail token generation
 		}
@@ -138,6 +140,52 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	}
 
 	return nil
+}
+
+// ValidateToken verifies the token with K8s and checks against the deny list
+func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error) {
+	// 1. Check K8s validity
+	userCtx, err := reviewer.ExtractUserInfo(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	if !userCtx.IsAuthenticated {
+		return userCtx, nil
+	}
+
+	// 2. Check deny list (DB)
+	// Compute hash of the token
+	tokenHash := hashToken(token)
+	active, err := m.store.IsTokenActive(ctx, tokenHash)
+	if err != nil {
+		log.Printf("Error checking token status in DB: %v", err)
+		// Fallback: If DB check fails, do we allow or deny?
+		// Secure by default -> deny? Or availability -> allow?
+		// For MVP, let's log and allow, unless it's critical.
+		// Actually, if we can't verify revocation, we should probably allow K8s to decide,
+		// as K8s is the source of truth for the token validity itself.
+		// But if the requirement is "deny list", we might need to be stricter.
+		// Let's allow for now to prevent outage on DB blip.
+		return userCtx, nil
+	}
+
+	if !active {
+		log.Printf("Token for user %s is in deny list (expired/revoked)", userCtx.Username)
+		return &UserContext{IsAuthenticated: false}, nil
+	}
+
+	return userCtx, nil
+}
+
+// GetTokens returns all tokens for a user
+func (m *Manager) GetTokens(ctx context.Context, user *UserContext) ([]NamedToken, error) {
+	return m.store.GetTokensForUser(ctx, user.Username)
+}
+
+// RevokeToken revokes a single token by ID
+func (m *Manager) RevokeToken(ctx context.Context, user *UserContext, tokenID string) error {
+	return m.store.MarkTokenAsExpired(ctx, tokenID, user.Username)
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
@@ -268,7 +316,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	// Append a stable short hash to reduce collisions
-	sum := sha1.Sum([]byte(username))
+	sum := sha256.Sum256([]byte(username))
 	suffix := hex.EncodeToString(sum[:])[:8]
 
 	// Ensure total length <= 63 including hyphen and suffix
@@ -280,4 +328,9 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	return name + "-" + suffix, nil
+}
+
+func hashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
