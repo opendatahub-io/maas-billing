@@ -17,9 +17,9 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
-	k8stesting 	"k8s.io/client-go/testing"
-    "os"
-    "path/filepath"
+	k8stesting "k8s.io/client-go/testing"
+	"os"
+	"path/filepath"
 )
 
 // TokenReviewScenario defines how TokenReview should respond for a given token
