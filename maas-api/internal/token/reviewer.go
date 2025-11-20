@@ -9,19 +9,19 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// Reviewer handles token validation
+// Reviewer handles token validation.
 type Reviewer struct {
 	clientset kubernetes.Interface
 }
 
-// NewReviewer creates a new Reviewer instance
+// NewReviewer creates a new Reviewer instance.
 func NewReviewer(clientset kubernetes.Interface) *Reviewer {
 	return &Reviewer{
 		clientset: clientset,
 	}
 }
 
-// ExtractUserInfo validates a token and extracts user information
+// ExtractUserInfo validates a token and extracts user information.
 func (r *Reviewer) ExtractUserInfo(ctx context.Context, token string) (*UserContext, error) {
 	if token == "" {
 		return nil, fmt.Errorf("token cannot be empty")

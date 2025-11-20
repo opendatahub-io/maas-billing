@@ -13,7 +13,7 @@ type Tier struct {
 	Level       int      `yaml:"level,omitempty"`       // Level for importance (higher wins)
 }
 
-// GroupNotFoundError indicates that a group was not found in any tier
+// GroupNotFoundError indicates that a group was not found in any tier.
 type GroupNotFoundError struct {
 	Group string
 }

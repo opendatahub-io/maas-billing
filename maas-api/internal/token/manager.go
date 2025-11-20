@@ -44,7 +44,7 @@ func NewManager(
 	}
 }
 
-// GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to
+// GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to.
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration) (*Token, error) {
 
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
@@ -78,7 +78,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	}, nil
 }
 
-// RevokeTokens revokes all tokens for a user by recreating their Service Account
+// RevokeTokens revokes all tokens for a user by recreating their Service Account.
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -191,7 +191,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 	return saName, nil
 }
 
-// createServiceAccountToken creates a token for the service account using TokenRequest
+// createServiceAccountToken creates a token for the service account using TokenRequest.
 func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saName string, ttl int) (*authv1.TokenRequest, error) {
 	expirationSeconds := int64(ttl)
 
@@ -211,7 +211,7 @@ func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saNa
 	return result, nil
 }
 
-// deleteServiceAccount deletes a service account
+// deleteServiceAccount deletes a service account.
 func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName string) error {
 	err := m.clientset.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{})
 	if err != nil {

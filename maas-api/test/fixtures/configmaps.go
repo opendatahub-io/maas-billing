@@ -7,7 +7,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 )
 
-// Standard tier configuration used across tests
+// Standard tier configuration used across tests.
 const TierConfigYAML = `
 - name: free
   description: Free tier
@@ -34,7 +34,7 @@ const TierConfigYAML = `
   - admin-users
 `
 
-// CreateTierConfigMap creates a ConfigMap with tier configuration
+// CreateTierConfigMap creates a ConfigMap with tier configuration.
 func CreateTierConfigMap(namespace string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{

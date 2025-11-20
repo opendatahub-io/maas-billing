@@ -11,7 +11,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
-// createTestMapper wraps the unified fixtures function for backward compatibility
+// createTestMapper wraps the unified fixtures function for backward compatibility.
 func createTestMapper(withConfigMap bool) *tier.Mapper {
 	return fixtures.CreateTestMapper(withConfigMap)
 }

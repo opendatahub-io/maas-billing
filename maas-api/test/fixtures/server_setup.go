@@ -21,7 +21,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
-// TokenReviewScenario defines how TokenReview should respond for a given token
+// TokenReviewScenario defines how TokenReview should respond for a given token.
 type TokenReviewScenario struct {
 	Authenticated bool
 	UserInfo      authv1.UserInfo
@@ -29,7 +29,7 @@ type TokenReviewScenario struct {
 	ErrorMessage  string
 }
 
-// TestServerConfig holds configuration for test server setup
+// TestServerConfig holds configuration for test server setup.
 type TestServerConfig struct {
 	WithTierConfig bool
 	TokenScenarios map[string]TokenReviewScenario
@@ -38,20 +38,20 @@ type TestServerConfig struct {
 	TestTenant     string
 }
 
-// TestClients holds the test clients
+// TestClients holds the test clients.
 type TestClients struct {
 	K8sClient     kubernetes.Interface
 	DynamicClient dynamic.Interface
 }
 
-// TestComponents holds common test components
+// TestComponents holds common test components.
 type TestComponents struct {
 	Manager   *token.Manager
 	Reviewer  *token.Reviewer
 	Clientset *k8sfake.Clientset
 }
 
-// SetupTestServer creates a test server with base configuration
+// SetupTestServer creates a test server with base configuration.
 func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestClients) {
 	gin.SetMode(gin.TestMode)
 
@@ -91,7 +91,7 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 	return gin.New(), clients
 }
 
-// StubTokenProviderAPIs creates common test components for token tests
+// StubTokenProviderAPIs creates common test components for token tests.
 func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset) {
 	var objects []runtime.Object
 
@@ -121,7 +121,7 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	return manager, reviewer, fakeClient
 }
 
-// SetupTestRouter creates a test router with token endpoints
+// SetupTestRouter creates a test router with token endpoints.
 func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -138,7 +138,7 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engi
 	return router
 }
 
-// SetupTierTestRouter creates a test router for tier endpoints
+// SetupTierTestRouter creates a test router for tier endpoints.
 func SetupTierTestRouter(mapper *tier.Mapper) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -149,7 +149,7 @@ func SetupTierTestRouter(mapper *tier.Mapper) *gin.Engine {
 	return router
 }
 
-// CreateTestMapper creates a tier mapper for testing
+// CreateTestMapper creates a tier mapper for testing.
 func CreateTestMapper(withConfigMap bool) *tier.Mapper {
 	var objects []runtime.Object
 
@@ -162,7 +162,7 @@ func CreateTestMapper(withConfigMap bool) *tier.Mapper {
 	return tier.NewMapper(clientset, TestTenant, TestNamespace)
 }
 
-// StubTokenReview sets up TokenReview API mocking for authentication tests
+// StubTokenReview sets up TokenReview API mocking for authentication tests.
 func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenReviewScenario) {
 	fakeClient, ok := clientset.(*k8sfake.Clientset)
 	if !ok {

@@ -13,7 +13,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
-// Use unified test constants from fixtures
+// Use unified test constants from fixtures.
 const (
 	testNamespace = fixtures.TestNamespace
 	testTenant    = fixtures.TestTenant

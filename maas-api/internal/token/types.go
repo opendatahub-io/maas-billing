@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// UserContext contains user information extracted from a token
+// UserContext contains user information extracted from a token.
 type UserContext struct {
 	Username        string   `json:"username"`
 	UID             string   `json:"uid"`
