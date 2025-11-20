@@ -172,12 +172,12 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			request.Header.Set("Authorization", "Bearer duration-test-token")
 			router.ServeHTTP(w, request)
 
-			if w.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d. Description: %s", tt.expectedStatus, w.Code, tt.description)
-			}
+		if w.Code != tt.expectedStatus {
+			t.Errorf("expected status %d, got %d. Description: %s", tt.expectedStatus, w.Code, tt.description)
+		}
 
-			var response map[string]interface{}
-			err := json.Unmarshal(w.Body.Bytes(), &response)
+		var response map[string]any
+		err := json.Unmarshal(w.Body.Bytes(), &response)
 			if err != nil {
 				t.Errorf("failed to unmarshal response: %v", err)
 			}
