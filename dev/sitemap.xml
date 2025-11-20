@@ -2,62 +2,62 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/architecture/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/quickstart/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/advanced-administration/limitador-persistence/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/advanced-administration/observability/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/configuration-and-management/model-setup/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/configuration-and-management/tier-concepts/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/configuration-and-management/tier-configuration/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/configuration-and-management/tier-overview/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/install/maas-setup/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/install/odh-setup/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/install/prerequisites/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/install/rhoai-setup/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/install/validation/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
     <url>
          <loc>https://opendatahub-io.github.io/maas-billing/dev/user-guide/self-service-model-access/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2025-11-20</lastmod>
     </url>
 </urlset>
