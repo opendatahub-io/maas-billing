@@ -67,7 +67,10 @@ func TestHandler_PostTierLookup_Success(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reqBody := tier.LookupRequest{Groups: tt.groups}
-			jsonBody, _ := json.Marshal(reqBody)
+			jsonBody, err := json.Marshal(reqBody)
+			if err != nil {
+				t.Fatalf("failed to marshal request body: %v", err)
+			}
 
 			w := httptest.NewRecorder()
 			req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
@@ -95,7 +98,10 @@ func TestHandler_PostTierLookup_GroupNotFound(t *testing.T) {
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"unknown-group"}}
-	jsonBody, _ := json.Marshal(reqBody)
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
@@ -175,7 +181,10 @@ func TestHandler_PostTierLookup_ConfigMapMissing_ShouldError(t *testing.T) {
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"any-group"}}
-	jsonBody, _ := json.Marshal(reqBody)
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))

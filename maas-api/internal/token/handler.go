@@ -76,7 +76,11 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
-	user := userCtx.(*UserContext)
+	user, ok := userCtx.(*UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
 
 	expiration := req.Expiration.Duration
 	if expiration.Abs() != expiration {
@@ -106,7 +110,11 @@ func (g *Handler) RevokeAllTokens(c *gin.Context) {
 		return
 	}
 
-	user := userCtx.(*UserContext)
+	user, ok := userCtx.(*UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
 	err := g.manager.RevokeTokens(c.Request.Context(), user)
 	if err != nil {
 		log.Printf("Failed to revoke tokens for user %s: %v", user.Username, err)

@@ -164,7 +164,10 @@ func CreateTestMapper(withConfigMap bool) *tier.Mapper {
 
 // StubTokenReview sets up TokenReview API mocking for authentication tests
 func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenReviewScenario) {
-	fakeClient := clientset.(*k8sfake.Clientset)
+	fakeClient, ok := clientset.(*k8sfake.Clientset)
+	if !ok {
+		panic("StubTokenReview: clientset is not a *k8sfake.Clientset")
+	}
 	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
 		createAction := action.(k8stesting.CreateAction)
 		tokenReview := createAction.GetObject().(*authv1.TokenReview)
