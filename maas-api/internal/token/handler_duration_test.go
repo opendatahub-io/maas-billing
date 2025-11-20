@@ -162,12 +162,12 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			if !tt.expirationInRawSeconds {
 				expiration = fmt.Sprintf("\"%s\"", expiration)
 			}
-			jsonPayload := fmt.Sprintf(`
+		jsonPayload := fmt.Sprintf(`
 {
-			"expiration": %s
+		"expiration": %s
 }`, expiration)
 
-			request, _ := http.NewRequest("POST", "/v1/tokens", bytes.NewBuffer([]byte(jsonPayload)))
+		request, _ := http.NewRequest("POST", "/v1/tokens", bytes.NewBufferString(jsonPayload))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer duration-test-token")
 			router.ServeHTTP(w, request)
