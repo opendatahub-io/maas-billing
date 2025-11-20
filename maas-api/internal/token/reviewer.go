@@ -2,6 +2,7 @@ package token
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	authv1 "k8s.io/api/authentication/v1"
@@ -24,7 +25,7 @@ func NewReviewer(clientset kubernetes.Interface) *Reviewer {
 // ExtractUserInfo validates a token and extracts user information.
 func (r *Reviewer) ExtractUserInfo(ctx context.Context, token string) (*UserContext, error) {
 	if token == "" {
-		return nil, fmt.Errorf("token cannot be empty")
+		return nil, errors.New("token cannot be empty")
 	}
 
 	tokenReview := &authv1.TokenReview{
