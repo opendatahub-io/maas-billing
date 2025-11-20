@@ -169,8 +169,14 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 		panic("StubTokenReview: clientset is not a *k8sfake.Clientset")
 	}
 	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-		createAction := action.(k8stesting.CreateAction)
-		tokenReview := createAction.GetObject().(*authv1.TokenReview)
+		createAction, ok := action.(k8stesting.CreateAction)
+		if !ok {
+			return true, nil, fmt.Errorf("expected CreateAction, got %T", action)
+		}
+		tokenReview, ok := createAction.GetObject().(*authv1.TokenReview)
+		if !ok {
+			return true, nil, fmt.Errorf("expected TokenReview, got %T", createAction.GetObject())
+		}
 		tokenSpec := tokenReview.Spec.Token
 
 		scenario, exists := scenarios[tokenSpec]
@@ -195,8 +201,14 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 	})
 
 	fakeClient.PrependReactor("create", "serviceaccounts/token", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-		createAction := action.(k8stesting.CreateAction)
-		tokenRequest := createAction.GetObject().(*authv1.TokenRequest)
+		createAction, ok := action.(k8stesting.CreateAction)
+		if !ok {
+			return true, nil, fmt.Errorf("expected CreateAction, got %T", action)
+		}
+		tokenRequest, ok := createAction.GetObject().(*authv1.TokenRequest)
+		if !ok {
+			return true, nil, fmt.Errorf("expected TokenRequest, got %T", createAction.GetObject())
+		}
 
 		tokenRequest.Status = authv1.TokenRequestStatus{
 			Token:               "mock-service-account-token-" + fmt.Sprintf("%d", time.Now().Unix()),
