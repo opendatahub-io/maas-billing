@@ -14,19 +14,30 @@ BINARY_NAME := maas-api
 BUILD_DIR := $(PROJECT_DIR)/bin
 
 # Go settings
-GO_VERSION := 1.24.2
-GOOS ?= linux
-GOARCH ?= amd64
-CGO_ENABLED ?= 1
-GOEXPERIMENT ?= strictfipsruntime
+GOOS   ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+GO_STRICTFIPS ?= false
+
+ifeq ($(GO_STRICTFIPS),true)
+  GOEXPERIMENT ?= strictfipsruntime
+  CGO_ENABLED  ?= 1
+endif
+
+GO_ENV := GOOS=$(GOOS) GOARCH=$(GOARCH)
+ifdef GOEXPERIMENT
+  GO_ENV += GOEXPERIMENT=$(GOEXPERIMENT)
+endif
+ifdef CGO_ENABLED
+  GO_ENV += CGO_ENABLED=$(CGO_ENABLED)
+endif
 
 # Git settings
-GIT_COMMIT := $(shell git rev-parse --short HEAD)
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_COMMIT := $(shell git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git rev-parse --short HEAD)
+GIT_BRANCH := $(shell git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git rev-parse --abbrev-ref HEAD)
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 
 # Ldflags for build info
-LDFLAGS := -ldflags "-s -w -X main.version=$(TAG) -X main.commit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME)"
+LDFLAGS ?= -ldflags "-s -w -X main.version=$(TAG) -X main.commit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME)"
 
 .PHONY: help
 help: ## Show this help message
@@ -78,11 +89,14 @@ deps: ## Download Go dependencies
 	go mod download
 
 .PHONY: build
-build: deps fmt test ## Build the maas-api binary
-	@echo "Building $(BINARY_NAME)..."
-	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
-	@echo "Built $(BUILD_DIR)/$(BINARY_NAME)"
+build: deps fmt test binary ## Build the maas-api binary
+
+.PHONY: binary
+binary: $(BUILD_DIR)
+	$(GO_ENV) go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 SRC_DIRS := $(PROJECT_DIR)/cmd $(PROJECT_DIR)/internal
 PKGS := $(foreach d,$(SRC_DIRS),$(d)/...)
@@ -139,7 +153,6 @@ version: ## Show version information
 	@echo "Git Commit: $(GIT_COMMIT)"
 	@echo "Git Branch: $(GIT_BRANCH)"
 	@echo "Build Time: $(BUILD_TIME)"
-	@echo "Go Version: $(GO_VERSION)"
 
 # Default target
 .DEFAULT_GOAL := help
