@@ -34,6 +34,9 @@ TOKEN_RESPONSE=$(curl -sSk \
 TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 ```
 
+!!! note
+    For more information about how tokens work, see [Understanding Token Management](../configuration-and-management/token-management.md).
+
 ### 3. List Available Models
 
 ```bash

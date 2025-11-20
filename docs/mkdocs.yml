@@ -64,6 +64,7 @@ nav:
       - Tier Management: configuration-and-management/tier-overview.md
       - Tier Configuration: configuration-and-management/tier-configuration.md
       - Tier Concepts: configuration-and-management/tier-concepts.md
+      - Token Management: configuration-and-management/token-management.md
     - Model Setup: configuration-and-management/model-setup.md
     - Advanced Administration:
       - Observability: advanced-administration/observability.md

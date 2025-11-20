@@ -8,6 +8,9 @@ The Model-as-a-Service (MaaS) platform provides access to AI models through a si
 
 ## Getting Your Access Token
 
+!!! tip
+    For a detailed explanation of how token authentication works, including the underlying service account architecture and security model, see [Understanding Token Management](../configuration-and-management/token-management.md).
+
 ### Step 1: Get Your OpenShift Authentication Token
 
 First, you need your OpenShift token to prove your identity to the maas-api.
