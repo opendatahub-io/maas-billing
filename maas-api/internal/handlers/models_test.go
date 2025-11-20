@@ -71,7 +71,7 @@ func TestListingModels(t *testing.T) {
 	v1.GET("/models", modelsHandler.ListLLMs)
 
 	w := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/v1/models", nil)
+	req, err := http.NewRequestWithContext(t.Context(), "GET", "/v1/models", nil)
 	require.NoError(t, err, "Failed to create request")
 
 	req.Header.Set("Authorization", "Bearer valid-token")

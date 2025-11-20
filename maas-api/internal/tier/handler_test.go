@@ -73,7 +73,7 @@ func TestHandler_PostTierLookup_Success(t *testing.T) {
 			}
 
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
+			req, _ := http.NewRequestWithContext(t.Context(), "POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(w, req)
 
@@ -104,7 +104,7 @@ func TestHandler_PostTierLookup_GroupNotFound(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
+	req, _ := http.NewRequestWithContext(t.Context(), "POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
@@ -156,7 +156,7 @@ func TestHandler_PostTierLookup_BadRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBufferString(tt.requestBody))
+			req, _ := http.NewRequestWithContext(t.Context(), "POST", "/tiers/lookup", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(w, req)
 
@@ -187,7 +187,7 @@ func TestHandler_PostTierLookup_ConfigMapMissing_ShouldError(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
+	req, _ := http.NewRequestWithContext(t.Context(), "POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
