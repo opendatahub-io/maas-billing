@@ -49,16 +49,40 @@ func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
 	return toModels(list)
 }
 
-// ListAvailableLLMs lists all LLMInferenceServices or InferenceServices.
-// Tries standard InferenceServices first, then adds LLMInferenceServices if available.
+// ListAvailableLLMs lists all LLMInferenceServices across all namespaces.
 func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
+	llmGVR := schema.GroupVersionResource{
+		Group:    "serving.kserve.io",
+		Version:  "v1alpha1",
+		Resource: "llminferenceservices",
+	}
+
+	log.Printf("DEBUG: Attempting to list LLMInferenceServices with GVR: %+v", llmGVR)
+
+	list, err := m.k8sClient.Resource(llmGVR).
+		Namespace(metav1.NamespaceAll).
+		List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Printf("DEBUG: Failed to list LLMInferenceServices: %v", err)
+		return nil, fmt.Errorf("failed to list LLMInferenceServices: %w", err)
+	}
+
+	log.Printf("DEBUG: Found %d LLMInferenceServices", len(list.Items))
+
+	return toModels(list)
+}
+
+// ListAllAvailableModels lists both InferenceServices and LLMInferenceServices across all namespaces.
+// This method provides broader compatibility by discovering models from both standard KServe 
+// (InferenceServices) and OpenShift AI/ODH (LLMInferenceServices) deployments.
+func (m *Manager) ListAllAvailableModels(ctx context.Context) ([]Model, error) {
 	// Try standard InferenceServices first (works on any Kubernetes with KServe)
 	models, err := m.ListAvailableModels(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Try to add LLMInferenceServices if OpenShift AI is installed
+	// Try to add LLMInferenceServices if OpenShift AI/ODH is installed
 	llmGVR := schema.GroupVersionResource{
 		Group:    "serving.kserve.io",
 		Version:  "v1alpha1",
@@ -72,7 +96,7 @@ func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
 		List(ctx, metav1.ListOptions{})
 
 	if llmErr != nil {
-		// Expected when OpenShift AI is not installed
+		// Expected when OpenShift AI/ODH is not installed
 		log.Printf("DEBUG: LLMInferenceServices not available: %v", llmErr)
 		return models, nil
 	}

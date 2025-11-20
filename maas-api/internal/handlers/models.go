@@ -36,14 +36,14 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 	})
 }
 
-// ListLLMs handles GET /v1/models
+// ListLLMs handles GET /v1/models (OpenAI-compatible endpoint)
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
-	modelList, err := h.modelMgr.ListAvailableLLMs(c.Request.Context())
+	modelList, err := h.modelMgr.ListAllAvailableModels(c.Request.Context())
 	if err != nil {
-		log.Printf("Failed to get available LLM models: %v", err)
+		log.Printf("Failed to get available models: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"message": "Failed to retrieve LLM models",
+				"message": "Failed to retrieve models",
 				"type":    "server_error",
 			}})
 		return
