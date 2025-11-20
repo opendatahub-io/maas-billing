@@ -1,6 +1,7 @@
 package fixtures
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -113,6 +114,19 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	store, err := token.NewStore(dbPath)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test store: %v", err))
+	}
+
+	// Pre-populate store with authenticated tokens from scenarios
+	ctx := context.Background()
+	for tokenStr, scenario := range tokenScenarios {
+		if scenario.Authenticated {
+			tokenHash := token.HashToken(tokenStr)
+			// Using a default name and far future expiration
+			err := store.AddTokenMetadata(ctx, TestNamespace, scenario.UserInfo.Username, "test-token", tokenHash, time.Now().Add(24*time.Hour).Unix())
+			if err != nil {
+				panic(fmt.Sprintf("failed to add test token to store: %v", err))
+			}
+		}
 	}
 
 	tierMapper := tier.NewMapper(fakeClient, TestTenant, TestNamespace)

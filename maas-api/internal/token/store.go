@@ -175,11 +175,10 @@ func (s *Store) IsTokenActive(ctx context.Context, tokenHash string) (bool, erro
 	err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(&status)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Token not found in metadata (might be an old token or non-tracked one)
-			// Decide policy: Allow untracked?
-			// For now, we return true (allow) if it's not explicitly revoked in DB.
-			// However, the "Deny List" logic implies we only block if it IS in DB and is EXPIRED.
-			return true, nil
+			// Token not found in metadata.
+			// Policy: Allow-list behavior.
+			// Tokens must be explicitly present and marked "active" in the DB to be accepted.
+			return false, nil
 		}
 		return false, err
 	}

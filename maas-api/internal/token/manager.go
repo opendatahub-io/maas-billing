@@ -81,7 +81,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 	// If name is provided, add to the user's metadata secret
 	if name != "" {
-		tokenHash := hashToken(result.Token)
+		tokenHash := HashToken(result.Token)
 		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, tokenHash, result.ExpiresAt); err != nil {
 			log.Printf("Failed to update metadata for token %s: %v", name, err)
 			// Log error but don't fail token generation
@@ -156,7 +156,7 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 
 	// 2. Check deny list (DB)
 	// Compute hash of the token
-	tokenHash := hashToken(token)
+	tokenHash := HashToken(token)
 	active, err := m.store.IsTokenActive(ctx, tokenHash)
 	if err != nil {
 		log.Printf("Error checking token status in DB: %v", err)
@@ -330,7 +330,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	return name + "-" + suffix, nil
 }
 
-func hashToken(token string) string {
+func HashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(hash[:])
 }

@@ -50,7 +50,8 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	registerHandlers(ctx, router, cfg)
+	cleanup := registerHandlers(ctx, router, cfg)
+	defer cleanup()
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -85,7 +86,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) func() {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -98,10 +99,10 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	router.GET("/models", modelsHandler.ListModels)
 	router.GET("/v1/models", modelsHandler.ListLLMs)
 
-	configureSATokenProvider(ctx, cfg, router, clusterConfig)
+	return configureSATokenProvider(ctx, cfg, router, clusterConfig)
 }
 
-func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {
+func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) func() {
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
@@ -144,4 +145,10 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
 	tokenRoutes.DELETE("/:id", tokenHandler.RevokeToken)
+
+	return func() {
+		if err := store.Close(); err != nil {
+			log.Printf("Failed to close token store: %v", err)
+		}
+	}
 }
