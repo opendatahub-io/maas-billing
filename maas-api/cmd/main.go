@@ -77,10 +77,9 @@ func main() {
 	cancel()
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
-
+	defer cancelShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		cancelShutdown()
-		log.Fatal("Server forced to shutdown:", err)
+		log.Fatal("Server forced to shutdown:", err) //nolint:gocritic // exits immediately
 	}
 
 	log.Println("Server exited gracefully")
