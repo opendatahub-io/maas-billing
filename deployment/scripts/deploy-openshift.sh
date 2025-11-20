@@ -153,18 +153,6 @@ wait_for_pods() {
   return 1
 }
 
-# version_compare <version1> <version2>
-#   Compares two version strings in semantic version format (e.g., "4.19.9")
-#   Returns 0 if version1 >= version2, 1 otherwise
-version_compare() {
-  local version1="$1"
-  local version2="$2"
-  
-  local v1=$(echo "$version1" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
-  local v2=$(echo "$version2" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
-  
-  [ "$v1" -ge "$v2" ]
-}
 
 wait_for_validating_webhooks() {
     local namespace="$1"
