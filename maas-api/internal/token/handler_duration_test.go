@@ -186,17 +186,17 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 				if response["token"] == nil || response["token"] == "" {
 					t.Errorf("expected non-empty token. Description: %s", tt.description)
 				}
-		} else {
-			if response["error"] == nil {
-				t.Errorf("expected error for invalid Expiration. Description: %s", tt.description)
+			} else {
+				if response["error"] == nil {
+					t.Errorf("expected error for invalid Expiration. Description: %s", tt.description)
+				}
+				errorMsg, ok := response["error"].(string)
+				if !ok {
+					t.Errorf("expected error to be a string, got %T", response["error"])
+				} else if !strings.Contains(errorMsg, tt.expectedError) {
+					t.Errorf("expected error message: '%s'; got: '%v'\n", tt.expectedError, response["error"])
+				}
 			}
-			errorMsg, ok := response["error"].(string)
-			if !ok {
-				t.Errorf("expected error to be a string, got %T", response["error"])
-			} else if !strings.Contains(errorMsg, tt.expectedError) {
-				t.Errorf("expected error message: '%s'; got: '%v'\n", tt.expectedError, response["error"])
-			}
-		}
 		})
 	}
 }
