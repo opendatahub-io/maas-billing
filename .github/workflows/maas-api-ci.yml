@@ -12,21 +12,47 @@ permissions:
   actions: read
   contents: read
 
+env:
+  PROJECT_DIR: maas-api
+
+defaults:
+  
+  run:
+    working-directory: maas-api
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Align golangci-lint version with Makefile
+        id: golangci-version
+        run: |
+          VERSION=$(grep '^GOLANGCI_LINT_VERSION' Makefile | cut -d'=' -f2 | tr -d ' ?')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: maas-api/go.mod
+          cache: true
+          cache-dependency-path: maas-api/go.sum
+      
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ steps.golangci-version.outputs.version }}
+          working-directory: ${{ env.PROJECT_DIR }}
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: maas-api
-
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: maas-api/go.mod
+          go-version-file: ${{ env.PROJECT_DIR }}/go.mod
           cache: true
-          cache-dependency-path: maas-api/go.sum
+          cache-dependency-path: ${{ env.PROJECT_DIR }}/go.sum
 
       - name: Check code formatting
         run: make fmt-check
@@ -40,8 +66,8 @@ jobs:
         with:
           name: coverage-reports
           path: |
-            maas-api/coverage.out
-            maas-api/coverage.html
+            ${{ env.PROJECT_DIR }}/coverage.out
+            ${{ env.PROJECT_DIR }}/coverage.html
           retention-days: 30
 
       - name: Build image
