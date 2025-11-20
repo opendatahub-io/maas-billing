@@ -46,7 +46,6 @@ func NewManager(
 
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to.
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration) (*Token, error) {
-
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
 		log.Printf("Failed to determine user tier for %s: %v", user.Username, err)
