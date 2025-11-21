@@ -167,9 +167,24 @@ EOF
         done
 
         echo "⏳ Waiting for operators to be ready..."
-        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s
-        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s
-        kubectl wait --for=condition=Available deployment/authorino-operator -n kuadrant-system --timeout=300s
+        
+        # Wait for Kuadrant deployment
+        kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=300s || \
+          echo "   ⚠️  Kuadrant operator deployment not ready, continuing..."
+        
+        # Wait for Limitador deployment  
+        kubectl wait --for=condition=Available deployment/limitador-operator-controller-manager -n kuadrant-system --timeout=300s || \
+          echo "   ⚠️  Limitador operator deployment not ready, continuing..."
+        
+        # Dynamically find and wait for Authorino deployment
+        AUTHORINO_DEPLOYMENT=$(kubectl get deployments -n kuadrant-system --no-headers 2>/dev/null | grep authorino | head -n1 | awk '{print $1}' || echo "")
+        if [ -n "$AUTHORINO_DEPLOYMENT" ]; then
+          echo "   Found Authorino deployment: $AUTHORINO_DEPLOYMENT"
+          kubectl wait --for=condition=Available deployment/$AUTHORINO_DEPLOYMENT -n kuadrant-system --timeout=300s || \
+            echo "   ⚠️  Authorino operator deployment not ready, continuing..."
+        else
+          echo "   ⚠️  No Authorino deployment found, skipping wait"
+        fi
 
         sleep 5
 
