@@ -147,16 +147,21 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 	// 1. Check K8s validity
 	userCtx, err := reviewer.ExtractUserInfo(ctx, token)
 	if err != nil {
+		log.Printf("TokenReview error: %v", err)
 		return nil, err
 	}
 
 	if !userCtx.IsAuthenticated {
+		log.Printf("TokenReview returned IsAuthenticated=false, username: '%s'", userCtx.Username)
 		return userCtx, nil
 	}
+
+	log.Printf("TokenReview successful for user: %s", userCtx.Username)
 
 	// 2. Check deny list (DB)
 	// Compute hash of the token
 	tokenHash := HashToken(token)
+	log.Printf("Checking token hash in DB for user: %s, hash: %s", userCtx.Username, tokenHash[:16]+"...")
 	active, err := m.store.IsTokenActive(ctx, tokenHash)
 	if err != nil {
 		log.Printf("Error checking token status in DB: %v", err)
@@ -171,10 +176,18 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 	}
 
 	if !active {
+		log.Printf("Token not active in DB for user: %s", userCtx.Username)
+		// If it is a User token (not SA), we should allow it (Bootstrap/Admin access).
+		if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
+			log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
+			return userCtx, nil
+		}
+
 		log.Printf("Token for user %s is in deny list (expired/revoked)", userCtx.Username)
 		return &UserContext{IsAuthenticated: false}, nil
 	}
 
+	log.Printf("Token validation successful for user: %s", userCtx.Username)
 	return userCtx, nil
 }
 

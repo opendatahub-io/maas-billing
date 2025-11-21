@@ -140,6 +140,7 @@ func (s *Store) MarkTokenAsExpired(ctx context.Context, tokenID, username string
 }
 
 // GetTokensForUser retrieves all tokens for a user
+// Automatically marks tokens as expired if they've passed their expiration date
 func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedToken, error) {
 	query := `
 	SELECT id, name, creation_date, expiration_date, status, expired_at 
@@ -153,7 +154,10 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 	}
 	defer rows.Close()
 
+	now := time.Now()
 	var tokens []NamedToken
+	var tokensToExpire []string // Track tokens that need to be marked as expired
+
 	for rows.Next() {
 		var t NamedToken
 		var expiredAt sql.NullString
@@ -163,16 +167,46 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 		if expiredAt.Valid {
 			t.ExpiredAt = expiredAt.String
 		}
+
+		// Check if token has expired based on expiration_date
+		if t.Status == "active" {
+			expirationDate, err := time.Parse(time.RFC3339, t.ExpirationDate)
+			if err == nil && now.After(expirationDate) {
+				// Token has expired, mark it
+				t.Status = "expired"
+				expiredAtTime := now.Format(time.RFC3339)
+				t.ExpiredAt = expiredAtTime
+				tokensToExpire = append(tokensToExpire, t.ID)
+			}
+		}
+
 		tokens = append(tokens, t)
 	}
+
+	// Batch update expired tokens
+	if len(tokensToExpire) > 0 {
+		expiredAtTime := now.Format(time.RFC3339)
+		placeholders := make([]string, len(tokensToExpire))
+		args := make([]interface{}, len(tokensToExpire)+1)
+		args[0] = expiredAtTime
+		for i, id := range tokensToExpire {
+			placeholders[i] = "?"
+			args[i+1] = id
+		}
+		query := fmt.Sprintf(`UPDATE tokens SET status = 'expired', expired_at = ? WHERE id IN (%s) AND status = 'active'`, 
+			strings.Join(placeholders, ","))
+		_, _ = s.db.ExecContext(ctx, query, args...)
+	}
+
 	return tokens, nil
 }
 
 // IsTokenActive checks if a token with the given hash is active
+// It checks both the status field and whether the token has passed its expiration date
 func (s *Store) IsTokenActive(ctx context.Context, tokenHash string) (bool, error) {
-	query := `SELECT status FROM tokens WHERE token_hash = ?`
-	var status string
-	err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(&status)
+	query := `SELECT status, expiration_date FROM tokens WHERE token_hash = ?`
+	var status, expirationDateStr string
+	err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(&status, &expirationDateStr)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Token not found in metadata.
@@ -182,7 +216,51 @@ func (s *Store) IsTokenActive(ctx context.Context, tokenHash string) (bool, erro
 		}
 		return false, err
 	}
-	return status == "active", nil
+
+	// Check if status is active
+	if status != "active" {
+		return false, nil
+	}
+
+	// Check if token has expired based on expiration_date
+	expirationDate, err := time.Parse(time.RFC3339, expirationDateStr)
+	if err != nil {
+		log.Printf("Failed to parse expiration_date %s: %v", expirationDateStr, err)
+		// If we can't parse the date, consider it expired for safety
+		return false, nil
+	}
+
+	// If expiration date has passed, token is no longer active
+	if time.Now().After(expirationDate) {
+		// Automatically mark as expired
+		now := time.Now().Format(time.RFC3339)
+		_, _ = s.db.ExecContext(ctx, `UPDATE tokens SET status = 'expired', expired_at = ? WHERE token_hash = ? AND status = 'active'`, now, tokenHash)
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// MarkExpiredTokens marks all tokens that have passed their expiration_date as expired
+// This is used by background cleanup jobs
+func (s *Store) MarkExpiredTokens(ctx context.Context) (int64, error) {
+	now := time.Now().Format(time.RFC3339)
+	query := `
+	UPDATE tokens 
+	SET status = 'expired', expired_at = ?
+	WHERE status = 'active' 
+	AND expiration_date < ?
+	AND (expired_at IS NULL OR expired_at = '')
+	`
+	result, err := s.db.ExecContext(ctx, query, now, now)
+	if err != nil {
+		return 0, fmt.Errorf("failed to mark expired tokens: %w", err)
+	}
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected > 0 {
+		log.Printf("Marked %d expired tokens as expired", rowsAffected)
+	}
+	return rowsAffected, nil
 }
 
 func (s *Store) generateTokenID(username, name string, t time.Time) string {

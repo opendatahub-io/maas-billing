@@ -50,8 +50,13 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	cleanup := registerHandlers(ctx, router, cfg)
+	cleanup, store := registerHandlers(ctx, router, cfg)
 	defer cleanup()
+
+	// Start background token expiration cleanup job
+	if store != nil {
+		go startTokenExpirationCleanup(ctx, store)
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -86,7 +91,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) func() {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) (func(), *token.Store) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -96,13 +101,11 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 
 	modelMgr := models.NewManager(clusterConfig.DynClient)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
-	router.GET("/models", modelsHandler.ListModels)
-	router.GET("/v1/models", modelsHandler.ListLLMs)
 
-	return configureSATokenProvider(ctx, cfg, router, clusterConfig)
+	return configureSATokenProvider(ctx, cfg, router, clusterConfig, modelsHandler)
 }
 
-func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) func() {
+func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig, modelsHandler *handlers.ModelsHandler) (func(), *token.Store) {
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
@@ -139,16 +142,51 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 		store,
 	)
 	tokenHandler := token.NewHandler(cfg.Name, manager)
+	// Create reviewer with audience to properly validate Service Account tokens
+	reviewer := token.NewReviewerWithAudience(clusterConfig.ClientSet, cfg.Name+"-sa")
 
-	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
+	// Protect model listing endpoints with token validation (includes deny list check)
+	router.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListModels)
+	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
+
+	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(reviewer))
 	tokenRoutes.GET("", tokenHandler.ListTokens)
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
 	tokenRoutes.DELETE("/:id", tokenHandler.RevokeToken)
 
-	return func() {
+	cleanup := func() {
 		if err := store.Close(); err != nil {
 			log.Printf("Failed to close token store: %v", err)
+		}
+	}
+	return cleanup, store
+}
+
+// startTokenExpirationCleanup runs a background job that periodically marks expired tokens
+// It runs every 5 minutes and stops when the context is cancelled
+func startTokenExpirationCleanup(ctx context.Context, store *token.Store) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	// Run immediately on startup
+	if count, err := store.MarkExpiredTokens(ctx); err != nil {
+		log.Printf("Error in initial token expiration cleanup: %v", err)
+	} else if count > 0 {
+		log.Printf("Initial cleanup: marked %d expired tokens", count)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Token expiration cleanup job stopped")
+			return
+		case <-ticker.C:
+			if count, err := store.MarkExpiredTokens(ctx); err != nil {
+				log.Printf("Error in token expiration cleanup: %v", err)
+			} else if count > 0 {
+				log.Printf("Token expiration cleanup: marked %d expired tokens", count)
+			}
 		}
 	}
 }

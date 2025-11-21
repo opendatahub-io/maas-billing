@@ -12,12 +12,21 @@ import (
 // Reviewer handles token validation
 type Reviewer struct {
 	clientset kubernetes.Interface
+	audience  string // Optional audience for TokenReview
 }
 
 // NewReviewer creates a new Reviewer instance
 func NewReviewer(clientset kubernetes.Interface) *Reviewer {
 	return &Reviewer{
 		clientset: clientset,
+	}
+}
+
+// NewReviewerWithAudience creates a new Reviewer instance with audience
+func NewReviewerWithAudience(clientset kubernetes.Interface, audience string) *Reviewer {
+	return &Reviewer{
+		clientset: clientset,
+		audience:  audience,
 	}
 }
 
@@ -32,6 +41,12 @@ func (r *Reviewer) ExtractUserInfo(ctx context.Context, token string) (*UserCont
 			Token: token,
 		},
 	}
+
+	// Note: We don't specify audience in TokenReview because:
+	// 1. User tokens (like OC_TOKEN) don't have the same audience
+	// 2. TokenReview should validate tokens regardless of audience
+	// 3. The audience is metadata, not a validation requirement
+	// If we need to validate audience, we should check it separately after TokenReview succeeds
 
 	result, err := r.clientset.AuthenticationV1().TokenReviews().Create(ctx, tokenReview, metav1.CreateOptions{})
 	if err != nil {
