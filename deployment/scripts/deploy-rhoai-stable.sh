@@ -49,7 +49,26 @@ waitsubscriptioninstalled() {
   fi
 }
 
+checksubscriptionexists() {
+  local catalog_ns=${1?catalog namespace is required}; shift
+  local catalog_name=${1?catalog name is required}; shift
+  local operator_name=${1?operator name is required}; shift
+
+  local catalogns_cond=".spec.sourceNamespace == \"${catalog_ns}\""
+  local catalog_cond=".spec.source == \"${catalog_name}\""
+  local op_cond=".spec.name == \"${operator_name}\""
+  local query="${catalogns_cond} and ${catalog_cond} and ${op_cond}"
+
+  echo $(kubectl get subscriptions -A -ojson | jq ".items | map(select(${query})) | length")
+}
+
 deploy_certmanager() {
+  local certmanager_exists=$(checksubscriptionexists openshift-marketplace redhat-operators openshift-cert-manager-operator)
+  if [[ $certmanager_exists -ne "0" ]]; then
+    echo "* The cert-manager operator is present in the cluster. Skipping installation."
+    return 0
+  fi
+
   echo
   echo "* Installing cert-manager operator..."
 
@@ -82,6 +101,12 @@ EOF
 }
 
 deploy_lws() {
+  local lws_exists=$(checksubscriptionexists openshift-marketplace redhat-operators leader-worker-set)
+  if [[ $lws_exists -ne "0" ]]; then
+    echo "* The LWS operator is present in the cluster. Skipping installation."
+    return 0
+  fi
+
   echo
   echo "* Installing LWS operator..."
 
@@ -143,6 +168,12 @@ EOF
   echo "  * Waiting for GatewayClass openshift-default to transition to Accepted status..."
   kubectl wait --timeout=300s --for=condition=Accepted=True GatewayClass/openshift-default
 
+  local rhcl_exists=$(checksubscriptionexists openshift-marketplace redhat-operators rhcl-operator)
+  if [[ $rhcl_exists -ne "0" ]]; then
+    echo "* The RHCL operator is present in the cluster. Skipping installation."
+    return 0
+  fi
+
   echo
   echo "* Installing RHCL operator..."
 
@@ -184,6 +215,12 @@ EOF
 }
 
 deploy_rhoai() {
+  local rhoai_exists=$(checksubscriptionexists openshift-marketplace redhat-operators rhods-operator)
+  if [[ $rhoai_exists -ne "0" ]]; then
+    echo "* The RHOAI operator is present in the cluster. Skipping installation."
+    return 0
+  fi
+
   echo
   echo "* Installing RHOAI v3 operator..."
 
@@ -274,9 +311,9 @@ metadata:
   name: maas-api
 EOF
 
-# TODO: Use correct ref=tag
+: "${MAAS_REF:=main}"
 kubectl apply --server-side=true \
-  -f <(kustomize build "https://github.com/opendatahub-io/maas-billing.git/deployment/overlays/openshift?ref=main" | \
+  -f <(kustomize build "https://github.com/opendatahub-io/maas-billing.git/deployment/overlays/openshift?ref=${MAAS_REF}" | \
        envsubst '$CLUSTER_DOMAIN')
 
 if [[ -n "$AUD" && "$AUD" != "https://kubernetes.default.svc"  ]]; then
@@ -293,4 +330,45 @@ spec:
 fi
 
 # Patch maas-api Deployment with stable image
-kubectl set image -n maas-api deployment/maas-api maas-api=registry.redhat.io/rhoai/odh-maas-api-rhel9:v3.0.0
+: "${MAAS_RHOAI_IMAGE:=v3.0.0}"
+kubectl set image -n maas-api deployment/maas-api maas-api=registry.redhat.io/rhoai/odh-maas-api-rhel9:${MAAS_RHOAI_IMAGE}
+
+echo ""
+echo "========================================="
+echo "Deployment is complete."
+echo ""
+echo "Next Steps:"
+echo "1. Deploy a sample model:"
+echo "   kustomize build 'https://github.com/opendatahub-io/maas-billing.git/docs/samples/models/simulator?ref=${MAAS_REF}' | kubectl apply -f -"
+echo ""
+echo "2. Get Gateway endpoint:"
+echo "   CLUSTER_DOMAIN=\$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
+echo "   HOST=\"maas.\${CLUSTER_DOMAIN}\""
+echo ""
+echo "3. Get authentication token:"
+echo "   TOKEN_RESPONSE=\$(curl -sSk --oauth2-bearer '\$(oc whoami -t)' --json '{\"expiration\": \"10m\"}' \"\${HOST}/maas-api/v1/tokens\")"
+echo "   TOKEN=\$(echo \$TOKEN_RESPONSE | jq -r .token)"
+echo ""
+echo "4. Test model endpoint:"
+echo "   MODELS=\$(curl -sSk \${HOST}/maas-api/v1/models -H \"Content-Type: application/json\" -H \"Authorization: Bearer \$TOKEN\" | jq -r .)"
+echo "   MODEL_NAME=\$(echo \$MODELS | jq -r '.data[0].id')"
+echo "   MODEL_URL=\"\${HOST}/llm/facebook-opt-125m-simulated/v1/chat/completions\" # Note: This may be different for your model"
+echo "   curl -sSk -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\""
+echo ""
+echo "5. Test authorization limiting (no token 401 error):"
+echo "   curl -sSk -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\" -v"
+echo ""
+echo "6. Test rate limiting (200 OK followed by 429 Rate Limit Exceeded after about 4 requests):"
+echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\"; done"
+echo ""
+echo "7. Run validation script (Runs all the checks again):"
+echo "   curl https://raw.githubusercontent.com/opendatahub-io/maas-billing/refs/heads/${MAAS_REF}/deployment/scripts/validate-deployment.sh | sh -v -"
+echo ""
+echo "8. Check metrics generation:"
+echo "   kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080 &"
+echo "   curl http://localhost:8080/metrics | grep -E '(authorized_hits|authorized_calls|limited_calls)'"
+echo ""
+echo "9. Access Prometheus to view metrics:"
+echo "   kubectl port-forward -n openshift-monitoring svc/prometheus-k8s 9090:9091 &"
+echo "   # Open http://localhost:9090 in browser and search for: authorized_hits, authorized_calls, limited_calls"
+echo ""
