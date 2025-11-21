@@ -193,7 +193,7 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 			placeholders[i] = "?"
 			args[i+1] = id
 		}
-		query := fmt.Sprintf(`UPDATE tokens SET status = 'expired', expired_at = ? WHERE id IN (%s) AND status = 'active'`, 
+		query := fmt.Sprintf(`UPDATE tokens SET status = 'expired', expired_at = ? WHERE id IN (%s) AND status = 'active'`,
 			strings.Join(placeholders, ","))
 		_, _ = s.db.ExecContext(ctx, query, args...)
 	}
