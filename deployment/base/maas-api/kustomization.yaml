@@ -22,4 +22,4 @@ labels:
 images:
   - name: maas-api
     newName: quay.io/opendatahub/maas-api
-    newTag: pr-232
+    newTag: latest

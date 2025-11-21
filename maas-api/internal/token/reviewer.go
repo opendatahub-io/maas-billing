@@ -42,12 +42,28 @@ func (r *Reviewer) ExtractUserInfo(ctx context.Context, token string) (*UserCont
 		},
 	}
 
-	// Note: We don't specify audience in TokenReview because:
-	// 1. User tokens (like OC_TOKEN) don't have the same audience
-	// 2. TokenReview should validate tokens regardless of audience
-	// 3. The audience is metadata, not a validation requirement
-	// If we need to validate audience, we should check it separately after TokenReview succeeds
+	// 1. Try validating with the specific audience if configured (for Service Account tokens)
+	if r.audience != "" {
+		tokenReview.Spec.Audiences = []string{r.audience}
+		result, err := r.clientset.AuthenticationV1().TokenReviews().Create(ctx, tokenReview, metav1.CreateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("token review with audience failed: %w", err)
+		}
 
+		if result.Status.Authenticated {
+			userInfo := result.Status.User
+			return &UserContext{
+				Username:        userInfo.Username,
+				UID:             userInfo.UID,
+				Groups:          userInfo.Groups,
+				IsAuthenticated: true,
+			}, nil
+		}
+	}
+
+	// 2. Fallback: Validate without audience (for User tokens / OIDC tokens)
+	// Reset audiences to empty to validate against default audience
+	tokenReview.Spec.Audiences = nil
 	result, err := r.clientset.AuthenticationV1().TokenReviews().Create(ctx, tokenReview, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("token review failed: %w", err)

@@ -101,4 +101,22 @@ func TestStore(t *testing.T) {
 		assert.NoError(t, err)
 		assert.False(t, active)
 	})
+
+	t.Run("DenyListBehavior_TokenNotInDB", func(t *testing.T) {
+		// Test deny-list behavior: token NOT in database should be considered active
+		active, err := store.IsTokenActive(ctx, "unknown-hash-not-in-db")
+		assert.NoError(t, err)
+		assert.True(t, active, "Token not in database should be considered active (deny-list behavior)")
+	})
+
+	t.Run("DenyListBehavior_ExpiredToken", func(t *testing.T) {
+		// Add an expired token
+		err := store.AddTokenMetadata(ctx, "test-ns", "user4", "expired-token", "expired-hash", time.Now().Add(-1*time.Hour).Unix())
+		assert.NoError(t, err)
+
+		// Even though it's past expiration, it should still be active until explicitly checked
+		active, err := store.IsTokenActive(ctx, "expired-hash")
+		assert.NoError(t, err)
+		assert.False(t, active, "Expired token should be marked as inactive")
+	})
 }

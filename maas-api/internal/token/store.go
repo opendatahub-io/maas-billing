@@ -202,7 +202,8 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 }
 
 // IsTokenActive checks if a token with the given hash is active
-// It checks both the status field and whether the token has passed its expiration date
+// It implements a deny-list approach: tokens NOT in the database are considered active.
+// Tokens in the database are checked for explicit revocation or expiration.
 func (s *Store) IsTokenActive(ctx context.Context, tokenHash string) (bool, error) {
 	query := `SELECT status, expiration_date FROM tokens WHERE token_hash = ?`
 	var status, expirationDateStr string
@@ -210,9 +211,10 @@ func (s *Store) IsTokenActive(ctx context.Context, tokenHash string) (bool, erro
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Token not found in metadata.
-			// Policy: Allow-list behavior.
-			// Tokens must be explicitly present and marked "active" in the DB to be accepted.
-			return false, nil
+			// Policy: Deny-list behavior.
+			// Tokens NOT in the DB are considered active (not explicitly revoked).
+			// This allows unnamed tokens to work without DB storage.
+			return true, nil
 		}
 		return false, err
 	}

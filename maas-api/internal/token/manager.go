@@ -47,6 +47,7 @@ func NewManager(
 }
 
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to
+// The name parameter is optional - if provided, the token is tracked in the database for individual revocation
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error) {
 
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
@@ -79,7 +80,8 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		ExpiresAt:  token.Status.ExpirationTimestamp.Unix(),
 	}
 
-	// If name is provided, add to the user's metadata secret
+	// If name is provided, add to the database for tracking and individual revocation
+	// Unnamed tokens still work but can only be revoked via "revoke all" (SA recreation)
 	if name != "" {
 		tokenHash := HashToken(result.Token)
 		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, tokenHash, result.ExpiresAt); err != nil {
@@ -165,18 +167,13 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 	active, err := m.store.IsTokenActive(ctx, tokenHash)
 	if err != nil {
 		log.Printf("Error checking token status in DB: %v", err)
-		// Fallback: If DB check fails, do we allow or deny?
-		// Secure by default -> deny? Or availability -> allow?
-		// For MVP, let's log and allow, unless it's critical.
-		// Actually, if we can't verify revocation, we should probably allow K8s to decide,
-		// as K8s is the source of truth for the token validity itself.
-		// But if the requirement is "deny list", we might need to be stricter.
-		// Let's allow for now to prevent outage on DB blip.
+		// On DB error, allow the token to proceed (fail open for availability)
+		// The K8s TokenReview already validated it
 		return userCtx, nil
 	}
 
 	if !active {
-		log.Printf("Token not active in DB for user: %s", userCtx.Username)
+		log.Printf("Token found in deny list for user: %s", userCtx.Username)
 		// If it is a User token (not SA), we should allow it (Bootstrap/Admin access).
 		if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
 			log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
