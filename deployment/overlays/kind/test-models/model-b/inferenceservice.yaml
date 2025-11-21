@@ -1,5 +1,5 @@
-apiVersion: serving.kserve.io/v1beta1
-kind: InferenceService
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
 metadata:
   name: model-b
   namespace: llm
@@ -9,6 +9,11 @@ metadata:
   annotations:
     serving.kserve.io/deploymentMode: "Serverless"
 spec:
+  model:
+    name: "model-b"
+    modelFormat:
+      name: "custom"
+    runtime: "custom"
   predictor:
     containers:
     - name: kserve-container

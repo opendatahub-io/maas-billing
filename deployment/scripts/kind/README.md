@@ -13,7 +13,11 @@ Run the full MaaS platform locally using [Kubernetes in Docker (Kind)](https://k
 
 Wait ~2-3 minutes for all pods to be ready.
 
-> **Note:** Two test models (model-a and model-b) are included by default. Use `--without-models` to skip them.
+> **Note:** Two test models are included by default demonstrating both KServe CRD types:
+> - **model-a**: `InferenceService` (standard KServe)
+> - **model-b**: `LLMInferenceService` (KServe v0.16.0+)
+> 
+> Use `--without-models` to skip them.
 
 ### Quick Test
 
@@ -194,8 +198,10 @@ kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-m
 
 ### 6. Install KServe
 ```bash
-kubectl apply -f https://github.com/kserve/kserve/releases/download/v0.11.0/kserve.yaml
+kubectl apply -f https://github.com/kserve/kserve/releases/download/v0.16.0/kserve.yaml
 kubectl wait --for=condition=Available deployment/kserve-controller-manager -n kserve --timeout=300s
+kubectl wait --for condition=established crd/inferenceservices.serving.kserve.io
+kubectl wait --for condition=established crd/llminferenceservices.serving.kserve.io
 ```
 
 ### 7. Deploy MaaS Components
@@ -223,6 +229,61 @@ cd deployment/scripts/kind
 ```
 
 For manual curl examples, see [TESTING.md](TESTING.md)
+
+---
+
+## 🏗️ KServe CRD Architecture
+
+This deployment demonstrates **both** KServe Custom Resource Definition types:
+
+### InferenceService vs LLMInferenceService
+
+| Feature | InferenceService | LLMInferenceService |
+|---------|------------------|---------------------|
+| **API Version** | `serving.kserve.io/v1beta1` | `serving.kserve.io/v1alpha1` |
+| **KServe Version** | v0.1.0+ (stable) | v0.16.0+ (alpha) |
+| **Use Case** | General ML models | Large Language Models |
+| **Deployment** | Standard KServe | LLM-optimized features |
+| **Status** | Production-ready | Alpha (evolving) |
+
+### Test Model Examples
+
+**model-a** (InferenceService):
+```yaml
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: model-a
+spec:
+  predictor:
+    containers:
+    - image: ghcr.io/vllm-project/semantic-router/llm-katan:latest
+```
+
+**model-b** (LLMInferenceService):
+```yaml
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: model-b
+spec:
+  model:
+    name: "model-b"
+    modelFormat:
+      name: "custom"
+  predictor:
+    containers:
+    - image: ghcr.io/vllm-project/semantic-router/llm-katan:latest
+```
+
+### API Discovery
+
+The `/v1/models` endpoint discovers **both** CRD types:
+- Queries `InferenceService` resources first
+- Adds `LLMInferenceService` resources if available
+- Returns unified model list for OpenAI compatibility
+
+This allows testing of broader Kubernetes compatibility while showcasing LLM-specific features.
 
 ---
 

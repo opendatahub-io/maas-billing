@@ -221,12 +221,17 @@ install_kuadrant() {
 install_kserve() {
     log_info "Installing KServe..."
 
-    local kserve_version="v0.11.0"
+    local kserve_version="v0.16.0"
     kubectl apply -f "https://github.com/kserve/kserve/releases/download/${kserve_version}/kserve.yaml"
 
     # Wait for KServe controller
     log_info "Waiting for KServe to be ready..."
     kubectl wait --for=condition=Available deployment/kserve-controller-manager -n kserve --timeout=300s || log_warn "KServe controller may not be fully ready"
+
+    # Wait for CRDs to be established
+    log_info "Waiting for KServe CRDs to be established..."
+    kubectl wait --for condition=established --timeout=300s crd/inferenceservices.serving.kserve.io || log_warn "InferenceService CRD not ready"
+    kubectl wait --for condition=established --timeout=300s crd/llminferenceservices.serving.kserve.io || log_warn "LLMInferenceService CRD not ready"
 
     # Configure KServe for serverless mode (using Knative)
     log_info "Configuring KServe for serverless mode..."
@@ -415,8 +420,8 @@ print_access_info() {
 
     if [ "$models_deployed" = true ]; then
         echo "Test Models Deployed:"
-        echo "  model-a (KServe - free tier, accessible to all users)"
-        echo "  model-b (KServe - premium tier, accessible to premium/enterprise only)"
+        echo "  model-a (InferenceService - free tier, accessible to all users)"
+        echo "  model-b (LLMInferenceService - premium tier, accessible to premium/enterprise only)"
         echo ""
         echo "Quick Test (requires auth token):"
         echo "  TOKEN=\$(kubectl create token free-user -n maas-api --audience=maas-default-gateway-sa --duration=1h)"
@@ -482,7 +487,7 @@ deploy_test_models() {
         kubectl apply -k "$PROJECT_ROOT/deployment/overlays/kind/test-models/model-a"
 
         # Wait for InferenceService to be ready
-        log_info "Waiting for model-a to be ready..."
+        log_info "Waiting for model-a (InferenceService) to be ready..."
         kubectl wait --for=condition=Ready inferenceservice/model-a -n llm --timeout=600s || log_warn "model-a may not be ready yet (model download may take time)"
     else
         log_warn "model-a directory not found, skipping..."
@@ -493,9 +498,9 @@ deploy_test_models() {
         log_info "Deploying model-b (premium tier)..."
         kubectl apply -k "$PROJECT_ROOT/deployment/overlays/kind/test-models/model-b"
 
-        # Wait for InferenceService to be ready
-        log_info "Waiting for model-b to be ready..."
-        kubectl wait --for=condition=Ready inferenceservice/model-b -n llm --timeout=600s || log_warn "model-b may not be ready yet (model download may take time)"
+        # Wait for LLMInferenceService to be ready
+        log_info "Waiting for model-b (LLMInferenceService) to be ready..."
+        kubectl wait --for=condition=Ready llminferenceservice/model-b -n llm --timeout=600s || log_warn "model-b may not be ready yet (model download may take time)"
     else
         log_warn "model-b directory not found, skipping..."
     fi
