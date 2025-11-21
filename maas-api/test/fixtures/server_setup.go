@@ -1,12 +1,12 @@
 package fixtures
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 	authv1 "k8s.io/api/authentication/v1"
@@ -116,19 +116,6 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 		panic(fmt.Sprintf("failed to create test store: %v", err))
 	}
 
-	// Pre-populate store with authenticated tokens from scenarios
-	ctx := context.Background()
-	for tokenStr, scenario := range tokenScenarios {
-		if scenario.Authenticated {
-			tokenHash := token.HashToken(tokenStr)
-			// Using a default name and far future expiration
-			err := store.AddTokenMetadata(ctx, TestNamespace, scenario.UserInfo.Username, "test-token", tokenHash, time.Now().Add(24*time.Hour).Unix())
-			if err != nil {
-				panic(fmt.Sprintf("failed to add test token to store: %v", err))
-			}
-		}
-	}
-
 	tierMapper := tier.NewMapper(fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
 		TestTenant,
@@ -226,8 +213,17 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 		createAction := action.(k8stesting.CreateAction)
 		tokenRequest := createAction.GetObject().(*authv1.TokenRequest)
 
+		// Generate valid JWT
+		claims := jwt.MapClaims{
+			"jti": fmt.Sprintf("mock-jti-%d", time.Now().UnixNano()),
+			"exp": time.Now().Add(time.Hour).Unix(),
+			"sub": "system:serviceaccount:test-namespace:test-sa",
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		signedToken, _ := token.SignedString([]byte("secret"))
+
 		tokenRequest.Status = authv1.TokenRequestStatus{
-			Token:               "mock-service-account-token-" + fmt.Sprintf("%d", time.Now().Unix()),
+			Token:               signedToken,
 			ExpirationTimestamp: metav1.NewTime(time.Now().Add(time.Hour)),
 		}
 

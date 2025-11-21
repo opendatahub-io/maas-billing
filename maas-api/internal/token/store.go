@@ -2,12 +2,9 @@ package token
 
 import (
 	"context"
-	"crypto/sha1"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -20,7 +17,6 @@ type NamedToken struct {
 	CreationDate   string `json:"creationDate"`
 	ExpirationDate string `json:"expirationDate"`
 	Status         string `json:"status"` // "active", "expired"
-	ExpiredAt      string `json:"expiredAt,omitempty"`
 }
 
 // Store handles the persistence of token metadata using SQLite
@@ -63,10 +59,7 @@ func (s *Store) initSchema() error {
 		name TEXT NOT NULL,
 		namespace TEXT,
 		creation_date TEXT NOT NULL,
-		expiration_date TEXT NOT NULL,
-		status TEXT DEFAULT 'active',
-		expired_at TEXT,
-		token_hash TEXT
+		expiration_date TEXT NOT NULL
 	);`
 	if _, err := s.db.Exec(createTableQuery); err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
@@ -77,81 +70,43 @@ func (s *Store) initSchema() error {
 		return fmt.Errorf("failed to create username index: %w", err)
 	}
 
-	// 3. Migration: Ensure token_hash column exists
-	// We try to add it. If it fails with "duplicate column", we ignore.
-	if _, err := s.db.Exec(`ALTER TABLE tokens ADD COLUMN token_hash TEXT`); err != nil {
-		if !strings.Contains(err.Error(), "duplicate column name") {
-			return fmt.Errorf("failed to add token_hash column: %w", err)
-		}
-	}
-
-	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash)`); err != nil {
-		return fmt.Errorf("failed to create token_hash index: %w", err)
-	}
-
 	return nil
 }
 
 // AddTokenMetadata adds a new token to the database
-func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, tokenName, tokenHash string, expiresAt int64) error {
+func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, tokenName, jti string, expiresAt int64) error {
 	now := time.Now()
-	tokenID := s.generateTokenID(username, tokenName, now)
 	creationDate := now.Format(time.RFC3339)
 	expirationDate := time.Unix(expiresAt, 0).Format(time.RFC3339)
 
 	query := `
-	INSERT INTO tokens (id, username, name, namespace, creation_date, expiration_date, status, token_hash)
-	VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+	INSERT INTO tokens (id, username, name, namespace, creation_date, expiration_date)
+	VALUES (?, ?, ?, ?, ?, ?)
 	`
-	_, err := s.db.ExecContext(ctx, query, tokenID, username, tokenName, namespace, creationDate, expirationDate, tokenHash)
+	_, err := s.db.ExecContext(ctx, query, jti, username, tokenName, namespace, creationDate, expirationDate)
 	if err != nil {
 		return fmt.Errorf("failed to insert token metadata: %w", err)
 	}
 	return nil
 }
 
-// MarkTokensAsExpired marks all active tokens for a user as expired
-func (s *Store) MarkTokensAsExpired(ctx context.Context, namespace, username string) error {
-	now := time.Now().Format(time.RFC3339)
-	query := `
-	UPDATE tokens 
-	SET status = 'expired', expired_at = ? 
-	WHERE username = ? AND namespace = ? AND status = 'active'
-	`
-	result, err := s.db.ExecContext(ctx, query, now, username, namespace)
+// DeleteTokensForUser deletes all tokens for a user from the database.
+func (s *Store) DeleteTokensForUser(ctx context.Context, namespace, username string) error {
+	query := `DELETE FROM tokens WHERE username = ? AND namespace = ?`
+	result, err := s.db.ExecContext(ctx, query, username, namespace)
 	if err != nil {
-		return fmt.Errorf("failed to expire tokens: %w", err)
+		return fmt.Errorf("failed to delete tokens: %w", err)
 	}
 
 	rows, _ := result.RowsAffected()
-	log.Printf("Expired %d tokens for user %s", rows, username)
-	return nil
-}
-
-// MarkTokenAsExpired marks a single token as expired by ID
-func (s *Store) MarkTokenAsExpired(ctx context.Context, tokenID, username string) error {
-	now := time.Now().Format(time.RFC3339)
-	query := `
-	UPDATE tokens 
-	SET status = 'expired', expired_at = ? 
-	WHERE id = ? AND username = ? AND status = 'active'
-	`
-	result, err := s.db.ExecContext(ctx, query, now, tokenID, username)
-	if err != nil {
-		return fmt.Errorf("failed to expire token %s: %w", tokenID, err)
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("token not found or already expired")
-	}
+	log.Printf("Deleted %d tokens for user %s", rows, username)
 	return nil
 }
 
 // GetTokensForUser retrieves all tokens for a user
-// Automatically marks tokens as expired if they've passed their expiration date
 func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedToken, error) {
 	query := `
-	SELECT id, name, creation_date, expiration_date, status, expired_at 
+	SELECT id, name, creation_date, expiration_date
 	FROM tokens 
 	WHERE username = ?
 	ORDER BY creation_date DESC
@@ -164,119 +119,59 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 
 	now := time.Now()
 	var tokens []NamedToken
-	var tokensToExpire []string // Track tokens that need to be marked as expired
 
 	for rows.Next() {
 		var t NamedToken
-		var expiredAt sql.NullString
-		if err := rows.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate, &t.Status, &expiredAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
 			return nil, err
 		}
-		if expiredAt.Valid {
-			t.ExpiredAt = expiredAt.String
-		}
 
-		// Check if token has expired based on expiration_date
-		if t.Status == "active" {
-			expirationDate, err := time.Parse(time.RFC3339, t.ExpirationDate)
-			if err == nil && now.After(expirationDate) {
-				// Token has expired, mark it
+		expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
+		if err != nil {
+			log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
+			t.Status = "expired" // Mark as expired if date is unreadable
+		} else {
+			if now.After(expiration) {
 				t.Status = "expired"
-				expiredAtTime := now.Format(time.RFC3339)
-				t.ExpiredAt = expiredAtTime
-				tokensToExpire = append(tokensToExpire, t.ID)
+			} else {
+				t.Status = "active"
 			}
 		}
 
 		tokens = append(tokens, t)
 	}
 
-	// Batch update expired tokens
-	if len(tokensToExpire) > 0 {
-		expiredAtTime := now.Format(time.RFC3339)
-		placeholders := make([]string, len(tokensToExpire))
-		args := make([]interface{}, len(tokensToExpire)+1)
-		args[0] = expiredAtTime
-		for i, id := range tokensToExpire {
-			placeholders[i] = "?"
-			args[i+1] = id
-		}
-		query := fmt.Sprintf(`UPDATE tokens SET status = 'expired', expired_at = ? WHERE id IN (%s) AND status = 'active'`,
-			strings.Join(placeholders, ","))
-		if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
-			log.Printf("Failed to batch expire tokens for user %s: %v", username, err)
-		}
-	}
-
 	return tokens, nil
 }
 
-// IsTokenActive checks if a token with the given hash is active
-// It implements a deny-list approach: tokens NOT in the database are considered active.
-// Tokens in the database are checked for explicit revocation or expiration.
-func (s *Store) IsTokenActive(ctx context.Context, tokenHash string) (bool, error) {
-	query := `SELECT status, expiration_date FROM tokens WHERE token_hash = ?`
-	var status, expirationDateStr string
-	err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(&status, &expirationDateStr)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// Token not found in metadata.
-			// Policy: Deny-list behavior.
-			// Tokens NOT in the DB are considered active (not explicitly revoked).
-			// This allows unnamed tokens to work without DB storage.
-			return true, nil
-		}
-		return false, err
-	}
-
-	// Check if status is active
-	if status != "active" {
-		return false, nil
-	}
-
-	// Check if token has expired based on expiration_date
-	expirationDate, err := time.Parse(time.RFC3339, expirationDateStr)
-	if err != nil {
-		log.Printf("Failed to parse expiration_date %s: %v", expirationDateStr, err)
-		// If we can't parse the date, consider it expired for safety
-		return false, nil
-	}
-
-	// If expiration date has passed, token is no longer active
-	if time.Now().After(expirationDate) {
-		// Automatically mark as expired
-		now := time.Now().Format(time.RFC3339)
-		_, _ = s.db.ExecContext(ctx, `UPDATE tokens SET status = 'expired', expired_at = ? WHERE token_hash = ? AND status = 'active'`, now, tokenHash)
-		return false, nil
-	}
-
-	return true, nil
-}
-
-// MarkExpiredTokens marks all tokens that have passed their expiration_date as expired
-// This is used by background cleanup jobs
-func (s *Store) MarkExpiredTokens(ctx context.Context) (int64, error) {
-	now := time.Now().Format(time.RFC3339)
+// GetToken retrieves a single token for a user by its JTI
+func (s *Store) GetToken(ctx context.Context, username, jti string) (*NamedToken, error) {
 	query := `
-	UPDATE tokens 
-	SET status = 'expired', expired_at = ?
-	WHERE status = 'active' 
-	AND expiration_date < ?
-	AND (expired_at IS NULL OR expired_at = '')
+	SELECT id, name, creation_date, expiration_date
+	FROM tokens 
+	WHERE username = ? AND id = ?
 	`
-	result, err := s.db.ExecContext(ctx, query, now, now)
-	if err != nil {
-		return 0, fmt.Errorf("failed to mark expired tokens: %w", err)
-	}
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected > 0 {
-		log.Printf("Marked %d expired tokens as expired", rowsAffected)
-	}
-	return rowsAffected, nil
-}
+	row := s.db.QueryRowContext(ctx, query, username, jti)
 
-func (s *Store) generateTokenID(username, name string, t time.Time) string {
-	data := fmt.Sprintf("%s-%s-%d", username, name, t.UnixNano())
-	sum := sha1.Sum([]byte(data))
-	return hex.EncodeToString(sum[:])[:12]
+	var t NamedToken
+	if err := row.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("token not found")
+		}
+		return nil, err
+	}
+
+	expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
+	if err != nil {
+		log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
+		t.Status = "expired"
+	} else {
+		if time.Now().After(expiration) {
+			t.Status = "expired"
+		} else {
+			t.Status = "active"
+		}
+	}
+
+	return &t, nil
 }

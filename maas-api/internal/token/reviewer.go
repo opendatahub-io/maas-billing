@@ -36,6 +36,17 @@ func (r *Reviewer) ExtractUserInfo(ctx context.Context, token string) (*UserCont
 		return nil, fmt.Errorf("token cannot be empty")
 	}
 
+	claims, err := extractClaims(token)
+	if err != nil {
+		// Log the error but don't fail the request, as jti is only for metadata
+		fmt.Printf("Warning: could not extract jti from token: %v\n", err)
+	}
+
+	var jti string
+	if claims != nil {
+		jti, _ = claims["jti"].(string)
+	}
+
 	tokenReview := &authv1.TokenReview{
 		Spec: authv1.TokenReviewSpec{
 			Token: token,
@@ -57,6 +68,7 @@ func (r *Reviewer) ExtractUserInfo(ctx context.Context, token string) (*UserCont
 				UID:             userInfo.UID,
 				Groups:          userInfo.Groups,
 				IsAuthenticated: true,
+				JTI:             jti,
 			}, nil
 		}
 	}
@@ -81,5 +93,6 @@ func (r *Reviewer) ExtractUserInfo(ctx context.Context, token string) (*UserCont
 		UID:             userInfo.UID,
 		Groups:          userInfo.Groups,
 		IsAuthenticated: true,
+		JTI:             jti,
 	}, nil
 }

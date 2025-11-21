@@ -74,17 +74,29 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("failed to create token for service account %s in namespace %s: %w", saName, namespace, errToken)
 	}
 
+	claims, err := extractClaims(token.Status.Token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract claims from new token: %w", err)
+	}
+	jti, ok := claims["jti"].(string)
+	if !ok {
+		return nil, fmt.Errorf("jti claim not found or not a string in new token")
+	}
+	expFloat, ok := claims["exp"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("exp claim not found or not a number in new token")
+	}
+	exp := int64(expFloat)
+
 	result := &Token{
 		Token:      token.Status.Token,
 		Expiration: Duration{expiration},
-		ExpiresAt:  token.Status.ExpirationTimestamp.Unix(),
+		ExpiresAt:  exp,
 	}
 
-	// If name is provided, add to the database for tracking and individual revocation
-	// Unnamed tokens still work but can only be revoked via "revoke all" (SA recreation)
+	// If name is provided, add to the database for tracking
 	if name != "" {
-		tokenHash := HashToken(result.Token)
-		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, tokenHash, result.ExpiresAt); err != nil {
+		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, jti, result.ExpiresAt); err != nil {
 			log.Printf("Failed to update metadata for token %s: %v", name, err)
 			// Log error but don't fail token generation
 		}
@@ -94,7 +106,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 }
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account
-// and marking all their token metadata as expired in the user's secret
+// and deleting all their token metadata from the database.
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -114,9 +126,9 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if errors.IsNotFound(err) {
 		log.Printf("Service account %s not found in namespace %s, nothing to revoke", saName, namespace)
-		// Still try to mark secrets as expired even if SA doesn't exist
-		if err := m.store.MarkTokensAsExpired(ctx, namespace, user.Username); err != nil {
-			log.Printf("Failed to mark tokens as expired for user %s: %v", user.Username, err)
+		// Still try to delete token metadata even if SA doesn't exist
+		if err := m.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
+			log.Printf("Failed to delete tokens for user %s: %v", user.Username, err)
 		}
 		return nil
 	}
@@ -125,10 +137,10 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 		return fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	// Mark all token metadata as expired before revoking tokens
-	if err := m.store.MarkTokensAsExpired(ctx, namespace, user.Username); err != nil {
-		log.Printf("Failed to mark tokens as expired for user %s: %v", user.Username, err)
-		// Don't fail the revocation if secret updates fail
+	// Delete all token metadata before revoking tokens
+	if err := m.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
+		log.Printf("Failed to delete tokens for user %s: %v", user.Username, err)
+		// Don't fail the revocation if metadata deletion fails
 	}
 
 	err = m.deleteServiceAccount(ctx, namespace, saName)
@@ -161,27 +173,10 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 	log.Printf("TokenReview successful for user: %s", userCtx.Username)
 
 	// 2. Check user type
-	// If it is a User token (not SA), we should allow it (Bootstrap/Admin access) and skip DB check.
+	// If it is a User token (not SA), we should allow it (Bootstrap/Admin access)
 	if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
 		log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
 		return userCtx, nil
-	}
-
-	// 3. Check deny list (DB)
-	// Compute hash of the token
-	tokenHash := HashToken(token)
-	log.Printf("Checking token hash in DB for user: %s, hash: %s", userCtx.Username, tokenHash[:16]+"...")
-	active, err := m.store.IsTokenActive(ctx, tokenHash)
-	if err != nil {
-		log.Printf("Error checking token status in DB: %v", err)
-		// On DB error, allow the token to proceed (fail open for availability)
-		// The K8s TokenReview already validated it
-		return userCtx, nil
-	}
-
-	if !active {
-		log.Printf("Token for user %s is in deny list (expired/revoked)", userCtx.Username)
-		return &UserContext{IsAuthenticated: false}, nil
 	}
 
 	log.Printf("Token validation successful for user: %s", userCtx.Username)
@@ -193,9 +188,9 @@ func (m *Manager) GetTokens(ctx context.Context, user *UserContext) ([]NamedToke
 	return m.store.GetTokensForUser(ctx, user.Username)
 }
 
-// RevokeToken revokes a single token by ID
-func (m *Manager) RevokeToken(ctx context.Context, user *UserContext, tokenID string) error {
-	return m.store.MarkTokenAsExpired(ctx, tokenID, user.Username)
+// GetToken returns a single token by its JTI
+func (m *Manager) GetToken(ctx context.Context, user *UserContext, jti string) (*NamedToken, error) {
+	return m.store.GetToken(ctx, user.Username, jti)
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
@@ -338,9 +333,4 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	return name + "-" + suffix, nil
-}
-
-func HashToken(token string) string {
-	hash := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(hash[:])
 }

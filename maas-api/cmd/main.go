@@ -50,13 +50,8 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	cleanup, store := registerHandlers(ctx, router, cfg)
+	cleanup, _ := registerHandlers(ctx, router, cfg)
 	defer cleanup()
-
-	// Start background token expiration cleanup job
-	if store != nil {
-		go startTokenExpirationCleanup(ctx, store)
-	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -150,10 +145,13 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
 
 	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(reviewer))
-	tokenRoutes.GET("", tokenHandler.ListTokens)
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
-	tokenRoutes.DELETE("/:id", tokenHandler.RevokeToken)
+
+	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo(reviewer))
+	apiKeyRoutes.POST("", tokenHandler.CreateAPIKey)
+	apiKeyRoutes.GET("", tokenHandler.ListAPIKeys)
+	apiKeyRoutes.GET("/:id", tokenHandler.GetAPIKey)
 
 	cleanup := func() {
 		if err := store.Close(); err != nil {
@@ -161,32 +159,4 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 		}
 	}
 	return cleanup, store
-}
-
-// startTokenExpirationCleanup runs a background job that periodically marks expired tokens
-// It runs every 5 minutes and stops when the context is cancelled
-func startTokenExpirationCleanup(ctx context.Context, store *token.Store) {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	// Run immediately on startup
-	if count, err := store.MarkExpiredTokens(ctx); err != nil {
-		log.Printf("Error in initial token expiration cleanup: %v", err)
-	} else if count > 0 {
-		log.Printf("Initial cleanup: marked %d expired tokens", count)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Println("Token expiration cleanup job stopped")
-			return
-		case <-ticker.C:
-			if count, err := store.MarkExpiredTokens(ctx); err != nil {
-				log.Printf("Error in token expiration cleanup: %v", err)
-			} else if count > 0 {
-				log.Printf("Token expiration cleanup: marked %d expired tokens", count)
-			}
-		}
-	}
 }

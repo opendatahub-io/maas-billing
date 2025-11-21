@@ -1,6 +1,7 @@
 package token
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,10 +25,10 @@ func TestStore(t *testing.T) {
 	assert.NoError(t, err)
 	defer store.Close()
 
-	ctx := t.Context()
+	ctx := context.Background()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", "token1", "hash1", time.Now().Add(1*time.Hour).Unix())
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", "token1", "jti1", time.Now().Add(1*time.Hour).Unix())
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
@@ -35,15 +36,10 @@ func TestStore(t *testing.T) {
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token1", tokens[0].Name)
 		assert.Equal(t, "active", tokens[0].Status)
-
-		// Check status
-		active, err := store.IsTokenActive(ctx, "hash1")
-		assert.NoError(t, err)
-		assert.True(t, active)
 	})
 
 	t.Run("AddSecondToken", func(t *testing.T) {
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", "token2", "hash2", time.Now().Add(2*time.Hour).Unix())
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", "token2", "jti2", time.Now().Add(2*time.Hour).Unix())
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
@@ -52,7 +48,7 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("GetTokensForDifferentUser", func(t *testing.T) {
-		err := store.AddTokenMetadata(ctx, "test-ns", "user2", "token3", "hash3", time.Now().Add(1*time.Hour).Unix())
+		err := store.AddTokenMetadata(ctx, "test-ns", "user2", "token3", "jti3", time.Now().Add(1*time.Hour).Unix())
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user2")
@@ -61,62 +57,41 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, "token3", tokens[0].Name)
 	})
 
-	t.Run("MarkTokensAsExpired", func(t *testing.T) {
-		err := store.MarkTokensAsExpired(ctx, "test-ns", "user1")
+	t.Run("DeleteTokensForUser", func(t *testing.T) {
+		err := store.DeleteTokensForUser(ctx, "test-ns", "user1")
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
 		assert.NoError(t, err)
-		assert.Len(t, tokens, 2)
+		assert.Len(t, tokens, 0)
 
-		for _, token := range tokens {
-			assert.Equal(t, "expired", token.Status)
-			assert.NotEmpty(t, token.ExpiredAt)
-		}
-
-		// Check status
-		active, err := store.IsTokenActive(ctx, "hash1")
-		assert.NoError(t, err)
-		assert.False(t, active)
-
-		// User2 should still be active
+		// User2 should still exist
 		tokens2, err := store.GetTokensForUser(ctx, "user2")
 		assert.NoError(t, err)
-		assert.Equal(t, "active", tokens2[0].Status)
+		assert.Len(t, tokens2, 1)
 	})
 
-	t.Run("MarkSingleTokenAsExpired", func(t *testing.T) {
-		// Create new token
-		err := store.AddTokenMetadata(ctx, "test-ns", "user3", "token4", "hash4", time.Now().Add(1*time.Hour).Unix())
+	t.Run("GetToken", func(t *testing.T) {
+		// Retrieve user2's token by JTI
+		token, err := store.GetToken(ctx, "user2", "jti3")
 		assert.NoError(t, err)
-
-		tokens, err := store.GetTokensForUser(ctx, "user3")
-		assert.NoError(t, err)
-		tokenID := tokens[0].ID
-
-		err = store.MarkTokenAsExpired(ctx, tokenID, "user3")
-		assert.NoError(t, err)
-
-		active, err := store.IsTokenActive(ctx, "hash4")
-		assert.NoError(t, err)
-		assert.False(t, active)
+		assert.NotNil(t, token)
+		assert.Equal(t, "token3", token.Name)
 	})
 
-	t.Run("DenyListBehavior_TokenNotInDB", func(t *testing.T) {
-		// Test deny-list behavior: token NOT in database should be considered active
-		active, err := store.IsTokenActive(ctx, "unknown-hash-not-in-db")
-		assert.NoError(t, err)
-		assert.True(t, active, "Token not in database should be considered active (deny-list behavior)")
-	})
-
-	t.Run("DenyListBehavior_ExpiredToken", func(t *testing.T) {
+	t.Run("ExpiredTokenStatus", func(t *testing.T) {
 		// Add an expired token
-		err := store.AddTokenMetadata(ctx, "test-ns", "user4", "expired-token", "expired-hash", time.Now().Add(-1*time.Hour).Unix())
+		err := store.AddTokenMetadata(ctx, "test-ns", "user4", "expired-token", "jti-expired", time.Now().Add(-1*time.Hour).Unix())
 		assert.NoError(t, err)
 
-		// Even though it's past expiration, it should still be active until explicitly checked
-		active, err := store.IsTokenActive(ctx, "expired-hash")
+		tokens, err := store.GetTokensForUser(ctx, "user4")
 		assert.NoError(t, err)
-		assert.False(t, active, "Expired token should be marked as inactive")
+		assert.Len(t, tokens, 1)
+		assert.Equal(t, "expired", tokens[0].Status)
+
+		// Get single token check
+		token, err := store.GetToken(ctx, "user4", "jti-expired")
+		assert.NoError(t, err)
+		assert.Equal(t, "expired", token.Status)
 	})
 }

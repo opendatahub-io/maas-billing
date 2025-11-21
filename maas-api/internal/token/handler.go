@@ -1,6 +1,7 @@
 package token
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strings"
@@ -9,12 +10,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type Handler struct {
-	name    string
-	manager *Manager
+type TokenManager interface {
+	GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error)
+	RevokeTokens(ctx context.Context, user *UserContext) error
+	ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error)
+	GetTokens(ctx context.Context, user *UserContext) ([]NamedToken, error)
+	GetToken(ctx context.Context, user *UserContext, jti string) (*NamedToken, error)
 }
 
-func NewHandler(name string, manager *Manager) *Handler {
+type Handler struct {
+	name    string
+	manager TokenManager
+}
+
+func NewHandler(name string, manager TokenManager) *Handler {
 	return &Handler{
 		name:    name,
 		manager: manager,
@@ -60,12 +69,16 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 	}
 }
 
-// IssueToken handles POST /v1/tokens
+// IssueToken handles POST /v1/tokens for issuing ephemeral tokens
 func (h *Handler) IssueToken(c *gin.Context) {
 	var req Request
+	// BindJSON will still parse the request body, but we'll ignore the name field.
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		// Allow empty request body for default expiration
+		if err.Error() != "EOF" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	if req.Expiration == nil {
@@ -86,6 +99,62 @@ func (h *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
+	if expiration > 0 && expiration < 10*time.Minute {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes"})
+		return
+	}
+
+	// For ephemeral tokens, we explicitly pass an empty name.
+	token, err := h.manager.GenerateToken(c.Request.Context(), user, expiration, "")
+	if err != nil {
+		log.Printf("Failed to generate token: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	response := Response{
+		Token: token,
+	}
+
+	c.JSON(http.StatusCreated, response)
+}
+
+// CreateAPIKey handles POST /v1/api-keys for creating managed, persistent tokens
+func (h *Handler) CreateAPIKey(c *gin.Context) {
+	var req Request
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token name is required for api keys"})
+		return
+	}
+
+	if req.Expiration == nil {
+		req.Expiration = &Duration{time.Hour * 24 * 30} // Default to 30 days for API keys
+	}
+
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user := userCtx.(*UserContext)
+
+	expiration := req.Expiration.Duration
+	if expiration.Abs() != expiration {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expiration format, must be positive", "expiration": req.Expiration})
+		return
+	}
+
+	if expiration > 0 && expiration < 10*time.Minute {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes"})
+		return
+	}
+
 	token, err := h.manager.GenerateToken(c.Request.Context(), user, expiration, req.Name)
 	if err != nil {
 		log.Printf("Failed to generate token: %v", err)
@@ -100,8 +169,8 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// ListTokens handles GET /v1/tokens
-func (h *Handler) ListTokens(c *gin.Context) {
+// ListAPIKeys handles GET /v1/api-keys
+func (h *Handler) ListAPIKeys(c *gin.Context) {
 	userCtx, exists := c.Get("user")
 	if !exists {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
@@ -112,15 +181,15 @@ func (h *Handler) ListTokens(c *gin.Context) {
 	tokens, err := h.manager.GetTokens(c.Request.Context(), user)
 	if err != nil {
 		log.Printf("Failed to list tokens for user %s: %v", user.Username, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list tokens"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list api keys"})
 		return
 	}
 
 	c.JSON(http.StatusOK, tokens)
 }
 
-// RevokeToken handles DELETE /v1/tokens/:id
-func (h *Handler) RevokeToken(c *gin.Context) {
+// GetAPIKey handles GET /v1/api-keys/:id
+func (h *Handler) GetAPIKey(c *gin.Context) {
 	tokenID := c.Param("id")
 	if tokenID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Token ID required"})
@@ -134,15 +203,14 @@ func (h *Handler) RevokeToken(c *gin.Context) {
 	}
 
 	user := userCtx.(*UserContext)
-	err := h.manager.RevokeToken(c.Request.Context(), user, tokenID)
+	token, err := h.manager.GetToken(c.Request.Context(), user, tokenID)
 	if err != nil {
-		log.Printf("Failed to revoke token %s for user %s: %v", tokenID, user.Username, err)
-		// 404 if not found?
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke token"})
+		log.Printf("Failed to get token %s for user %s: %v", tokenID, user.Username, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	c.JSON(http.StatusOK, token)
 }
 
 // RevokeAllTokens handles DELETE /v1/tokens
