@@ -14,19 +14,19 @@ import (
 	"knative.dev/pkg/apis"
 )
 
-// Manager handles model discovery and listing
+// Manager handles model discovery and listing.
 type Manager struct {
 	k8sClient dynamic.Interface
 }
 
-// NewManager creates a new model manager
+// NewManager creates a new model manager.
 func NewManager(k8sClient dynamic.Interface) *Manager {
 	return &Manager{
 		k8sClient: k8sClient,
 	}
 }
 
-// ListAvailableModels lists all InferenceServices across all namespaces
+// ListAvailableModels lists all InferenceServices across all namespaces.
 func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
 	inferenceServiceGVR := schema.GroupVersionResource{
 		Group:    "serving.kserve.io",

@@ -51,7 +51,7 @@ func WithSpecModelName(name string) LLMInferenceServiceOption {
 	}
 }
 
-// CreateLLMInferenceService creates a test LLMInferenceService unstructured object
+// CreateLLMInferenceService creates a test LLMInferenceService unstructured object.
 func CreateLLMInferenceService(name, namespace string, url ModelURL, ready bool, opts ...LLMInferenceServiceOption) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.Object = map[string]any{}
@@ -131,7 +131,7 @@ func CreateLLMInferenceService(name, namespace string, url ModelURL, ready bool,
 	return obj
 }
 
-// LLMTestScenario defines a test scenario for LLM models
+// LLMTestScenario defines a test scenario for LLM models.
 type LLMTestScenario struct {
 	Name          string
 	Namespace     string
@@ -140,9 +140,9 @@ type LLMTestScenario struct {
 	SpecModelName *string
 }
 
-// CreateLLMInferenceServices creates a set of test LLM objects for testing
+// CreateLLMInferenceServices creates a set of test LLM objects for testing.
 func CreateLLMInferenceServices(scenarios ...LLMTestScenario) []runtime.Object {
-	var objects []runtime.Object
+	objects := make([]runtime.Object, 0, len(scenarios))
 	for _, scenario := range scenarios {
 		var opts []LLMInferenceServiceOption
 		if scenario.SpecModelName != nil {

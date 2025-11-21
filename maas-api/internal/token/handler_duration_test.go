@@ -9,8 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	authv1 "k8s.io/api/authentication/v1"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
 func TestIssueToken_ExpirationFormats(t *testing.T) {
@@ -163,10 +164,10 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			}
 			jsonPayload := fmt.Sprintf(`
 {
-			"expiration": %s
+		"expiration": %s
 }`, expiration)
 
-			request, _ := http.NewRequest("POST", "/v1/tokens", bytes.NewBuffer([]byte(jsonPayload)))
+			request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/tokens", bytes.NewBufferString(jsonPayload))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer duration-test-token")
 			router.ServeHTTP(w, request)
@@ -175,7 +176,7 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 				t.Errorf("expected status %d, got %d. Description: %s", tt.expectedStatus, w.Code, tt.description)
 			}
 
-			var response map[string]interface{}
+			var response map[string]any
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			if err != nil {
 				t.Errorf("failed to unmarshal response: %v", err)
@@ -189,7 +190,10 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 				if response["error"] == nil {
 					t.Errorf("expected error for invalid Expiration. Description: %s", tt.description)
 				}
-				if !strings.Contains(response["error"].(string), tt.expectedError) {
+				errorMsg, ok := response["error"].(string)
+				if !ok {
+					t.Errorf("expected error to be a string, got %T", response["error"])
+				} else if !strings.Contains(errorMsg, tt.expectedError) {
 					t.Errorf("expected error message: '%s'; got: '%v'\n", tt.expectedError, response["error"])
 				}
 			}

@@ -21,7 +21,7 @@ func NewHandler(name string, manager *Manager) *Handler {
 	}
 }
 
-// ExtractUserInfo validates kubernetes tokens
+// ExtractUserInfo validates kubernetes tokens.
 func ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -58,7 +58,7 @@ func ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 	}
 }
 
-// IssueToken handles POST /v1/tokens
+// IssueToken handles POST /v1/tokens.
 func (g *Handler) IssueToken(c *gin.Context) {
 	var req Request
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -76,7 +76,11 @@ func (g *Handler) IssueToken(c *gin.Context) {
 		return
 	}
 
-	user := userCtx.(*UserContext)
+	user, ok := userCtx.(*UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
 
 	expiration := req.Expiration.Duration
 	if expiration.Abs() != expiration {
@@ -98,7 +102,7 @@ func (g *Handler) IssueToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// RevokeAllTokens handles DELETE /v1/tokens
+// RevokeAllTokens handles DELETE /v1/tokens.
 func (g *Handler) RevokeAllTokens(c *gin.Context) {
 	userCtx, exists := c.Get("user")
 	if !exists {
@@ -106,7 +110,11 @@ func (g *Handler) RevokeAllTokens(c *gin.Context) {
 		return
 	}
 
-	user := userCtx.(*UserContext)
+	user, ok := userCtx.(*UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
 	err := g.manager.RevokeTokens(c.Request.Context(), user)
 	if err != nil {
 		log.Printf("Failed to revoke tokens for user %s: %v", user.Username, err)
