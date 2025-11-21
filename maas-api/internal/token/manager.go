@@ -160,7 +160,14 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 
 	log.Printf("TokenReview successful for user: %s", userCtx.Username)
 
-	// 2. Check deny list (DB)
+	// 2. Check user type
+	// If it is a User token (not SA), we should allow it (Bootstrap/Admin access) and skip DB check.
+	if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
+		log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
+		return userCtx, nil
+	}
+
+	// 3. Check deny list (DB)
 	// Compute hash of the token
 	tokenHash := HashToken(token)
 	log.Printf("Checking token hash in DB for user: %s, hash: %s", userCtx.Username, tokenHash[:16]+"...")
@@ -173,13 +180,6 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 	}
 
 	if !active {
-		log.Printf("Token found in deny list for user: %s", userCtx.Username)
-		// If it is a User token (not SA), we should allow it (Bootstrap/Admin access).
-		if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
-			log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
-			return userCtx, nil
-		}
-
 		log.Printf("Token for user %s is in deny list (expired/revoked)", userCtx.Username)
 		return &UserContext{IsAuthenticated: false}, nil
 	}

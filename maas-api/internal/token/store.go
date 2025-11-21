@@ -36,6 +36,7 @@ func NewStore(dbPath string) (*Store, error) {
 	}
 
 	if err := db.Ping(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -54,7 +55,8 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) initSchema() error {
-	query := `
+	// 1. Create table
+	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS tokens (
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL,
@@ -65,22 +67,28 @@ func (s *Store) initSchema() error {
 		status TEXT DEFAULT 'active',
 		expired_at TEXT,
 		token_hash TEXT
-	);
-	CREATE INDEX IF NOT EXISTS idx_tokens_username ON tokens(username);
-	CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash);
-	`
-	_, err := s.db.Exec(query)
-	if err != nil {
-		// Try adding column if table exists but column doesn't (migration)
-		if strings.Contains(err.Error(), "duplicate column name") {
-			// Column already exists, ignore
-		} else {
-			log.Printf("Schema init failed/incomplete, attempting migration for token_hash: %v", err)
-			// Attempt migration anyway (e.g. if table existed but column didn't)
-			_, _ = s.db.Exec("ALTER TABLE tokens ADD COLUMN token_hash TEXT")
-			_, _ = s.db.Exec("CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash)")
+	);`
+	if _, err := s.db.Exec(createTableQuery); err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+
+	// 2. Create indices
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tokens_username ON tokens(username)`); err != nil {
+		return fmt.Errorf("failed to create username index: %w", err)
+	}
+
+	// 3. Migration: Ensure token_hash column exists
+	// We try to add it. If it fails with "duplicate column", we ignore.
+	if _, err := s.db.Exec(`ALTER TABLE tokens ADD COLUMN token_hash TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("failed to add token_hash column: %w", err)
 		}
 	}
+
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash)`); err != nil {
+		return fmt.Errorf("failed to create token_hash index: %w", err)
+	}
+
 	return nil
 }
 
@@ -108,9 +116,9 @@ func (s *Store) MarkTokensAsExpired(ctx context.Context, namespace, username str
 	query := `
 	UPDATE tokens 
 	SET status = 'expired', expired_at = ? 
-	WHERE username = ? AND status = 'active'
+	WHERE username = ? AND namespace = ? AND status = 'active'
 	`
-	result, err := s.db.ExecContext(ctx, query, now, username)
+	result, err := s.db.ExecContext(ctx, query, now, username, namespace)
 	if err != nil {
 		return fmt.Errorf("failed to expire tokens: %w", err)
 	}
@@ -195,7 +203,9 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 		}
 		query := fmt.Sprintf(`UPDATE tokens SET status = 'expired', expired_at = ? WHERE id IN (%s) AND status = 'active'`,
 			strings.Join(placeholders, ","))
-		_, _ = s.db.ExecContext(ctx, query, args...)
+		if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+			log.Printf("Failed to batch expire tokens for user %s: %v", username, err)
+		}
 	}
 
 	return tokens, nil

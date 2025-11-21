@@ -94,7 +94,7 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 }
 
 // StubTokenProviderAPIs creates common test components for token tests
-func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset) {
+func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset, func()) {
 	var objects []runtime.Object
 
 	if withTierConfig {
@@ -140,7 +140,16 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	)
 	reviewer := token.NewReviewer(fakeClient)
 
-	return manager, reviewer, fakeClient
+	cleanup := func() {
+		if err := store.Close(); err != nil {
+			fmt.Printf("failed to close store: %v\n", err)
+		}
+		if err := os.Remove(dbPath); err != nil {
+			fmt.Printf("failed to remove db file: %v\n", err)
+		}
+	}
+
+	return manager, reviewer, fakeClient, cleanup
 }
 
 // SetupTestRouter creates a test router with token endpoints
