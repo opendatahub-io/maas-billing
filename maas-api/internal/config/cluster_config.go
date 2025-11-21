@@ -3,16 +3,18 @@ package config
 import (
 	"fmt"
 
-	"k8s.io/client-go/dynamic"
+	kserveclientv1alpha1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1alpha1"
+	kserveclientv1beta1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 type K8sClusterConfig struct {
-	RestConfig *rest.Config
-	ClientSet  *kubernetes.Clientset
-	DynClient  *dynamic.DynamicClient
+	RestConfig     *rest.Config
+	ClientSet      *kubernetes.Clientset
+	KServeV1Beta1  kserveclientv1beta1.ServingV1beta1Interface
+	KServeV1Alpha1 kserveclientv1alpha1.ServingV1alpha1Interface
 }
 
 func NewClusterConfig() (*K8sClusterConfig, error) {
@@ -26,15 +28,21 @@ func NewClusterConfig() (*K8sClusterConfig, error) {
 		return nil, fmt.Errorf("failed to create Kubernetes ClientSet: %w", err)
 	}
 
-	k8sClient, err := dynamic.NewForConfig(restConfig)
+	kserveV1Beta1, err := kserveclientv1beta1.NewForConfig(restConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
+		return nil, fmt.Errorf("failed to create KServe v1beta1 client: %w", err)
+	}
+
+	kserveV1Alpha1, err := kserveclientv1alpha1.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create KServe v1alpha1 client: %w", err)
 	}
 
 	return &K8sClusterConfig{
-		RestConfig: restConfig,
-		ClientSet:  clientset,
-		DynClient:  k8sClient,
+		RestConfig:     restConfig,
+		ClientSet:      clientset,
+		KServeV1Beta1:  kserveV1Beta1,
+		KServeV1Alpha1: kserveV1Alpha1,
 	}, nil
 }
 
