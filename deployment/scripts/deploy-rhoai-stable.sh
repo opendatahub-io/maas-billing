@@ -171,6 +171,7 @@ EOF
   local rhcl_exists=$(checksubscriptionexists openshift-marketplace redhat-operators rhcl-operator)
   if [[ $rhcl_exists -ne "0" ]]; then
     echo "* The RHCL operator is present in the cluster. Skipping installation."
+    echo "  WARNING: Creating an instance of RHCL is also skipped."
     return 0
   fi
 
@@ -339,6 +340,7 @@ echo "Deployment is complete."
 echo ""
 echo "Next Steps:"
 echo "1. Deploy a sample model:"
+echo "   kubectl create namespace llm"
 echo "   kustomize build 'https://github.com/opendatahub-io/maas-billing.git/docs/samples/models/simulator?ref=${MAAS_REF}' | kubectl apply -f -"
 echo ""
 echo "2. Get Gateway endpoint:"
