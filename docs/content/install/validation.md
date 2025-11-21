@@ -34,6 +34,9 @@ TOKEN_RESPONSE=$(curl -sSk \
 TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 ```
 
+!!! note
+    For more information about how tokens work, see [Understanding Token Management](../configuration-and-management/token-management.md).
+
 ### 3. List Available Models
 
 ```bash
@@ -57,7 +60,7 @@ Send a request to the model endpoint (should get a 200 OK response):
 curl -sSk -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-  "${MODEL_URL}/v1/chat/completions"
+  "${MODEL_URL}/v1/completions"
 ```
 
 ### 5. Test Authorization Enforcement
@@ -67,7 +70,7 @@ Send a request to the model endpoint without a token (should get a 401 Unauthori
 ```bash
 curl -sSk -H "Content-Type: application/json" \
   -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-  "${MODEL_URL}/v1/chat/completions" -v
+  "${MODEL_URL}/v1/completions" -v
 ```
 
 ### 6. Test Rate Limiting
@@ -80,7 +83,7 @@ for i in {1..16}; do
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-    "${MODEL_URL}/v1/chat/completions"
+    "${MODEL_URL}/v1/completions"
 done
 ```
 

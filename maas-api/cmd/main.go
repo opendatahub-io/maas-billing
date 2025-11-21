@@ -94,7 +94,7 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 		log.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
 
-	modelMgr := models.NewManager(clusterConfig.DynClient)
+	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 
 	return configureSATokenProvider(ctx, cfg, router, clusterConfig, modelsHandler)

@@ -64,7 +64,7 @@ func TestListingModels(t *testing.T) {
 		Objects: llmInferenceServices,
 	}
 	router, clients := fixtures.SetupTestServer(t, config)
-	modelMgr := models.NewManager(clients.DynamicClient)
+	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	v1 := router.Group("/v1")
 	v1.GET("/models", modelsHandler.ListLLMs)

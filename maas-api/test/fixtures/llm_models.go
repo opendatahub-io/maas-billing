@@ -3,9 +3,13 @@ package fixtures
 import (
 	"time"
 
+	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"knative.dev/pkg/apis"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
 )
 
 type ModelURL interface {
@@ -140,21 +144,74 @@ type LLMTestScenario struct {
 	SpecModelName *string
 }
 
+// CreateTypedLLMInferenceService creates a test LLMInferenceService typed object
+func CreateTypedLLMInferenceService(name, namespace string, url ModelURL, ready bool, specModelName *string) *kservev1alpha1.LLMInferenceService {
+	llm := &kservev1alpha1.LLMInferenceService{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "serving.kserve.io/v1alpha1",
+			Kind:       "LLMInferenceService",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              name,
+			Namespace:         namespace,
+			CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Hour)),
+			Generation:        1,
+		},
+		Spec: kservev1alpha1.LLMInferenceServiceSpec{
+			Model: kservev1alpha1.LLMModelSpec{},
+		},
+		Status: kservev1alpha1.LLMInferenceServiceStatus{
+			Status: duckv1.Status{
+				ObservedGeneration: 1,
+			},
+		},
+	}
+
+	// Set spec.model.name if provided
+	if specModelName != nil {
+		llm.Spec.Model.Name = specModelName
+	}
+
+	// Parse and set URL
+	if urlStr := url.String(); urlStr != "" {
+		parsedURL, _ := apis.ParseURL(urlStr)
+		llm.Status.URL = parsedURL
+		llm.Status.AddressStatus = duckv1.AddressStatus{
+			Address: &duckv1.Addressable{URL: parsedURL},
+		}
+	}
+
+	// Set conditions based on ready state
+	if ready {
+		llm.Status.Conditions = []apis.Condition{
+			{Type: "HTTPRoutesReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "InferencePoolReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "MainWorkloadReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "PresetsCombined", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: apis.ConditionReady, Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "RouterReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "WorkloadsReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+		}
+	} else {
+		llm.Status.Conditions = []apis.Condition{
+			{Type: apis.ConditionReady, Status: v1.ConditionFalse, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}, Reason: "ServiceNotReady"},
+			{Type: "WorkloadsReady", Status: v1.ConditionFalse, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}, Reason: "NotReady"},
+		}
+	}
+
+	return llm
+}
+
 // CreateLLMInferenceServices creates a set of test LLM objects for testing
 func CreateLLMInferenceServices(scenarios ...LLMTestScenario) []runtime.Object {
 	var objects []runtime.Object
 	for _, scenario := range scenarios {
-		var opts []LLMInferenceServiceOption
-		if scenario.SpecModelName != nil {
-			opts = append(opts, WithSpecModelName(*scenario.SpecModelName))
-		}
-
-		obj := CreateLLMInferenceService(
+		obj := CreateTypedLLMInferenceService(
 			scenario.Name,
 			scenario.Namespace,
 			scenario.URL,
 			scenario.Ready,
-			opts..., // apply any options (e.g., WithSpecModelName)
+			scenario.SpecModelName,
 		)
 
 		objects = append(objects, obj)

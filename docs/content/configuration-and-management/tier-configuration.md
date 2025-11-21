@@ -101,7 +101,7 @@ This annotation automatically sets up the necessary RBAC (Role and RoleBinding) 
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
-      name: <tier>-model-post-access
+      name: model-post-access
       namespace: <model-namespace>
     rules:
       - apiGroups: ["serving.kserve.io"]
@@ -111,7 +111,7 @@ This annotation automatically sets up the necessary RBAC (Role and RoleBinding) 
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
-      name: <tier>-model-post-access-tier-binding
+      name: model-post-access-tier-binding
       namespace: <model-namespace>
     subjects:
       - kind: Group
@@ -119,7 +119,7 @@ This annotation automatically sets up the necessary RBAC (Role and RoleBinding) 
         apiGroup: rbac.authorization.k8s.io
     roleRef:
       kind: Role
-      name: <tier>-model-post-access
+      name: model-post-access
       apiGroup: rbac.authorization.k8s.io
     ```
 
@@ -145,10 +145,10 @@ EOF
 **Rate Limit Policy Configuration Explained:**
 
 1. **Tier definition** - Each tier (free, premium, enterprise) gets its own configuration block (this is just a naming convention, it is not used for the actual tier resolution)
-2. **Request limit** - Maximum number of requests allowed per time window
+2. **Token limit** - Maximum number of total tokens allowed per time window
 3. **Time window** - Duration after which the request counter resets
 4. **Predicate condition** - Determines when this tier's limits apply based on user authentication
-5. **Counter expression** - Tracks requests per user ID for reporting purposes
+5. **Counter expression** - Tracks token consumption per user ID (globally)
 
 !!!Warning "Important"
     The predicate condition (not the Tier Definition) is used to determine when this tier's limits apply based on user authentication. It is a CEL expression that is evaluated by the Authorino policy engine.
