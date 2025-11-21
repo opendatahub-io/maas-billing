@@ -7,7 +7,7 @@ toolchain go1.24.7
 require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
-	github.com/kserve/kserve v0.16.0
+	github.com/kserve/kserve v0.0.0-20251121160314-57d83d202f36 // TODO should be available in v0.16.1 when it's out
 	github.com/openai/openai-go/v2 v2.3.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -17,9 +17,6 @@ require (
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	knative.dev/pkg v0.0.0-20250915135827-db4c336acdbe
 )
-
-// FIXME: remove when there's a release with https://github.com/kserve/kserve/pull/4849, as it's needed for typed clients
-replace github.com/kserve/kserve => github.com/bartoszmajsak/kserve v0.0.0-20251121135318-03d87a27e3b5
 
 require (
 	cel.dev/expr v0.24.0 // indirect
