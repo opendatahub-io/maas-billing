@@ -6,6 +6,18 @@ This guide is for **end users** who want to use AI models through the MaaS platf
 
 The Model-as-a-Service (MaaS) platform provides access to AI models through a simple API. Your organization's administrator has set up the platform and configured access for your team.
 
+## Token API Endpoints
+
+The MaaS platform provides the following API endpoints:
+
+| Endpoint           | Method | Purpose                                | Request Body     | Response               |
+|--------------------|--------|----------------------------------------|------------------|------------------------|
+| `/models`          | GET    | List available Models                  | None             | OpenAI-compatible list |
+| `/v1/models`       | GET    | List available Models (OpenAI)         | None             | OpenAI-compatible list |
+| `/v1/tokens`       | POST   | Issue short-lived token for user       | `{"expiration"}` | Token with expiration  |
+| `/v1/tokens`       | DELETE | Revoke all tokens for user             | None             | Success confirmation   |
+| `/v1/tiers/lookup` | POST   | Lookup tier for user groups (internal) | `{"groups"}`     | `{"tier"}`             |
+
 ## Getting Your Access Token
 
 !!! tip
