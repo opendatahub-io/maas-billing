@@ -22,8 +22,10 @@ func TestStore(t *testing.T) {
 
 	// Test NewStore
 	store, err := NewStore(dbPath)
+	if err == nil && store != nil {
+		defer store.Close()
+	}
 	assert.NoError(t, err)
-	defer store.Close()
 
 	ctx := context.Background()
 

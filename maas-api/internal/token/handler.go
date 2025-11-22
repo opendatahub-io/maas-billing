@@ -2,6 +2,8 @@ package token
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -75,7 +77,7 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	// BindJSON will still parse the request body, but we'll ignore the name field.
 	if err := c.ShouldBindJSON(&req); err != nil {
 		// Allow empty request body for default expiration
-		if err.Error() != "EOF" {
+		if !errors.Is(err, io.EOF) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -94,13 +96,13 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	user := userCtx.(*UserContext)
 
 	expiration := req.Expiration.Duration
-	if expiration.Abs() != expiration {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expiration format, must be positive", "expiration": req.Expiration})
+	if expiration <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "expiration must be positive"})
 		return
 	}
 
-	if expiration > 0 && expiration < 10*time.Minute {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes"})
+	if expiration < 10*time.Minute {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes", "provided_expiration": expiration.String()})
 		return
 	}
 
@@ -145,13 +147,13 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 	user := userCtx.(*UserContext)
 
 	expiration := req.Expiration.Duration
-	if expiration.Abs() != expiration {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expiration format, must be positive", "expiration": req.Expiration})
+	if expiration <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "expiration must be positive"})
 		return
 	}
 
-	if expiration > 0 && expiration < 10*time.Minute {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes"})
+	if expiration < 10*time.Minute {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes", "provided_expiration": expiration.String()})
 		return
 	}
 
@@ -205,8 +207,14 @@ func (h *Handler) GetAPIKey(c *gin.Context) {
 	user := userCtx.(*UserContext)
 	token, err := h.manager.GetToken(c.Request.Context(), user, tokenID)
 	if err != nil {
+		// In a real implementation, manager should return typed errors or we check error message
+		// For now, we'll assume "token not found" message implies 404
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
+			return
+		}
 		log.Printf("Failed to get token %s for user %s: %v", tokenID, user.Username, err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API key"})
 		return
 	}
 
