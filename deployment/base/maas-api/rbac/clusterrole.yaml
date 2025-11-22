@@ -9,19 +9,12 @@ rules:
 
 # SA token provider resources
 - apiGroups: [""]
-  resources: ["namespaces"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  resources: ["namespaces", "serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "delete"]
 - apiGroups: [""]
-  resources: ["serviceaccounts"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: [""]
+  # Needed for TokenRequest API
   resources: ["serviceaccounts/token"]
   verbs: ["create"]
-
-# Token metadata secrets
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get", "list", "create", "update", "patch"]
 
 # Token review for authentication
 - apiGroups: ["authentication.k8s.io"]

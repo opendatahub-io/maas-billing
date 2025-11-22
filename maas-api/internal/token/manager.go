@@ -156,7 +156,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	return nil
 }
 
-// ValidateToken verifies the token with K8s and checks against the deny list
+// ValidateToken verifies the token with K8s
 func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error) {
 	// 1. Check K8s validity
 	userCtx, err := reviewer.ExtractUserInfo(ctx, token)

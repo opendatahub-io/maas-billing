@@ -30,7 +30,7 @@ func NewHandler(name string, manager TokenManager) *Handler {
 	}
 }
 
-// ExtractUserInfo validates kubernetes tokens and checks against deny list
+// ExtractUserInfo validates kubernetes tokens
 func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -48,7 +48,7 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 
-		// Validate with Manager (K8s + Deny List)
+		// Validate with Manager (K8s validation)
 		userContext, err := h.manager.ValidateToken(c.Request.Context(), token, reviewer)
 		if err != nil {
 			log.Printf("Token validation failed: %v", err)

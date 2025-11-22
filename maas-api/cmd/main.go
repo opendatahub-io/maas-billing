@@ -140,7 +140,7 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	// Create reviewer with audience to properly validate Service Account tokens
 	reviewer := token.NewReviewerWithAudience(clusterConfig.ClientSet, cfg.Name+"-sa")
 
-	// Protect model listing endpoints with token validation (includes deny list check)
+	// Protect model listing endpoints with token validation
 	router.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListModels)
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
 

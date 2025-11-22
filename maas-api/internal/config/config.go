@@ -20,9 +20,7 @@ type Config struct {
 	Port string
 
 	// Kubernetes configuration
-	KeyNamespace        string
-	SecretSelectorLabel string
-	SecretSelectorValue string
+	KeyNamespace string
 
 	// Kuadrant configuration
 	TokenRateLimitPolicyName string
@@ -48,8 +46,6 @@ func Load() *Config {
 		DebugMode: debugMode,
 		// Secrets provider configuration
 		KeyNamespace:             env.GetString("KEY_NAMESPACE", "llm"),
-		SecretSelectorLabel:      env.GetString("SECRET_SELECTOR_LABEL", "kuadrant.io/apikeys-by"),
-		SecretSelectorValue:      env.GetString("SECRET_SELECTOR_VALUE", "rhcl-keys"),
 		TokenRateLimitPolicyName: env.GetString("TOKEN_RATE_LIMIT_POLICY_NAME", "gateway-token-rate-limits"),
 		AuthPolicyName:           env.GetString("AUTH_POLICY_NAME", "gateway-auth-policy"),
 		CreateDefaultTeam:        defaultTeam,
