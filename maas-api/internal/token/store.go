@@ -1,0 +1,177 @@
+package token
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+)
+
+// NamedToken represents metadata for a single token
+type NamedToken struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	CreationDate   string `json:"creationDate"`
+	ExpirationDate string `json:"expirationDate"`
+	Status         string `json:"status"` // "active", "expired"
+}
+
+// Store handles the persistence of token metadata using SQLite
+type Store struct {
+	db *sql.DB
+}
+
+// NewStore creates a new TokenStore backed by SQLite
+func NewStore(dbPath string) (*Store, error) {
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	s := &Store{db: db}
+	if err := s.initSchema(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	return s, nil
+}
+
+// Close closes the database connection
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
+func (s *Store) initSchema() error {
+	// 1. Create table
+	createTableQuery := `
+	CREATE TABLE IF NOT EXISTS tokens (
+		id TEXT PRIMARY KEY,
+		username TEXT NOT NULL,
+		name TEXT NOT NULL,
+		namespace TEXT,
+		creation_date TEXT NOT NULL,
+		expiration_date TEXT NOT NULL
+	);`
+	if _, err := s.db.Exec(createTableQuery); err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+
+	// 2. Create indices
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tokens_username ON tokens(username)`); err != nil {
+		return fmt.Errorf("failed to create username index: %w", err)
+	}
+
+	return nil
+}
+
+// AddTokenMetadata adds a new token to the database
+func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, tokenName, jti string, expiresAt int64) error {
+	now := time.Now()
+	creationDate := now.Format(time.RFC3339)
+	expirationDate := time.Unix(expiresAt, 0).Format(time.RFC3339)
+
+	query := `
+	INSERT INTO tokens (id, username, name, namespace, creation_date, expiration_date)
+	VALUES (?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.db.ExecContext(ctx, query, jti, username, tokenName, namespace, creationDate, expirationDate)
+	if err != nil {
+		return fmt.Errorf("failed to insert token metadata: %w", err)
+	}
+	return nil
+}
+
+// DeleteTokensForUser deletes all tokens for a user from the database.
+func (s *Store) DeleteTokensForUser(ctx context.Context, namespace, username string) error {
+	query := `DELETE FROM tokens WHERE username = ? AND namespace = ?`
+	result, err := s.db.ExecContext(ctx, query, username, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to delete tokens: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	log.Printf("Deleted %d tokens for user %s", rows, username)
+	return nil
+}
+
+// GetTokensForUser retrieves all tokens for a user
+func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedToken, error) {
+	query := `
+	SELECT id, name, creation_date, expiration_date
+	FROM tokens 
+	WHERE username = ?
+	ORDER BY creation_date DESC
+	`
+	rows, err := s.db.QueryContext(ctx, query, username)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	now := time.Now()
+	var tokens []NamedToken
+
+	for rows.Next() {
+		var t NamedToken
+		if err := rows.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
+			return nil, err
+		}
+
+		expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
+		if err != nil {
+			log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
+			t.Status = "expired" // Mark as expired if date is unreadable
+		} else {
+			if now.After(expiration) {
+				t.Status = "expired"
+			} else {
+				t.Status = "active"
+			}
+		}
+
+		tokens = append(tokens, t)
+	}
+
+	return tokens, nil
+}
+
+// GetToken retrieves a single token for a user by its JTI
+func (s *Store) GetToken(ctx context.Context, username, jti string) (*NamedToken, error) {
+	query := `
+	SELECT id, name, creation_date, expiration_date
+	FROM tokens 
+	WHERE username = ? AND id = ?
+	`
+	row := s.db.QueryRowContext(ctx, query, username, jti)
+
+	var t NamedToken
+	if err := row.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("token not found")
+		}
+		return nil, err
+	}
+
+	expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
+	if err != nil {
+		log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
+		t.Status = "expired"
+	} else {
+		if time.Now().After(expiration) {
+			t.Status = "expired"
+		} else {
+			t.Status = "active"
+		}
+	}
+
+	return &t, nil
+}

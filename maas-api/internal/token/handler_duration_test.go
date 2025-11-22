@@ -73,24 +73,27 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 		{
 			name:            "default expiration (empty)",
 			expiration:      "",
-			expectedStatus:  http.StatusCreated,
-			shouldHaveToken: true,
-			description:     "Empty expiration should default to 4h",
+			expectedStatus:  http.StatusBadRequest,
+			shouldHaveToken: false,
+			expectedError:   "expiration must be positive",
+			description:     "Empty expiration should be rejected",
 		},
 		{
 			name:            "zero expiration",
 			expiration:      "0",
-			expectedStatus:  http.StatusCreated,
-			shouldHaveToken: true,
-			description:     "Zero expiration should default to 4h",
+			expectedStatus:  http.StatusBadRequest,
+			shouldHaveToken: false,
+			expectedError:   "expiration must be positive",
+			description:     "Zero expiration should be rejected",
 		},
 		{
 			name:                   "zero expiration in raw seconds",
 			expiration:             "0",
 			expirationInRawSeconds: true,
-			expectedStatus:         http.StatusCreated,
-			shouldHaveToken:        true,
-			description:            "Zero expiration should default to 4h",
+			expectedStatus:         http.StatusBadRequest,
+			shouldHaveToken:        false,
+			expectedError:          "expiration must be positive",
+			description:            "Zero expiration should be rejected",
 		},
 		// Invalid durations
 		{
@@ -106,7 +109,7 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			name:            "negative duration",
 			expiration:      "-30h",
 			expectedStatus:  http.StatusBadRequest,
-			expectedError:   "must be a positive number",
+			expectedError:   "expiration must be positive",
 			shouldHaveToken: false,
 			description:     "Negative duration should be rejected",
 		},
@@ -121,7 +124,7 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			name:            "no unit",
 			expiration:      "30",
 			expectedStatus:  http.StatusBadRequest,
-			expectedError:   "invalid duration \"30\": must be a positive number ending in s, m, or h",
+			expectedError:   "missing unit in duration",
 			shouldHaveToken: false,
 			description:     "Number without unit should be rejected",
 		},
@@ -144,7 +147,7 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 			name:            "decimal without unit",
 			expiration:      "1.5",
 			expectedStatus:  http.StatusBadRequest,
-			expectedError:   "invalid duration \"1.5\": must be a positive number ending in s, m, or h",
+			expectedError:   "missing unit in duration",
 			shouldHaveToken: false,
 			description:     "Decimal without unit should be rejected",
 		},
@@ -152,7 +155,8 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager, reviewer, _ := fixtures.StubTokenProviderAPIs(t, true, tokenScenarios)
+			manager, reviewer, _, cleanup := fixtures.StubTokenProviderAPIs(t, true, tokenScenarios)
+			defer cleanup()
 			router := fixtures.SetupTestRouter(manager, reviewer)
 
 			w := httptest.NewRecorder()

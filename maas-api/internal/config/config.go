@@ -20,9 +20,7 @@ type Config struct {
 	Port string
 
 	// Kubernetes configuration
-	KeyNamespace        string
-	SecretSelectorLabel string
-	SecretSelectorValue string
+	KeyNamespace string
 
 	// Kuadrant configuration
 	TokenRateLimitPolicyName string
@@ -31,6 +29,9 @@ type Config struct {
 	// Default team configuration
 	CreateDefaultTeam bool
 	AdminAPIKey       string
+
+	// Database configuration
+	DBPath string
 }
 
 // Load loads configuration from environment variables
@@ -45,12 +46,11 @@ func Load() *Config {
 		DebugMode: debugMode,
 		// Secrets provider configuration
 		KeyNamespace:             env.GetString("KEY_NAMESPACE", "llm"),
-		SecretSelectorLabel:      env.GetString("SECRET_SELECTOR_LABEL", "kuadrant.io/apikeys-by"),
-		SecretSelectorValue:      env.GetString("SECRET_SELECTOR_VALUE", "rhcl-keys"),
 		TokenRateLimitPolicyName: env.GetString("TOKEN_RATE_LIMIT_POLICY_NAME", "gateway-token-rate-limits"),
 		AuthPolicyName:           env.GetString("AUTH_POLICY_NAME", "gateway-auth-policy"),
 		CreateDefaultTeam:        defaultTeam,
 		AdminAPIKey:              env.GetString("ADMIN_API_KEY", ""),
+		DBPath:                   env.GetString("DB_PATH", "/data/maas.db"),
 	}
 	c.bindFlags(flag.CommandLine)
 
@@ -63,4 +63,5 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.Namespace, "namespace", c.Namespace, "Namespace")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
+	fs.StringVar(&c.DBPath, "db-path", c.DBPath, "Path to SQLite database file")
 }

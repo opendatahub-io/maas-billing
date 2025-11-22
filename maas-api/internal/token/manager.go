@@ -2,7 +2,7 @@ package token
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -25,6 +25,7 @@ type Manager struct {
 	clientset            kubernetes.Interface
 	namespaceLister      corelistersv1.NamespaceLister
 	serviceAccountLister corelistersv1.ServiceAccountLister
+	store                *Store
 }
 
 func NewManager(
@@ -33,6 +34,7 @@ func NewManager(
 	clientset kubernetes.Interface,
 	namespaceLister corelistersv1.NamespaceLister,
 	serviceAccountLister corelistersv1.ServiceAccountLister,
+	store *Store,
 ) *Manager {
 	return &Manager{
 		tenantName:           tenantName,
@@ -40,11 +42,13 @@ func NewManager(
 		clientset:            clientset,
 		namespaceLister:      namespaceLister,
 		serviceAccountLister: serviceAccountLister,
+		store:                store,
 	}
 }
 
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to
-func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration) (*Token, error) {
+// The name parameter is optional - if provided, the token is tracked in the database for individual revocation
+func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error) {
 
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -70,14 +74,39 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("failed to create token for service account %s in namespace %s: %w", saName, namespace, errToken)
 	}
 
-	return &Token{
+	claims, err := extractClaims(token.Status.Token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract claims from new token: %w", err)
+	}
+	jti, ok := claims["jti"].(string)
+	if !ok {
+		return nil, fmt.Errorf("jti claim not found or not a string in new token")
+	}
+	expFloat, ok := claims["exp"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("exp claim not found or not a number in new token")
+	}
+	exp := int64(expFloat)
+
+	result := &Token{
 		Token:      token.Status.Token,
 		Expiration: Duration{expiration},
-		ExpiresAt:  token.Status.ExpirationTimestamp.Unix(),
-	}, nil
+		ExpiresAt:  exp,
+	}
+
+	// If name is provided, add to the database for tracking
+	if name != "" {
+		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, jti, result.ExpiresAt); err != nil {
+			log.Printf("Failed to update metadata for token %s: %v", name, err)
+			// Log error but don't fail token generation
+		}
+	}
+
+	return result, nil
 }
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account
+// and deleting all their token metadata from the database.
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -97,11 +126,21 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if errors.IsNotFound(err) {
 		log.Printf("Service account %s not found in namespace %s, nothing to revoke", saName, namespace)
+		// Still try to delete token metadata even if SA doesn't exist
+		if err := m.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
+			log.Printf("Failed to delete tokens for user %s: %v", user.Username, err)
+		}
 		return nil
 	}
 
 	if err != nil {
 		return fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
+	}
+
+	// Delete all token metadata before revoking tokens
+	if err := m.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
+		log.Printf("Failed to delete tokens for user %s: %v", user.Username, err)
+		// Don't fail the revocation if metadata deletion fails
 	}
 
 	err = m.deleteServiceAccount(ctx, namespace, saName)
@@ -115,6 +154,43 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	}
 
 	return nil
+}
+
+// ValidateToken verifies the token with K8s
+func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error) {
+	// 1. Check K8s validity
+	userCtx, err := reviewer.ExtractUserInfo(ctx, token)
+	if err != nil {
+		log.Printf("TokenReview error: %v", err)
+		return nil, err
+	}
+
+	if !userCtx.IsAuthenticated {
+		log.Printf("TokenReview returned IsAuthenticated=false, username: '%s'", userCtx.Username)
+		return userCtx, nil
+	}
+
+	log.Printf("TokenReview successful for user: %s", userCtx.Username)
+
+	// 2. Check user type
+	// If it is a User token (not SA), we should allow it (Bootstrap/Admin access)
+	if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
+		log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
+		return userCtx, nil
+	}
+
+	log.Printf("Token validation successful for user: %s", userCtx.Username)
+	return userCtx, nil
+}
+
+// GetTokens returns all tokens for a user
+func (m *Manager) GetTokens(ctx context.Context, user *UserContext) ([]NamedToken, error) {
+	return m.store.GetTokensForUser(ctx, user.Username)
+}
+
+// GetToken returns a single token by its JTI
+func (m *Manager) GetToken(ctx context.Context, user *UserContext, jti string) (*NamedToken, error) {
+	return m.store.GetToken(ctx, user.Username, jti)
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
@@ -245,7 +321,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	// Append a stable short hash to reduce collisions
-	sum := sha1.Sum([]byte(username))
+	sum := sha256.Sum256([]byte(username))
 	suffix := hex.EncodeToString(sum[:])[:8]
 
 	// Ensure total length <= 63 including hyphen and suffix

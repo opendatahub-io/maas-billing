@@ -24,6 +24,11 @@ spec:
               fieldPath: metadata.namespace
         - name: PROVIDER
           value: sa-tokens
+        - name: DB_PATH
+          value: /data/maas.db
+        volumeMounts:
+        - name: db-data
+          mountPath: /data
         resources:
           requests:
             memory: "64Mi"
@@ -54,4 +59,8 @@ spec:
             - ALL
           readOnlyRootFilesystem: true
           runAsNonRoot: true
+      volumes:
+      - name: db-data
+        persistentVolumeClaim:
+          claimName: maas-api-db
       terminationGracePeriodSeconds: 30
