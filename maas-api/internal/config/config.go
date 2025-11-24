@@ -25,17 +25,6 @@ type Config struct {
 	// Executable-specific configuration
 	DebugMode bool
 
-	// Kubernetes configuration
-	KeyNamespace string
-
-	// Kuadrant configuration
-	TokenRateLimitPolicyName string
-	AuthPolicyName           string
-
-	// Default team configuration
-	CreateDefaultTeam bool
-	AdminAPIKey       string
-
 	// Database configuration
 	DBPath string
 }
@@ -43,7 +32,6 @@ type Config struct {
 // Load loads configuration from environment variables
 func Load() *Config {
 	debugMode, _ := env.GetBool("DEBUG_MODE", false)
-	defaultTeam, _ := env.GetBool("CREATE_DEFAULT_TEAM", true)
 	gatewayName := env.GetString("GATEWAY_NAME", constant.DefaultGatewayName)
 
 	c := &Config{
@@ -53,12 +41,6 @@ func Load() *Config {
 		GatewayNamespace: env.GetString("GATEWAY_NAMESPACE", constant.DefaultGatewayNamespace),
 		Port:             env.GetString("PORT", "8080"),
 		DebugMode:        debugMode,
-		// Secrets provider configuration
-		KeyNamespace:             env.GetString("KEY_NAMESPACE", "llm"),
-		TokenRateLimitPolicyName: env.GetString("TOKEN_RATE_LIMIT_POLICY_NAME", "gateway-token-rate-limits"),
-		AuthPolicyName:           env.GetString("AUTH_POLICY_NAME", "gateway-auth-policy"),
-		CreateDefaultTeam:        defaultTeam,
-		AdminAPIKey:              env.GetString("ADMIN_API_KEY", ""),
 		DBPath:                   env.GetString("DB_PATH", "/data/maas.db"),
 	}
 	c.bindFlags(flag.CommandLine)
