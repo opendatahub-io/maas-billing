@@ -167,70 +167,6 @@ paths:
                                 error: internal_error
                                 message: "failed to lookup tier: connection to configmap failed"
     /v1/tokens:
-        get:
-            tags:
-                - tokens
-            summary: List active tokens for the authenticated user
-            description: Returns a list of all active tokens for the current user with their metadata.
-            operationId: tokens#list
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                type: array
-                                items:
-                                    $ref: '#/components/schemas/TokenMetadata'
-                "401":
-                    description: Unauthorized response.
-        delete:
-            tags:
-                - tokens
-            summary: Revoke all tokens for the authenticated user
-            description: Invalidate all tokens for the current user. This will break any applications currently using those tokens.
-            operationId: tokens#revoke_all
-            responses:
-                "204":
-                    description: No Content response. All tokens have been successfully revoked.
-                "401":
-                    description: Unauthorized response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ErrorResponse'
-                            examples:
-                                missing_auth:
-                                    summary: Missing Authorization header
-                                    value:
-                                        error: Authorization header required
-                                invalid_format:
-                                    summary: Invalid authorization format
-                                    value:
-                                        error: "Invalid authorization format. Use: Authorization: Bearer <token>"
-                                validation_failed:
-                                    summary: Token validation failed
-                                    value:
-                                        error: validation failed
-                                not_authenticated:
-                                    summary: Token not authenticated
-                                    value:
-                                        error: not authenticated
-                "500":
-                    description: Internal Server Error response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ErrorResponse'
-                            examples:
-                                user_context_missing:
-                                    summary: User context not found
-                                    value:
-                                        error: User context not found
-                                revocation_failed:
-                                    summary: Token revocation failed
-                                    value:
-                                        error: Failed to revoke tokens
         post:
             tags:
                 - tokens
@@ -264,11 +200,6 @@ paths:
                                 summary: Minimum allowed expiration (10 minutes)
                                 value:
                                     expiration: 10m
-                            named_token:
-                                summary: Named token for tracking
-                                value:
-                                    expiration: 24h
-                                    name: my-production-app
             responses:
                 "201":
                     description: Created response.
@@ -314,27 +245,17 @@ paths:
                                         error: "invalid character 'x' looking for beginning of value"
                 "401":
                     description: Unauthorized response.
-    /v1/tokens/{id}:
         delete:
             tags:
                 - tokens
-            summary: Revoke a specific token
-            description: Revokes a single named token by ID. The token will be marked as expired and rejected in future requests.
-            operationId: tokens#revoke
-            parameters:
-                - in: path
-                  name: id
-                  schema:
-                      type: string
-                  required: true
-                  description: ID of the token metadata to revoke
+            summary: Revoke all ephemeral tokens for the authenticated user
+            description: Invalidate all ephemeral tokens for the current user. This will break any applications currently using those tokens.
+            operationId: tokens#revoke_all
             responses:
                 "204":
-                    description: No Content response. Token revoked.
-                "404":
-                    description: Not Found. Token not found.
-                "500":
-                    description: Internal Server Error.
+                    description: No Content response. All tokens have been successfully revoked.
+                "401":
+                    description: Unauthorized response.
                     content:
                         application/json:
                             schema:
@@ -367,10 +288,117 @@ paths:
                                     summary: User context not found
                                     value:
                                         error: User context not found
-                                token_generation_failed:
-                                    summary: Token generation failed
+                                revocation_failed:
+                                    summary: Token revocation failed
                                     value:
-                                        error: Failed to generate token
+                                        error: Failed to revoke tokens
+    /v1/api-keys:
+        post:
+            tags:
+                - api-keys
+            summary: Create a new named API key (long-lived token)
+            description: Creates a new named API key with specified expiration. Named tokens are tracked in the database and can be listed and revoked individually.
+            operationId: api-keys#create
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TokenRequest'
+                        examples:
+                            named_token:
+                                summary: Named API key for production app
+                                value:
+                                    expiration: 24h
+                                    name: my-production-app
+                            long_lived:
+                                summary: Long-lived API key (30 days)
+                                value:
+                                    expiration: 720h
+                                    name: backend-service
+            responses:
+                "201":
+                    description: Created response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TokenResponse'
+                "400":
+                    description: Bad Request response.
+                "401":
+                    description: Unauthorized response.
+        get:
+            tags:
+                - api-keys
+            summary: List all API keys for the authenticated user
+            description: Returns a list of all API key metadata for the current user with their creation dates, expiration dates, and status.
+            operationId: api-keys#list
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/TokenMetadata'
+                "401":
+                    description: Unauthorized response.
+    /v1/api-keys/{id}:
+        get:
+            tags:
+                - api-keys
+            summary: Get a specific API key by ID
+            description: Returns metadata for a single API key by its ID.
+            operationId: api-keys#get
+            parameters:
+                - in: path
+                  name: id
+                  schema:
+                      type: string
+                  required: true
+                  description: ID of the API key to retrieve
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TokenMetadata'
+                "404":
+                    description: Not Found. API key not found.
+                "401":
+                    description: Unauthorized response.
+        delete:
+            tags:
+                - api-keys
+            summary: Revoke a specific API key
+            description: Revokes a single named API key by ID. The token will be marked as expired and rejected in future requests.
+            operationId: api-keys#revoke
+            parameters:
+                - in: path
+                  name: id
+                  schema:
+                      type: string
+                  required: true
+                  description: ID of the API key to revoke
+            responses:
+                "204":
+                    description: No Content response. API key revoked.
+                "404":
+                    description: Not Found. API key not found.
+                "401":
+                    description: Unauthorized response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                "500":
+                    description: Internal Server Error response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     bearerAuth:
@@ -605,7 +633,9 @@ components:
                 - expiresAt
 tags:
     - name: tokens
-      description: "\U0001F511 Ephemeral Token Management service. Openshift identity access token is used to authenticate and as a refresh token."
+      description: "\U0001F511 Ephemeral Token Management service. Short-lived tokens for temporary access."
+    - name: api-keys
+      description: "\U0001F5DD️ Named API Key Management service. Long-lived, trackable tokens for applications."
     - name: models
       description: "\U0001F916 Model management service"
     - name: tiers
