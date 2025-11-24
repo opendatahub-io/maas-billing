@@ -198,7 +198,8 @@ kubectl wait --for=condition=Available deployment/kuadrant-operator-controller-m
 
 ### 6. Install KServe
 ```bash
-kubectl apply -f https://github.com/kserve/kserve/releases/download/v0.16.0/kserve.yaml
+# Use server-side apply to handle large CRD annotations (>256KB)
+kubectl apply --server-side -f https://github.com/kserve/kserve/releases/download/v0.16.0/kserve.yaml
 kubectl wait --for=condition=Available deployment/kserve-controller-manager -n kserve --timeout=300s
 kubectl wait --for condition=established crd/inferenceservices.serving.kserve.io
 kubectl wait --for condition=established crd/llminferenceservices.serving.kserve.io

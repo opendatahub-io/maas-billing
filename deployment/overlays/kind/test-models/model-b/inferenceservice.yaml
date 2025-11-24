@@ -11,10 +11,8 @@ metadata:
 spec:
   model:
     name: "model-b"
-    modelFormat:
-      name: "custom"
-    runtime: "custom"
-  predictor:
+    uri: "hf://Qwen/Qwen2.5-0.5B-Instruct"
+  template:
     containers:
     - name: kserve-container
       image: ghcr.io/vllm-project/semantic-router/llm-katan:latest
