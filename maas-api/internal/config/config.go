@@ -18,39 +18,17 @@ type Config struct {
 	DebugMode bool
 	// Server configuration
 	Port string
-
-	// Kubernetes configuration
-	KeyNamespace        string
-	SecretSelectorLabel string
-	SecretSelectorValue string
-
-	// Kuadrant configuration
-	TokenRateLimitPolicyName string
-	AuthPolicyName           string
-
-	// Default team configuration
-	CreateDefaultTeam bool
-	AdminAPIKey       string
 }
 
 // Load loads configuration from environment variables
 func Load() *Config {
 	debugMode, _ := env.GetBool("DEBUG_MODE", false)
-	defaultTeam, _ := env.GetBool("CREATE_DEFAULT_TEAM", true)
 
 	c := &Config{
 		Name:      env.GetString("INSTANCE_NAME", constant.DefaultGatewayName),
 		Namespace: env.GetString("NAMESPACE", constant.DefaultNamespace),
 		Port:      env.GetString("PORT", "8080"),
 		DebugMode: debugMode,
-		// Secrets provider configuration
-		KeyNamespace:             env.GetString("KEY_NAMESPACE", "llm"),
-		SecretSelectorLabel:      env.GetString("SECRET_SELECTOR_LABEL", "kuadrant.io/apikeys-by"),
-		SecretSelectorValue:      env.GetString("SECRET_SELECTOR_VALUE", "rhcl-keys"),
-		TokenRateLimitPolicyName: env.GetString("TOKEN_RATE_LIMIT_POLICY_NAME", "gateway-token-rate-limits"),
-		AuthPolicyName:           env.GetString("AUTH_POLICY_NAME", "gateway-auth-policy"),
-		CreateDefaultTeam:        defaultTeam,
-		AdminAPIKey:              env.GetString("ADMIN_API_KEY", ""),
 	}
 	c.bindFlags(flag.CommandLine)
 
