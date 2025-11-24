@@ -11,11 +11,11 @@ For persistent, production-ready rate limiting where counts are maintained acros
 
 ## Table of Contents
 
-1. [Requirements for Persistent Counts](#requirements-for-persistent-counts)
-2. [Example Limitador CR Configuration](#example-limitador-cr-configuration)
-3. [Local Validation Script](#local-validation-script-basic-redis)
-4. [How to Validate Persistence](#how-to-validate-persistence)
-5. [Related Documentation](#related-documentation)
+. [Requirements for Persistent Counts](#requirements-for-persistent-counts)
+. [Example Limitador CR Configuration](#example-limitador-cr-configuration)
+. [Local Validation Script](#local-validation-script-basic-redis)
+. [How to Validate Persistence](#how-to-validate-persistence)
+. [Related Documentation](#related-documentation)
 
 ---
 
@@ -23,40 +23,51 @@ For persistent, production-ready rate limiting where counts are maintained acros
 
 To enable persistence, two conditions must be met:
 
-1. **A Running Redis Instance**: A Redis instance must be deployed and network-accessible from within the Kubernetes cluster.
+. **A Running Redis Instance**: A Redis instance must be deployed and network-accessible from within the Kubernetes cluster.
 
-2. **Limitador Custom Resource (CR) Configuration**: The Limitador CR that manages your deployment must be updated to point to the running Redis instance by specifying the storage configuration in its spec.
+. **Limitador Custom Resource (CR) Configuration**: The Limitador CR that manages your deployment must be updated to point to the running Redis instance by specifying the storage configuration in its spec.
 
 ---
 
 ## Example Limitador CR Configuration
 
-You must edit your Limitador CR (`kubectl edit limitador <your-instance-name>`) to include the storage block. The URL should point to the internal Kubernetes service for your Redis deployment.
+To configure Limitador to use Redis for persistent storage, you need to:
 
-```yaml
-apiVersion: limitador.kuadrant.io/v1alpha1
-kind: Limitador
-metadata:
-  name: my-limitador-instance
-spec:
-  # ... other spec fields
-  storage:
-    redis:
-      config:
-        # This URL must point to your internal Redis service
-        url: "redis://<redis-service-name>.<namespace>.svc:6379"
-```
+. **Create a Kubernetes Secret** containing the Redis connection URL:
 
-!!! tip
-    **Internal Service URL Format**: The Redis URL must use the Kubernetes service DNS format: `redis://<service-name>.<namespace>.svc:<port>`. For example, with the default `redis-limitador` namespace: `redis://redis-service.redis-limitador.svc:6379`
+   ```bash
+   kubectl create secret generic redis-config \
+     --from-literal=URL=redis://redis-service.redis-limitador.svc:6379 \
+     --namespace=<your-limitador-namespace>
+   ```
 
-For detailed, official instructions, refer to the Red Hat documentation:
+. **Update your Limitador CR** to reference the secret:
+
+   ```yaml
+   apiVersion: limitador.kuadrant.io/v1alpha1
+   kind: Limitador
+   metadata:
+     name: limitador
+   spec:
+     storage:
+       redis:
+         configSecretRef:
+           name: redis-config
+   ```
+
+   Edit your existing Limitador CR:
+   
+   ```bash
+   kubectl edit limitador <your-instance-name> -n <your-limitador-namespace>
+   ```
+
+For detailed, official instructions on production Redis setup, refer to the Red Hat documentation:
 
 - [Red Hat Connectivity Link - Configure Redis](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html/installing_connectivity_link_on_openshift/configure-redis_connectivity-link)
 
 ---
 
-## Local Validation Script (Basic Redis)
+## Local Validation Script (Basic Dev-only Redis)
 
 A basic Redis setup script is provided for local development and validation. This script deploys a non-production Redis instance.
 
@@ -89,7 +100,7 @@ The script will:
 - Create the namespace if it doesn't exist (for default `redis-limitador` namespace)
 - Deploy a Redis Deployment and Service
 - Wait for Redis to be ready
-- Output the Redis URL for use in your Limitador CR configuration
+- Output instructions for creating a Secret and configuring your Limitador CR
 
 !!! note
     **Single Source of Truth**: The script content is maintained only in `deployment/scripts/setup-redis.sh`. Any updates to the script are automatically reflected when users download and run it.
@@ -98,19 +109,13 @@ The script will:
 
 ## How to Validate Persistence
 
-1. **Run the script**: `./deployment/scripts/setup-redis.sh`
+. **Run the script**: `./deployment/scripts/setup-redis.sh`
 
    This will deploy Redis to the `redis-limitador` namespace by default (or use your `NAMESPACE` env var).
 
-2. **Copy the output URL** (e.g., `redis://redis-service.redis-limitador.svc:6379`).
+. **Follow the output instructions** to create the Secret and configure your Limitador CR with the Redis storage configuration.
 
-3. **Edit your Limitador CR** and add the storage block pointing to that URL:
-
-   ```bash
-   kubectl edit limitador <your-limitador-instance-name>
-   ```
-
-4. **Send traffic** against a rate-limited route until you have a non-zero hit count.
+. **Send traffic** against a rate-limited route until you have a non-zero hit count.
 
    You can verify metrics in Prometheus:
 
@@ -122,30 +127,28 @@ The script will:
    # Open http://localhost:9090 and search for: authorized_hits
    ```
 
-5. **Find your Limitador pod**:
+. **Find your Limitador pod**:
 
    ```bash
    kubectl get pods -l app=limitador
    ```
 
-6. **Delete the pod** to force a restart:
+. **Delete the pod** to force a restart:
 
    ```bash
    kubectl delete pod <limitador-pod-name>
    ```
 
-7. **Wait for the new pod** to become Running:
+. **Wait for the new pod** to become Running:
 
    ```bash
    kubectl get pods -l app=limitador -w
    ```
 
-8. **Send another request** to the same route. You will see that the metric count continues from its previous value instead of resetting to 1.
+. **Send another request** to the same route. You will see that the metric count continues from its previous value instead of resetting to 1.
 
 ---
 
 ## Related Documentation
 
-- [Tier Overview](../configuration-and-management/tier-overview.md) - Overview of tier management for access control, rate limits, and quotas
-- [Tier Configuration](../configuration-and-management/tier-configuration.md) - Step-by-step guide for configuring subscription tiers
 - [Red Hat Connectivity Link - Configure Redis](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html/installing_connectivity_link_on_openshift/configure-redis_connectivity-link) - Official Red Hat documentation for production Redis setup

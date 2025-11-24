@@ -12,7 +12,7 @@ This guide provides quickstart instructions for deploying the MaaS Platform infr
 - **ODH/RHOAI requirements**:
       - RHOAI 3.0 +
       - ODH 3.0 +
-- **RHCL requirements**:
+- **RHCL requirements** (Note: This can be installed automatically by the script below):
       - RHCL 1.2 +
 - **Cluster admin** or equivalent permissions
 - **Required tools**:
@@ -28,25 +28,25 @@ This guide provides quickstart instructions for deploying the MaaS Platform infr
 For OpenShift clusters, use the automated deployment script:
 
 ```bash
-./deployment/scripts/deploy-openshift.sh
+export MAAS_REF="main"
+./deployment/scripts/deploy-rhoai-stable.sh
 ```
 
 ### Verify Deployment
 
 The deployment script creates the following core resources:
 
-- **Namespaces**: `maas-api`, `kuadrant-system`, `kserve`, `opendatahub`, `llm`
 - **Gateway**: `maas-default-gateway` in `openshift-ingress` namespace
 - **HTTPRoutes**: `maas-api-route` in the `openshift-ingress` namespace
 - **Policies**: `AuthPolicy`, `TokenRateLimitPolicy`, `RateLimitPolicy`, `TelemetryPolicy`
 - **MaaS API**: Deployment and service in `maas-api` namespace
-- **Operators**: Kuadrant, Authorino, Limitador in `kuadrant-system` namespace
+- **Operators**: Cert-manager, LWS, Red Hat Connectivity Link and Red Hat OpenShift AI.
 
 Check deployment status:
 
 ```bash
 # Check all namespaces
-kubectl get ns | grep -E "maas-api|kuadrant|kserve|opendatahub|llm"
+kubectl get ns | grep -E "maas-api|kuadrant-system|kserve|opendatahub|redhat-ods-applications|llm"
 
 # Check Gateway status
 kubectl get gateway -n openshift-ingress maas-default-gateway
@@ -66,6 +66,7 @@ kubectl get pods -n kuadrant-system
 # Check KServe (if deployed)
 kubectl get pods -n kserve
 kubectl get pods -n opendatahub
+kubectl get pods -n redhat-ods-applications
 ```
 
 ## Model Setup (Optional)

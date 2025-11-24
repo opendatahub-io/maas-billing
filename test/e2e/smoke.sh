@@ -9,24 +9,30 @@ HOST="${HOST:-}"
 MAAS_API_BASE_URL="${MAAS_API_BASE_URL:-}"
 MODEL_NAME="${MODEL_NAME:-}"
 
-# If API base URL missing, derive from HOST, or discover HOST if needed
 if [[ -z "${MAAS_API_BASE_URL}" ]]; then
   if [[ -z "${HOST}" ]]; then
-    GATEWAY_NAME="${GATEWAY_NAME:-maas-default-gateway}"
-    GATEWAY_NS="${GATEWAY_NS:-openshift-ingress}"
-    HOST="$(oc -n "${GATEWAY_NS}" get gateway "${GATEWAY_NAME}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)"
-    if [[ -z "${HOST}" ]]; then
-      APPS="$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}' 2>/dev/null \
-           || oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null || true)"
-      HOST="gateway.${APPS}"
+    CLUSTER_DOMAIN="$(
+      oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null \
+      || oc get ingresses.config/cluster -o jsonpath='{.spec.domain}' 2>/dev/null \
+      || true
+    )"
+    if [[ -z "${CLUSTER_DOMAIN}" ]]; then
+      echo "[smoke] ERROR: could not detect cluster ingress domain" >&2
+      exit 1
     fi
+    HOST="maas.${CLUSTER_DOMAIN}"
   fi
+
   SCHEME="https"
-  if ! curl -skS -m 5 "${SCHEME}://${HOST}/maas-api/healthz" -o /dev/null ; then
+  if ! curl -skS -m 5 "${SCHEME}://${HOST}/maas-api/healthz" -o /dev/null; then
     SCHEME="http"
   fi
+
   MAAS_API_BASE_URL="${SCHEME}://${HOST}/maas-api"
 fi
+
+export HOST
+export MAAS_API_BASE_URL
 
 echo "[smoke] MAAS_API_BASE_URL=${MAAS_API_BASE_URL}"
 if [[ -n "${MODEL_NAME}" ]]; then
