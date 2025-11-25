@@ -1,0 +1,42 @@
+FROM registry.access.redhat.com/ubi9/go-toolset@sha256:84286c7555df503df0bd3acb86fe2ad50af82a07f35707918bb0fad312fdc193 AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+
+RUN go mod download
+
+COPY . .
+
+USER root
+RUN CGO_ENABLED=1 GOEXPERIMENT=strictfipsruntime GOOS=linux go build -trimpath -ldflags="-s -w" -o maas-api ./cmd/
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:7c5495d5fad59aaee12abc3cbbd2b283818ee1e814b00dbc7f25bf2d14fa4f0c
+
+
+WORKDIR /app
+
+COPY --from=builder /app/maas-api .
+
+# Make binary executable and fix permissions for OpenShift
+RUN chmod +x maas-api && \
+    chgrp -R 0 /app && \
+    chmod -R g=u /app
+
+# Use a non-root user (OpenShift will assign random UID)
+USER 1001
+
+EXPOSE 8080
+
+CMD ["./maas-api"]
+
+LABEL com.redhat.component="odh-maas-api-rhel9" \
+      name="rhoai/odh-maas-api-rhel9" \
+      description="odh-maas-api" \
+      summary="odh-maas-api" \
+      maintainer="['managed-open-data-hub@redhat.com']" \
+      io.openshift.expose-services="" \
+      io.k8s.display-name="odh-maas-api" \
+      io.k8s.description="odh-maas-api" \
+      com.redhat.license_terms="https://www.redhat.com/licenses/Red_Hat_Standard_EULA_20191108.pdf"
+
