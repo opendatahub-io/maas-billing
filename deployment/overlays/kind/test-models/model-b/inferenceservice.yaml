@@ -17,7 +17,7 @@ spec:
     - name: kserve-container
       image: ghcr.io/vllm-project/semantic-router/llm-katan:latest
       ports:
-      - containerPort: 8080
+      - containerPort: 8000
         protocol: TCP
       command: ["llm-katan"]
       args:
@@ -26,7 +26,7 @@ spec:
       - "--host"
       - "0.0.0.0"
       - "--port"
-      - "8080"
+      - "8000"
       - "--served-model-name"
       - "model-b"
       - "--no-quantize"
@@ -39,8 +39,8 @@ spec:
             optional: true
       resources:
         requests:
-          cpu: "500m"
-          memory: "1Gi"
+          cpu: "100m"
+          memory: "512Mi"
         limits:
-          cpu: "2"
-          memory: "3Gi"
+          cpu: "1"
+          memory: "1Gi"
