@@ -26,6 +26,28 @@ func NewManager(k8sClient dynamic.Interface) *Manager {
 	}
 }
 
+// ListAvailableModels lists all InferenceServices across all namespaces
+func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
+	inferenceServiceGVR := schema.GroupVersionResource{
+		Group:    "serving.kserve.io",
+		Version:  "v1beta1",
+		Resource: "inferenceservices",
+	}
+
+	log.Printf("DEBUG: Attempting to list InferenceServices with GVR: %+v", inferenceServiceGVR)
+
+	list, err := m.k8sClient.Resource(inferenceServiceGVR).
+		Namespace(metav1.NamespaceAll).
+		List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Printf("DEBUG: Failed to list InferenceServices: %v", err)
+		return nil, fmt.Errorf("failed to list InferenceServices: %w", err)
+	}
+
+	log.Printf("DEBUG: Found %d InferenceServices", len(list.Items))
+
+	return toModels(list)
+}
 
 // ListAvailableLLMs lists all LLMInferenceServices across all namespaces.
 func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
@@ -49,7 +71,6 @@ func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
 
 	return toModels(list)
 }
-
 
 func toModels(list *unstructured.UnstructuredList) ([]Model, error) {
 	models := make([]Model, 0, len(list.Items))
@@ -142,41 +163,7 @@ func checkReadiness(item unstructured.Unstructured) bool {
 		return false
 	}
 
-	// Look for the "Ready" condition as primary readiness indicator
-	for _, c := range conds {
-		m, ok := c.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		// Get condition type
-		condType, ok, _ := unstructured.NestedString(m, "type")
-		if !ok {
-			continue
-		}
-
-		// Focus on the Ready condition as the authoritative readiness indicator
-		if condType == "Ready" {
-			status := "false"
-			if s, ok, _ := unstructured.NestedString(m, "status"); ok {
-				status = strings.ToLower(s)
-			} else if b, ok, _ := unstructured.NestedBool(m, "status"); ok {
-				if b {
-					status = "true"
-				}
-			}
-
-			if status == "true" {
-				return true
-			} else {
-				log.Printf("DEBUG: Ready condition is %s, not ready", status)
-				return false
-			}
-		}
-	}
-
-	// If no Ready condition found, fall back to checking all conditions
-	log.Printf("DEBUG: No Ready condition found, checking all conditions")
+	// Ensure all conditions have the status "True"
 	for _, c := range conds {
 		m, ok := c.(map[string]any)
 		if !ok {
