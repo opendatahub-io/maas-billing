@@ -2,7 +2,7 @@ module github.com/opendatahub-io/maas-billing/maas-api
 
 go 1.24.1
 
-toolchain go1.24.7
+toolchain go1.25.4
 
 require (
 	github.com/gin-contrib/cors v1.7.6
