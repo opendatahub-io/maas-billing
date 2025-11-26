@@ -19,8 +19,8 @@ spec:
         type: PathPrefix
         value: /llm/model-a/v1/chat/completions
     backendRefs:
-    - name: model-a-predictor-00001-private
-      port: 80
+    - name: model-a-kserve-workload-svc
+      port: 8000
       weight: 100
     filters:
     - type: URLRewrite
@@ -35,8 +35,8 @@ spec:
         type: PathPrefix
         value: /llm/model-a/v1/models
     backendRefs:
-    - name: model-a-predictor-00001-private
-      port: 80
+    - name: model-a-kserve-workload-svc
+      port: 8000
       weight: 100
     filters:
     - type: URLRewrite

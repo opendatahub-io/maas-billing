@@ -21,9 +21,9 @@ func NewModelsHandler(modelMgr *models.Manager) *ModelsHandler {
 	}
 }
 
-// ListModels handles GET /models
+// ListModels handles GET /models (LLMInferenceService only)
 func (h *ModelsHandler) ListModels(c *gin.Context) {
-	modelList, err := h.modelMgr.ListAvailableModels(c.Request.Context())
+	modelList, err := h.modelMgr.ListAvailableLLMs(c.Request.Context())
 	if err != nil {
 		log.Printf("Failed to get available models: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve models"})
@@ -36,9 +36,9 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 	})
 }
 
-// ListLLMs handles GET /v1/models (OpenAI-compatible endpoint)
+// ListLLMs handles GET /v1/models (OpenAI-compatible endpoint, LLMInferenceService only)
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
-	modelList, err := h.modelMgr.ListAllAvailableModels(c.Request.Context())
+	modelList, err := h.modelMgr.ListAvailableLLMs(c.Request.Context())
 	if err != nil {
 		log.Printf("Failed to get available models: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{

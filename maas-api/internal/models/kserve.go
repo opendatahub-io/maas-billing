@@ -26,28 +26,6 @@ func NewManager(k8sClient dynamic.Interface) *Manager {
 	}
 }
 
-// ListAvailableModels lists all InferenceServices across all namespaces
-func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
-	inferenceServiceGVR := schema.GroupVersionResource{
-		Group:    "serving.kserve.io",
-		Version:  "v1beta1",
-		Resource: "inferenceservices",
-	}
-
-	log.Printf("DEBUG: Attempting to list InferenceServices with GVR: %+v", inferenceServiceGVR)
-
-	list, err := m.k8sClient.Resource(inferenceServiceGVR).
-		Namespace(metav1.NamespaceAll).
-		List(ctx, metav1.ListOptions{})
-	if err != nil {
-		log.Printf("DEBUG: Failed to list InferenceServices: %v", err)
-		return nil, fmt.Errorf("failed to list InferenceServices: %w", err)
-	}
-
-	log.Printf("DEBUG: Found %d InferenceServices", len(list.Items))
-
-	return toModels(list)
-}
 
 // ListAvailableLLMs lists all LLMInferenceServices across all namespaces.
 func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
@@ -72,46 +50,6 @@ func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
 	return toModels(list)
 }
 
-// ListAllAvailableModels lists both InferenceServices and LLMInferenceServices across all namespaces.
-// This method provides broader compatibility by discovering models from both standard KServe 
-// (InferenceServices) and OpenShift AI/ODH (LLMInferenceServices) deployments.
-func (m *Manager) ListAllAvailableModels(ctx context.Context) ([]Model, error) {
-	// Try standard InferenceServices first (works on any Kubernetes with KServe)
-	models, err := m.ListAvailableModels(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Try to add LLMInferenceServices if OpenShift AI/ODH is installed
-	llmGVR := schema.GroupVersionResource{
-		Group:    "serving.kserve.io",
-		Version:  "v1alpha1",
-		Resource: "llminferenceservices",
-	}
-
-	log.Printf("DEBUG: Attempting to list LLMInferenceServices")
-
-	llmList, llmErr := m.k8sClient.Resource(llmGVR).
-		Namespace(metav1.NamespaceAll).
-		List(ctx, metav1.ListOptions{})
-
-	if llmErr != nil {
-		// Expected when OpenShift AI/ODH is not installed
-		log.Printf("DEBUG: LLMInferenceServices not available: %v", llmErr)
-		return models, nil
-	}
-
-	log.Printf("DEBUG: Found %d LLMInferenceServices", len(llmList.Items))
-
-	// Add LLMInferenceServices to the list
-	llmModels, err := toModels(llmList)
-	if err != nil {
-		log.Printf("WARN: Failed to parse LLMInferenceServices: %v", err)
-		return models, nil // Return what we have
-	}
-
-	return append(models, llmModels...), nil
-}
 
 func toModels(list *unstructured.UnstructuredList) ([]Model, error) {
 	models := make([]Model, 0, len(list.Items))
@@ -204,7 +142,41 @@ func checkReadiness(item unstructured.Unstructured) bool {
 		return false
 	}
 
-	// Ensure all conditions have the status "True"
+	// Look for the "Ready" condition as primary readiness indicator
+	for _, c := range conds {
+		m, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		// Get condition type
+		condType, ok, _ := unstructured.NestedString(m, "type")
+		if !ok {
+			continue
+		}
+
+		// Focus on the Ready condition as the authoritative readiness indicator
+		if condType == "Ready" {
+			status := "false"
+			if s, ok, _ := unstructured.NestedString(m, "status"); ok {
+				status = strings.ToLower(s)
+			} else if b, ok, _ := unstructured.NestedBool(m, "status"); ok {
+				if b {
+					status = "true"
+				}
+			}
+
+			if status == "true" {
+				return true
+			} else {
+				log.Printf("DEBUG: Ready condition is %s, not ready", status)
+				return false
+			}
+		}
+	}
+
+	// If no Ready condition found, fall back to checking all conditions
+	log.Printf("DEBUG: No Ready condition found, checking all conditions")
 	for _, c := range conds {
 		m, ok := c.(map[string]any)
 		if !ok {

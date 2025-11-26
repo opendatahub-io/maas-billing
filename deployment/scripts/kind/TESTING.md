@@ -4,13 +4,13 @@ This guide explains how to test the MaaS platform running on Kind.
 
 ## Test Scripts
 
-### 1. Automated Test Suite (`test.sh`)
+### 1. Automated Test Suite (`validationtest.sh`)
 
 Comprehensive automated testing of all flows - authentication, rate limiting, and inference.
 
 ```bash
 cd deployment/scripts/kind
-./test.sh
+./validationtest.sh
 ```
 
 **Tests included:**
@@ -204,7 +204,7 @@ curl -X POST http://localhost/v1/chat/completions \
 cd deployment/scripts/kind
 
 # Run test suite
-./test.sh
+./validationtest.sh
 
 # Or run interactive demo
 ./demo.sh
@@ -311,7 +311,7 @@ kubectl logs -n kuadrant-system -l app=limitador -f
 
 # Terminal 4: Run tests
 cd deployment/scripts/kind
-./test.sh
+./validationtest.sh
 ```
 
 ### Monitor resource usage
@@ -328,7 +328,7 @@ To use these tests in CI/CD:
 # In your CI pipeline
 cd deployment/scripts/kind
 ./install.sh  # Includes test models by default
-./test.sh
+./validationtest.sh
 
 # Exit code 0 = all tests passed
 # Exit code 1 = one or more tests failed

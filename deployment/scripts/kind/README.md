@@ -48,13 +48,20 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost/llm/model-b/v1/models
 cd deployment/scripts/kind
 
 # Automated tests
-./test.sh
+./validationtest.sh
 
 # Interactive demo
 ./demo.sh
+
+# Dedicated test scripts
+./tests/test-list-models.sh      # Quick model discovery test
+./tests/test-rate-limits.sh      # Request rate limiting test  
+./tests/test-token-rate-limits.sh # Token rate limiting test
 ```
 
 Expected output: All 6 tests pass ✅
+
+> **New**: Dedicated test scripts in `tests/` folder provide focused testing of individual MaaS features with automatic reset handling.
 
 ---
 

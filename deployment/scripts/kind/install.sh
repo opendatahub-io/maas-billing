@@ -4,6 +4,7 @@ set -euo pipefail
 
 # MaaS Local Development Setup with Kind
 # Supports Mac (Intel/ARM) and Linux (x86_64/ARM64)
+# Note: Uses fast inference simulators for testing (not real LLM models)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -332,31 +333,19 @@ spec:
   template:
     containers:
     - name: kserve-container
-      image: ghcr.io/vllm-project/semantic-router/llm-katan:latest
+      image: ghcr.io/llm-d/llm-d-inference-sim:v0.5.1
       ports:
       - containerPort: 8080
         protocol: TCP
-      env:
-      - name: HUGGINGFACE_HUB_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: huggingface-token
-            key: token
-            optional: true
+      command: ["/app/llm-d-inference-sim"]
+      args: ["--port", "8080", "--mode", "random"]
       resources:
         requests:
-          cpu: "500m"
-          memory: "1Gi"
+          cpu: "100m"
+          memory: "128Mi"
         limits:
-          cpu: "2"
-          memory: "3Gi"
-      volumeMounts:
-      - name: kserve-provision-location
-        mountPath: /mnt/models
-        readOnly: true
-    volumes:
-    - name: kserve-provision-location
-      emptyDir: {}
+          cpu: "500m"
+          memory: "256Mi"
 EOF
         local config_result=$?
         set -e
@@ -628,12 +617,12 @@ deploy_test_models() {
         log_info "Deploying model-a (InferenceService - free tier)..."
         kubectl apply -k "$PROJECT_ROOT/deployment/overlays/kind/test-models/model-a"
 
-        # Wait for InferenceService to be ready
+        # Wait for InferenceService to be ready (simulator should be fast)
         log_info "Waiting for model-a (InferenceService) to be ready..."
-        if kubectl wait --for=condition=Ready inferenceservice/model-a -n llm --timeout=600s; then
+        if kubectl wait --for=condition=Ready inferenceservice/model-a -n llm --timeout=30s; then
             log_success "model-a (InferenceService) is ready"
         else
-            log_warn "model-a may not be ready yet (model download may take time)"
+            log_warn "model-a is taking longer than expected (check pod status)"
             # Check pod status for debugging
             kubectl get pods -n llm -l serving.kserve.io/inferenceservice=model-a
         fi
@@ -646,12 +635,12 @@ deploy_test_models() {
         log_info "Deploying model-b (LLMInferenceService - premium tier)..."
         kubectl apply -k "$PROJECT_ROOT/deployment/overlays/kind/test-models/model-b"
 
-        # Wait for LLMInferenceService to be ready
+        # Wait for LLMInferenceService to be ready (simulator should be fast)
         log_info "Waiting for model-b (LLMInferenceService) to be ready..."
-        if kubectl wait --for=condition=Ready llminferenceservice/model-b -n llm --timeout=600s; then
+        if kubectl wait --for=condition=Ready llminferenceservice/model-b -n llm --timeout=30s; then
             log_success "model-b (LLMInferenceService) is ready"
         else
-            log_warn "model-b may not be ready yet (model download may take time)"
+            log_warn "model-b is taking longer than expected (check pod status)"
             # Check pod status for debugging
             kubectl get pods -n llm -l serving.kserve.io/inferenceservice=model-b
             kubectl describe llminferenceservice/model-b -n llm | tail -10
