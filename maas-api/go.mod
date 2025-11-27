@@ -17,7 +17,7 @@ require (
 	knative.dev/pkg v0.0.0-20250915135827-db4c336acdbe
 )
 
-replace github.com/kserve/kserve => github.com/opendatahub-io/kserve v0.0.0-20250901180218-9873b9442ed2
+replace github.com/kserve/kserve => github.com/opendatahub-io/kserve v0.11.0
 
 require (
 	github.com/bytedance/sonic v1.13.3 // indirect
