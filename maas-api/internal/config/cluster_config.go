@@ -8,6 +8,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	gatewayclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1"
 )
 
 type K8sClusterConfig struct {
@@ -15,6 +16,7 @@ type K8sClusterConfig struct {
 	ClientSet      *kubernetes.Clientset
 	KServeV1Beta1  kserveclientv1beta1.ServingV1beta1Interface
 	KServeV1Alpha1 kserveclientv1alpha1.ServingV1alpha1Interface
+	Gateway        gatewayclient.GatewayV1Interface
 }
 
 func NewClusterConfig() (*K8sClusterConfig, error) {
@@ -38,11 +40,17 @@ func NewClusterConfig() (*K8sClusterConfig, error) {
 		return nil, fmt.Errorf("failed to create KServe v1alpha1 client: %w", err)
 	}
 
+	gatewayClient, err := gatewayclient.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Gateway API client: %w", err)
+	}
+
 	return &K8sClusterConfig{
 		RestConfig:     restConfig,
 		ClientSet:      clientset,
 		KServeV1Beta1:  kserveV1Beta1,
 		KServeV1Alpha1: kserveV1Alpha1,
+		Gateway:        gatewayClient,
 	}, nil
 }
 
