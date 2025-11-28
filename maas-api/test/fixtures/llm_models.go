@@ -4,7 +4,7 @@ import (
 	"time"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,7 +55,7 @@ func WithSpecModelName(name string) LLMInferenceServiceOption {
 	}
 }
 
-// CreateLLMInferenceService creates a test LLMInferenceService unstructured object
+// CreateLLMInferenceService creates a test LLMInferenceService unstructured object.
 func CreateLLMInferenceService(name, namespace string, url ModelURL, ready bool, opts ...LLMInferenceServiceOption) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.Object = map[string]any{}
@@ -135,7 +135,7 @@ func CreateLLMInferenceService(name, namespace string, url ModelURL, ready bool,
 	return obj
 }
 
-// LLMTestScenario defines a test scenario for LLM models
+// LLMTestScenario defines a test scenario for LLM models.
 type LLMTestScenario struct {
 	Name          string
 	Namespace     string
@@ -144,7 +144,7 @@ type LLMTestScenario struct {
 	SpecModelName *string
 }
 
-// CreateTypedLLMInferenceService creates a test LLMInferenceService typed object
+// CreateTypedLLMInferenceService creates a test LLMInferenceService typed object.
 func CreateTypedLLMInferenceService(name, namespace string, url ModelURL, ready bool, specModelName *string) *kservev1alpha1.LLMInferenceService {
 	llm := &kservev1alpha1.LLMInferenceService{
 		TypeMeta: metav1.TypeMeta{
@@ -184,27 +184,27 @@ func CreateTypedLLMInferenceService(name, namespace string, url ModelURL, ready 
 	// Set conditions based on ready state
 	if ready {
 		llm.Status.Conditions = []apis.Condition{
-			{Type: "HTTPRoutesReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
-			{Type: "InferencePoolReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
-			{Type: "MainWorkloadReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
-			{Type: "PresetsCombined", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
-			{Type: apis.ConditionReady, Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
-			{Type: "RouterReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
-			{Type: "WorkloadsReady", Status: v1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "HTTPRoutesReady", Status: corev1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "InferencePoolReady", Status: corev1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "MainWorkloadReady", Status: corev1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "PresetsCombined", Status: corev1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: apis.ConditionReady, Status: corev1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "RouterReady", Status: corev1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
+			{Type: "WorkloadsReady", Status: corev1.ConditionTrue, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}},
 		}
 	} else {
 		llm.Status.Conditions = []apis.Condition{
-			{Type: apis.ConditionReady, Status: v1.ConditionFalse, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}, Reason: "ServiceNotReady"},
-			{Type: "WorkloadsReady", Status: v1.ConditionFalse, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}, Reason: "NotReady"},
+			{Type: apis.ConditionReady, Status: corev1.ConditionFalse, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}, Reason: "ServiceNotReady"},
+			{Type: "WorkloadsReady", Status: corev1.ConditionFalse, LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(time.Now().Add(-time.Hour))}, Reason: "NotReady"},
 		}
 	}
 
 	return llm
 }
 
-// CreateLLMInferenceServices creates a set of test LLM objects for testing
+// CreateLLMInferenceServices creates a set of test LLM objects for testing.
 func CreateLLMInferenceServices(scenarios ...LLMTestScenario) []runtime.Object {
-	var objects []runtime.Object
+	objects := make([]runtime.Object, 0, len(scenarios))
 	for _, scenario := range scenarios {
 		obj := CreateTypedLLMInferenceService(
 			scenario.Name,

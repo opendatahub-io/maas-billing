@@ -8,7 +8,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 )
 
-// Config holds application configuration
+// Config holds application configuration.
 type Config struct {
 	// Name of the "MaaS Instance" maas-api handles keys for
 	Name string
@@ -29,7 +29,7 @@ type Config struct {
 	DBPath string
 }
 
-// Load loads configuration from environment variables
+// Load loads configuration from environment variables.
 func Load() *Config {
 	debugMode, _ := env.GetBool("DEBUG_MODE", false)
 	gatewayName := env.GetString("GATEWAY_NAME", constant.DefaultGatewayName)
@@ -48,7 +48,7 @@ func Load() *Config {
 	return c
 }
 
-// bindFlags will parse the given flagset and bind values to selected config options
+// bindFlags will parse the given flagset and bind values to selected config options.
 func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.Name, "name", c.Name, "Name of the MaaS instance")
 	fs.StringVar(&c.Namespace, "namespace", c.Namespace, "Namespace of the MaaS instance")

@@ -13,8 +13,9 @@ import (
 // Model extends openai.Model with additional fields.
 type Model struct {
 	openai.Model `json:",inline"`
-	URL          *apis.URL `json:"url,omitempty"`
-	Ready        bool      `json:"ready"`
+
+	URL   *apis.URL `json:"url,omitempty"`
+	Ready bool      `json:"ready"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshalling to work around openai.Model's
@@ -33,7 +34,7 @@ func (m *Model) extractFieldsFromExtraFields() error {
 	modelValue := reflect.ValueOf(m).Elem()
 	modelType := modelValue.Type()
 
-	for i := 0; i < modelType.NumField(); i++ {
+	for i := range modelType.NumField() {
 		field := modelType.Field(i)
 		fieldValue := modelValue.Field(i)
 
@@ -52,7 +53,7 @@ func (m *Model) extractFieldsFromExtraFields() error {
 			jsonFieldName = strings.ToLower(field.Name)
 		}
 
-		if extraField, exists := m.Model.JSON.ExtraFields[jsonFieldName]; exists {
+		if extraField, exists := m.JSON.ExtraFields[jsonFieldName]; exists {
 			if err := m.setFieldFromExtraField(fieldValue, field.Type, extraField); err != nil {
 				return fmt.Errorf("failed setting %s: %w", jsonFieldName, err)
 			}

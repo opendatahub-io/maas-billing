@@ -15,13 +15,13 @@ import (
 	"knative.dev/pkg/apis"
 )
 
-// Manager handles model discovery and listing
+// Manager handles model discovery and listing.
 type Manager struct {
 	v1beta1Client  kserveclientv1beta1.ServingV1beta1Interface
 	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface
 }
 
-// NewManager creates a new model manager
+// NewManager creates a new model manager.
 func NewManager(v1beta1Client kserveclientv1beta1.ServingV1beta1Interface, v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface) *Manager {
 	return &Manager{
 		v1beta1Client:  v1beta1Client,
@@ -29,7 +29,7 @@ func NewManager(v1beta1Client kserveclientv1beta1.ServingV1beta1Interface, v1alp
 	}
 }
 
-// ListAvailableModels lists all InferenceServices across all namespaces
+// ListAvailableModels lists all InferenceServices across all namespaces.
 func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
 	list, err := m.v1beta1Client.InferenceServices(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
 	if err != nil {

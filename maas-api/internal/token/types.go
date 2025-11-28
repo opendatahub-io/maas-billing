@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// UserContext holds user information extracted from the token
+// UserContext holds user information extracted from the token.
 type UserContext struct {
 	Username        string
 	UID             string
@@ -30,7 +30,7 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 }
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
-	var v interface{}
+	var v any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}

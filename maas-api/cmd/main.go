@@ -80,7 +80,7 @@ func main() {
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
+		log.Fatal("Server forced to shutdown:", err) //nolint:gocritic // exits immediately
 	}
 
 	log.Println("Server exited gracefully")
@@ -144,7 +144,9 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	router.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListModels)
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
 
+	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(reviewer))
+
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
 

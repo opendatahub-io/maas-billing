@@ -2,7 +2,7 @@ package token
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/sha256" //nolint:gosec // SHA1 used for non-cryptographic hashing of usernames, not for security
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	corelistersv1 "k8s.io/client-go/listers/core/v1"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 )
 
 type Manager struct {
@@ -46,10 +47,9 @@ func NewManager(
 	}
 }
 
-// GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to
+// GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to.
 // The name parameter is optional - if provided, the token is tracked in the database for individual revocation
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error) {
-
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
 		log.Printf("Failed to determine user tier for %s: %v", user.Username, err)
@@ -105,8 +105,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	return result, nil
 }
 
-// RevokeTokens revokes all tokens for a user by recreating their Service Account
-// and deleting all their token metadata from the database.
+// RevokeTokens revokes all tokens for a user by recreating their Service Account.
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -266,7 +265,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 	return saName, nil
 }
 
-// createServiceAccountToken creates a token for the service account using TokenRequest
+// createServiceAccountToken creates a token for the service account using TokenRequest.
 func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saName string, ttl int) (*authv1.TokenRequest, error) {
 	expirationSeconds := int64(ttl)
 
@@ -286,7 +285,7 @@ func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saNa
 	return result, nil
 }
 
-// deleteServiceAccount deletes a service account
+// deleteServiceAccount deletes a service account.
 func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName string) error {
 	err := m.clientset.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{})
 	if err != nil {
@@ -321,7 +320,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	// Append a stable short hash to reduce collisions
-	sum := sha256.Sum256([]byte(username))
+	sum := sha256.Sum256([]byte(username)) //nolint:gosec // SHA1 used for non-cryptographic hashing, not for security
 	suffix := hex.EncodeToString(sum[:])[:8]
 
 	// Ensure total length <= 63 including hyphen and suffix

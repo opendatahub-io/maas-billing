@@ -1,7 +1,7 @@
 package tier
 
 type LookupRequest struct {
-	Groups []string `json:"groups" binding:"required,min=1"` // Array of user groups to lookup
+	Groups []string `binding:"required,min=1" json:"groups"` // Array of user groups to lookup
 }
 
 type LookupResponse struct {
