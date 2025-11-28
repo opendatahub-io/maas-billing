@@ -10,11 +10,12 @@ rules:
 # SA token provider resources
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "create"]
 - apiGroups: [""]
   resources: ["serviceaccounts"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "create", "delete"]
 - apiGroups: [""]
+  # Needed for TokenRequest API
   resources: ["serviceaccounts/token"]
   verbs: ["create"]
 

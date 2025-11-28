@@ -50,7 +50,8 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	registerHandlers(ctx, router, cfg)
+	cleanup, _ := registerHandlers(ctx, router, cfg)
+	defer cleanup()
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -85,7 +86,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) (func(), *token.Store) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -95,13 +96,11 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 
 	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
-	router.GET("/models", modelsHandler.ListModels)
-	router.GET("/v1/models", modelsHandler.ListLLMs)
 
-	configureSATokenProvider(ctx, cfg, router, clusterConfig)
+	return configureSATokenProvider(ctx, cfg, router, clusterConfig, modelsHandler)
 }
 
-func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig) {
+func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig, modelsHandler *handlers.ModelsHandler) (func(), *token.Store) {
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
@@ -124,17 +123,42 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 		log.Fatalf("Failed to sync informer caches")
 	}
 
+	store, err := token.NewStore(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize token store: %v", err)
+	}
+
 	manager := token.NewManager(
 		cfg.Name,
 		tierMapper,
 		clusterConfig.ClientSet,
 		namespaceInformer.Lister(),
 		serviceAccountInformer.Lister(),
+		store,
 	)
 	tokenHandler := token.NewHandler(cfg.Name, manager)
+	// Create reviewer with audience to properly validate Service Account tokens
+	reviewer := token.NewReviewerWithAudience(clusterConfig.ClientSet, cfg.Name+"-sa")
+
+	// Protect model listing endpoints with token validation
+	router.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListModels)
+	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
 
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
-	tokenRoutes := v1Routes.Group("/tokens", token.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
+	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(reviewer))
+
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
+
+	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo(reviewer))
+	apiKeyRoutes.POST("", tokenHandler.CreateAPIKey)
+	apiKeyRoutes.GET("", tokenHandler.ListAPIKeys)
+	apiKeyRoutes.GET("/:id", tokenHandler.GetAPIKey)
+
+	cleanup := func() {
+		if err := store.Close(); err != nil {
+			log.Printf("Failed to close token store: %v", err)
+		}
+	}
+	return cleanup, store
 }

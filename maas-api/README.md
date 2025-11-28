@@ -137,9 +137,16 @@ PROJECT_DIR=$(git rev-parse --show-toplevel)
 kustomize build ${PROJECT_DIR}/docs/samples/models/simulator | kubectl apply --server-side=true --force-conflicts -f -
 ```
 
-#### Getting the token
+#### Getting a token
 
-To see the token, you can use the following commands:
+MaaS API supports two types of tokens:
+
+1. **Ephemeral Tokens** - Short-lived tokens for temporary access
+2. **API Keys** - Named, long-lived tokens for applications (stored in SQLite database)
+
+##### Ephemeral Tokens
+
+To get a short-lived ephemeral token:
 
 ```shell
 HOST="$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o jsonpath='{.items[0].status.addresses[0].value}')"
@@ -162,6 +169,48 @@ TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 
 > [!NOTE]
 > This is a self-service endpoint that issues ephemeral tokens. Openshift Identity (`$(oc whoami -t)`) is used as a refresh token.
+
+##### API Keys (Named Tokens)
+
+To create a named API key that can be tracked and managed:
+
+```shell
+HOST="$(kubectl get gateway -l app.kubernetes.io/instance=maas-default-gateway -n openshift-ingress -o jsonpath='{.items[0].status.addresses[0].value}')"
+
+# Create a named API key
+API_KEY_RESPONSE=$(curl -sSk \
+  -H "Authorization: Bearer $(oc whoami -t)" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d '{
+    "expiration": "720h",
+    "name": "my-application-key"
+  }' \
+  "${HOST}/maas-api/v1/api-keys")
+
+echo $API_KEY_RESPONSE | jq -r .
+TOKEN=$(echo $API_KEY_RESPONSE | jq -r .token)
+
+# List all your API keys
+curl -sSk \
+  -H "Authorization: Bearer $(oc whoami -t)" \
+  "${HOST}/maas-api/v1/api-keys" | jq .
+
+# Get specific API key by ID
+API_KEY_ID="<id-from-list>"
+curl -sSk \
+  -H "Authorization: Bearer $(oc whoami -t)" \
+  "${HOST}/maas-api/v1/api-keys/${API_KEY_ID}" | jq .
+
+# Revoke a specific API key
+curl -sSk \
+  -H "Authorization: Bearer $(oc whoami -t)" \
+  -X DELETE \
+  "${HOST}/maas-api/v1/api-keys/${API_KEY_ID}"
+```
+
+> [!NOTE]
+> API keys are stored in a SQLite database (`/data/maas.db` in the container) with metadata including creation date, expiration date, and status. They can be listed, inspected, and revoked individually.
 
 #### Calling the model and hitting the rate limit
 
