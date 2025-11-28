@@ -41,7 +41,7 @@ func Load() *Config {
 		GatewayNamespace: env.GetString("GATEWAY_NAMESPACE", constant.DefaultGatewayNamespace),
 		Port:             env.GetString("PORT", "8080"),
 		DebugMode:        debugMode,
-		DBPath:                   env.GetString("DB_PATH", "/data/maas.db"),
+		DBPath:           env.GetString("DB_PATH", "/data/maas.db"),
 	}
 	c.bindFlags(flag.CommandLine)
 
