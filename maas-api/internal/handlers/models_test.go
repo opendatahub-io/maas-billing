@@ -20,43 +20,60 @@ import (
 func TestListingModels(t *testing.T) {
 	strptr := func(s string) *string { return &s }
 
+	const (
+		testGatewayName      = "test-gateway"
+		testGatewayNamespace = "test-gateway-ns"
+	)
+
 	llmTestScenarios := []fixtures.LLMTestScenario{
 		{
-			Name:      "llama-7b",
-			Namespace: "model-serving",
-			URL:       fixtures.PublicURL("http://llama-7b.model-serving.acme.com/v1"),
-			Ready:     true,
+			Name:             "llama-7b",
+			Namespace:        "model-serving",
+			URL:              fixtures.PublicURL("http://llama-7b.model-serving.acme.com/v1"),
+			Ready:            true,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
 		},
 		{
-			Name:      "gpt-3-turbo",
-			Namespace: "openai-models",
-			URL:       fixtures.PublicURL("http://gpt-3-turbo.openai-models.acme.com/v1"),
-			Ready:     true,
+			Name:             "gpt-3-turbo",
+			Namespace:        "openai-models",
+			URL:              fixtures.PublicURL("http://gpt-3-turbo.openai-models.acme.com/v1"),
+			Ready:            true,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
 		},
 		{
-			Name:      "bert-base",
-			Namespace: "nlp-models",
-			URL:       fixtures.PublicURL("http://bert-base.nlp-models.svc.acme.me/v1"),
-			Ready:     false,
+			Name:             "bert-base",
+			Namespace:        "nlp-models",
+			URL:              fixtures.PublicURL("http://bert-base.nlp-models.svc.acme.me/v1"),
+			Ready:            false,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
 		},
 		{
-			Name:      "llama-7b-private-url",
-			Namespace: "model-serving",
-			URL:       fixtures.AddressEntry("http://10.0.32.128/model-serving/llama-7b-private-url/v1"),
-			Ready:     true,
+			Name:             "llama-7b-private-url",
+			Namespace:        "model-serving",
+			URL:              fixtures.AddressEntry("http://10.0.32.128/model-serving/llama-7b-private-url/v1"),
+			Ready:            true,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
 		},
 		{
-			Name:      "model-without-url",
-			Namespace: fixtures.TestNamespace,
-			URL:       fixtures.PublicURL(""),
-			Ready:     false,
+			Name:             "model-without-url",
+			Namespace:        fixtures.TestNamespace,
+			URL:              fixtures.PublicURL(""),
+			Ready:            false,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
 		},
 		{
-			Name:          "fallback-model-name",
-			Namespace:     fixtures.TestNamespace,
-			URL:           fixtures.PublicURL("http://fallback-model-name." + fixtures.TestNamespace + ".acme.com/v1"),
-			Ready:         true,
-			SpecModelName: strptr("fallback-model-name"),
+			Name:             "fallback-model-name",
+			Namespace:        fixtures.TestNamespace,
+			URL:              fixtures.PublicURL("http://fallback-model-name." + fixtures.TestNamespace + ".acme.com/v1"),
+			Ready:            true,
+			SpecModelName:    strptr("fallback-model-name"),
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
 		},
 	}
 	llmInferenceServices := fixtures.CreateLLMInferenceServices(llmTestScenarios...)
@@ -65,7 +82,12 @@ func TestListingModels(t *testing.T) {
 		Objects: llmInferenceServices,
 	}
 	router, clients := fixtures.SetupTestServer(t, config)
-	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1)
+
+	gatewayRef := models.GatewayRef{
+		Name:      testGatewayName,
+		Namespace: testGatewayNamespace,
+	}
+	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1, clients.Gateway, gatewayRef)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	v1 := router.Group("/v1")
 	v1.GET("/models", modelsHandler.ListLLMs)
