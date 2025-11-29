@@ -313,16 +313,42 @@ kustomize build deployment/base/policies | kubectl apply --server-side=true --fo
 
 echo ""
 echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
-AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
+# Cross-platform base64 decode (macOS uses -D, Linux uses -d)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    BASE64_DECODE="base64 -D"
+else
+    BASE64_DECODE="base64 -d"
+fi
+
+echo "   Attempting to detect audience..."
+TOKEN=$(kubectl create token default --duration=10m 2>/dev/null || echo "")
+if [ -z "$TOKEN" ]; then
+    echo "   ⚠️  Could not create token, skipping audience detection"
+    AUD=""
+else
+    echo "   Token created successfully"
+    JWT_PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 2>/dev/null || echo "")
+    if [ -z "$JWT_PAYLOAD" ]; then
+        echo "   ⚠️  Could not extract JWT payload, skipping audience detection"
+        AUD=""
+    else
+        echo "   JWT payload extracted"
+        DECODED_PAYLOAD=$(echo "$JWT_PAYLOAD" | $BASE64_DECODE 2>/dev/null || echo "")
+        if [ -z "$DECODED_PAYLOAD" ]; then
+            echo "   ⚠️  Could not decode base64 payload, skipping audience detection"
+            AUD=""
+        else
+            echo "   Payload decoded successfully"
+            AUD=$(echo "$DECODED_PAYLOAD" | jq -r '.aud[0]' 2>/dev/null || echo "")
+        fi
+    fi
+fi
 if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
     echo "   Detected audience: $AUD"
+    PATCH_JSON="[{\"op\":\"replace\",\"path\":\"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0\",\"value\":\"$AUD\"}]"
     kubectl patch authpolicy maas-api-auth-policy -n maas-api \
       --type='json' \
-      -p "$(jq -nc --arg aud "$AUD" '[{
-        op:"replace",
-        path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
-        value:$aud
-      }]')" 2>/dev/null && echo "   ✅ AuthPolicy patched" || echo "   ⚠️  Failed to patch AuthPolicy (may need manual configuration)"
+      -p "$PATCH_JSON" 2>/dev/null && echo "   ✅ AuthPolicy patched" || echo "   ⚠️  Failed to patch AuthPolicy (may need manual configuration)"
 else
     echo "   ⚠️  Could not detect audience, skipping AuthPolicy patch"
     echo "      You may need to manually configure the audience later"
