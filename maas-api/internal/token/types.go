@@ -28,7 +28,10 @@ type Duration struct {
 	time.Duration
 }
 
-func (d Duration) MarshalJSON() ([]byte, error) {
+func (d *Duration) MarshalJSON() ([]byte, error) {
+	if d == nil {
+		return []byte("null"), nil
+	}
 	return json.Marshal(d.String())
 }
 

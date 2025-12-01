@@ -17,18 +17,18 @@ type Reviewer struct {
 }
 
 // NewReviewer creates a new Reviewer instance.
-func NewReviewer(clientset kubernetes.Interface) *Reviewer {
-	return &Reviewer{
+// The audience parameter is optional. When provided, it's used to validate Service Account tokens
+// that were created with a specific audience (e.g., "{instance}-sa"). The reviewer will first
+// attempt validation with the specified audience, then fall back to default audience validation
+// for User/OIDC tokens.
+func NewReviewer(clientset kubernetes.Interface, audience ...string) *Reviewer {
+	r := &Reviewer{
 		clientset: clientset,
 	}
-}
-
-// NewReviewerWithAudience creates a new Reviewer instance with audience
-func NewReviewerWithAudience(clientset kubernetes.Interface, audience string) *Reviewer {
-	return &Reviewer{
-		clientset: clientset,
-		audience:  audience,
+	if len(audience) > 0 && audience[0] != "" {
+		r.audience = audience[0]
 	}
+	return r
 }
 
 // ExtractUserInfo validates a token and extracts user information.

@@ -1,12 +1,14 @@
-package api_keys
+package api_keys_test
 
 import (
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStore(t *testing.T) {
@@ -15,11 +17,11 @@ func TestStore(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	// Test NewStore
-	store, err := NewStore(dbPath)
+	store, err := api_keys.NewStore(dbPath)
 	if err == nil && store != nil {
 		defer store.Close()
 	}
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ctx := t.Context()
 
@@ -30,10 +32,10 @@ func TestStore(t *testing.T) {
 			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
 		}
 		err := store.AddTokenMetadata(ctx, "test-ns", "user1", tok)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token1", tokens[0].Name)
 		assert.Equal(t, "active", tokens[0].Status)
@@ -46,10 +48,10 @@ func TestStore(t *testing.T) {
 			ExpiresAt: time.Now().Add(2 * time.Hour).Unix(),
 		}
 		err := store.AddTokenMetadata(ctx, "test-ns", "user1", tok)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, tokens, 2)
 	})
 
@@ -60,32 +62,32 @@ func TestStore(t *testing.T) {
 			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
 		}
 		err := store.AddTokenMetadata(ctx, "test-ns", "user2", tok)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user2")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token3", tokens[0].Name)
 	})
 
 	t.Run("DeleteTokensForUser", func(t *testing.T) {
 		err := store.DeleteTokensForUser(ctx, "test-ns", "user1")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
-		assert.NoError(t, err)
-		assert.Len(t, tokens, 0)
+		require.NoError(t, err)
+		assert.Empty(t, tokens)
 
 		// User2 should still exist
 		tokens2, err := store.GetTokensForUser(ctx, "user2")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, tokens2, 1)
 	})
 
 	t.Run("GetToken", func(t *testing.T) {
 		// Retrieve user2's token by JTI
 		gotToken, err := store.GetToken(ctx, "user2", "jti3")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, gotToken)
 		assert.Equal(t, "token3", gotToken.Name)
 	})
@@ -98,16 +100,16 @@ func TestStore(t *testing.T) {
 			ExpiresAt: time.Now().Add(-1 * time.Hour).Unix(),
 		}
 		err := store.AddTokenMetadata(ctx, "test-ns", "user4", tok)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user4")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "expired", tokens[0].Status)
 
 		// Get single token check
 		gotToken, err := store.GetToken(ctx, "user4", "jti-expired")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "expired", gotToken.Status)
 	})
 }

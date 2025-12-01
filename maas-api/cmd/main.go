@@ -144,9 +144,10 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
 	// Create reviewer with audience to properly validate Service Account tokens
-	reviewer := token.NewReviewerWithAudience(clusterConfig.ClientSet, cfg.Name+"-sa")
+	reviewer := token.NewReviewer(clusterConfig.ClientSet, cfg.Name+"-sa")
 
 	// Model listing endpoint (v1Routes is grouped under /v1, so this creates /v1/models)
+	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
 
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
@@ -154,6 +155,7 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", apiKeyHandler.RevokeAllTokens)
 
+	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo(reviewer))
 	apiKeyRoutes.POST("", apiKeyHandler.CreateAPIKey)
 	apiKeyRoutes.GET("", apiKeyHandler.ListAPIKeys)
