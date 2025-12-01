@@ -2,7 +2,7 @@ package token
 
 import (
 	"context"
-	"crypto/sha256" //nolint:gosec // SHA1 used for non-cryptographic hashing of usernames, not for security
+	"crypto/sha256" // SHA256 used for non-cryptographic hashing of usernames, not for security
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -26,7 +26,6 @@ type Manager struct {
 	clientset            kubernetes.Interface
 	namespaceLister      corelistersv1.NamespaceLister
 	serviceAccountLister corelistersv1.ServiceAccountLister
-	store                *Store
 }
 
 func NewManager(
@@ -35,7 +34,6 @@ func NewManager(
 	clientset kubernetes.Interface,
 	namespaceLister corelistersv1.NamespaceLister,
 	serviceAccountLister corelistersv1.ServiceAccountLister,
-	store *Store,
 ) *Manager {
 	return &Manager{
 		tenantName:           tenantName,
@@ -43,12 +41,11 @@ func NewManager(
 		clientset:            clientset,
 		namespaceLister:      namespaceLister,
 		serviceAccountLister: serviceAccountLister,
-		store:                store,
 	}
 }
 
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to.
-// The name parameter is optional - if provided, the token is tracked in the database for individual revocation
+// The name parameter is optional and currently unused in this layer, but kept for interface compatibility.
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error) {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -92,67 +89,53 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		Token:      token.Status.Token,
 		Expiration: Duration{expiration},
 		ExpiresAt:  exp,
-	}
-
-	// If name is provided, add to the database for tracking
-	if name != "" {
-		if err := m.store.AddTokenMetadata(ctx, namespace, user.Username, name, jti, result.ExpiresAt); err != nil {
-			log.Printf("Failed to update metadata for token %s: %v", name, err)
-			// Log error but don't fail token generation
-		}
+		JTI:        jti,
+		Name:       name,
+		Namespace:  namespace,
 	}
 
 	return result, nil
 }
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account.
-func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
+// Returns the namespace where the revocation happened.
+func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, error) {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
-		return fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
+		return "", fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
 	namespace, errNS := m.tierMapper.Namespace(ctx, userTier)
 	if errNS != nil {
-		return fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
+		return "", fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
 	}
 
 	saName, errName := m.sanitizeServiceAccountName(user.Username)
 	if errName != nil {
-		return fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
+		return namespace, fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
 	}
 
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if errors.IsNotFound(err) {
 		log.Printf("Service account %s not found in namespace %s, nothing to revoke", saName, namespace)
-		// Still try to delete token metadata even if SA doesn't exist
-		if err := m.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
-			log.Printf("Failed to delete tokens for user %s: %v", user.Username, err)
-		}
-		return nil
+		return namespace, nil
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
-	}
-
-	// Delete all token metadata before revoking tokens
-	if err := m.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
-		log.Printf("Failed to delete tokens for user %s: %v", user.Username, err)
-		// Don't fail the revocation if metadata deletion fails
+		return namespace, fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	err = m.deleteServiceAccount(ctx, namespace, saName)
 	if err != nil {
-		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
+		return namespace, fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	_, err = m.ensureServiceAccount(ctx, namespace, user.Username, userTier)
 	if err != nil {
-		return fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
+		return namespace, fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
 	}
 
-	return nil
+	return namespace, nil
 }
 
 // ValidateToken verifies the token with K8s
@@ -180,16 +163,6 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 
 	log.Printf("Token validation successful for user: %s", userCtx.Username)
 	return userCtx, nil
-}
-
-// GetTokens returns all tokens for a user
-func (m *Manager) GetTokens(ctx context.Context, user *UserContext) ([]NamedToken, error) {
-	return m.store.GetTokensForUser(ctx, user.Username)
-}
-
-// GetToken returns a single token by its JTI
-func (m *Manager) GetToken(ctx context.Context, user *UserContext, jti string) (*NamedToken, error) {
-	return m.store.GetToken(ctx, user.Username, jti)
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
@@ -320,7 +293,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	// Append a stable short hash to reduce collisions
-	sum := sha256.Sum256([]byte(username)) //nolint:gosec // SHA1 used for non-cryptographic hashing, not for security
+	sum := sha256.Sum256([]byte(username))
 	suffix := hex.EncodeToString(sum[:])[:8]
 
 	// Ensure total length <= 63 including hyphen and suffix

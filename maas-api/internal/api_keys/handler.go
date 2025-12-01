@@ -1,0 +1,190 @@
+package api_keys
+
+import (
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+)
+
+type Handler struct {
+	service *Service
+}
+
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
+}
+
+type CreateRequest struct {
+	Name       string          `json:"name"`
+	Expiration *token.Duration `json:"expiration"`
+}
+
+type Response struct {
+	Token *token.Token `json:"token"`
+}
+
+func (h *Handler) CreateAPIKey(c *gin.Context) {
+	var req CreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token name is required for api keys"})
+		return
+	}
+
+	if req.Expiration == nil {
+		req.Expiration = &token.Duration{Duration: time.Hour * 24 * 30} // Default to 30 days
+	}
+
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user, ok := userCtx.(*token.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
+
+	expiration := req.Expiration.Duration
+	if expiration <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "expiration must be positive"})
+		return
+	}
+
+	if expiration < 10*time.Minute {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes"})
+		return
+	}
+
+	tok, err := h.service.CreateAPIKey(c.Request.Context(), user, req.Name, expiration)
+	if err != nil {
+		log.Printf("Failed to generate api key: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate api key"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, Response{Token: tok})
+}
+
+func (h *Handler) ListAPIKeys(c *gin.Context) {
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user, ok := userCtx.(*token.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
+
+	tokens, err := h.service.ListAPIKeys(c.Request.Context(), user)
+	if err != nil {
+		log.Printf("Failed to list api keys: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list api keys"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tokens)
+}
+
+func (h *Handler) GetAPIKey(c *gin.Context) {
+	tokenID := c.Param("id")
+	if tokenID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token ID required"})
+		return
+	}
+
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user, ok := userCtx.(*token.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
+
+	tok, err := h.service.GetAPIKey(c.Request.Context(), user, tokenID)
+	if err != nil {
+		// Ideally use typed errors
+		if err.Error() == "token not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
+			return
+		}
+		log.Printf("Failed to get api key: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API key"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tok)
+}
+
+func (h *Handler) RevokeAPIKey(c *gin.Context) {
+	tokenID := c.Param("id")
+	if tokenID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token ID required"})
+		return
+	}
+
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user, ok := userCtx.(*token.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
+
+	err := h.service.RevokeAPIKey(c.Request.Context(), user, tokenID)
+	if err != nil {
+		if err.Error() == "token not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
+			return
+		}
+		log.Printf("Failed to revoke api key: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke API key"})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, nil)
+}
+
+// RevokeAllTokens handles DELETE /v1/tokens
+func (h *Handler) RevokeAllTokens(c *gin.Context) {
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
+		return
+	}
+
+	user, ok := userCtx.(*token.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
+
+	if err := h.service.RevokeAll(c.Request.Context(), user); err != nil {
+		log.Printf("Failed to revoke all tokens for user %s: %v", user.Username, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke tokens"})
+		return
+	}
+
+	log.Printf("Successfully revoked all tokens for user %s", user.Username)
+	c.JSON(http.StatusNoContent, nil)
+}

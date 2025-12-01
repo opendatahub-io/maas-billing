@@ -141,8 +141,8 @@ kustomize build ${PROJECT_DIR}/docs/samples/models/simulator | kubectl apply --s
 
 MaaS API supports two types of tokens:
 
-1. **Ephemeral Tokens** - Short-lived tokens for temporary access
-2. **API Keys** - Named, long-lived tokens for applications (stored in SQLite database)
+1.  **Ephemeral Tokens** - Short-lived tokens for temporary access. These tokens are stateless and provide better security posture as they expire quickly and can be easily refreshed by the caller.
+2.  **API Keys** - Named, long-lived tokens for applications (stored in SQLite database). Suitable for services or applications that need persistent access.
 
 ##### Ephemeral Tokens
 

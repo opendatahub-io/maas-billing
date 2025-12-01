@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
@@ -86,7 +87,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) (func(), *token.Store) {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) (func(), *api_keys.Store) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -100,7 +101,7 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	return configureSATokenProvider(ctx, cfg, router, clusterConfig, modelsHandler)
 }
 
-func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig, modelsHandler *handlers.ModelsHandler) (func(), *token.Store) {
+func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig, modelsHandler *handlers.ModelsHandler) (func(), *api_keys.Store) {
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
@@ -123,37 +124,46 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 		log.Fatalf("Failed to sync informer caches")
 	}
 
-	store, err := token.NewStore(cfg.DBPath)
+	store, err := api_keys.NewStore(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize token store: %v", err)
 	}
 
-	manager := token.NewManager(
+	// Create token manager (ephemeral, K8s logic)
+	tokenManager := token.NewManager(
 		cfg.Name,
 		tierMapper,
 		clusterConfig.ClientSet,
 		namespaceInformer.Lister(),
 		serviceAccountInformer.Lister(),
-		store,
 	)
-	tokenHandler := token.NewHandler(cfg.Name, manager)
+	tokenHandler := token.NewHandler(cfg.Name, tokenManager)
+
+	// Create api key service (persistent, SQLite logic)
+	apiKeyService := api_keys.NewService(tokenManager, store)
+	apiKeyHandler := api_keys.NewHandler(apiKeyService)
+
 	// Create reviewer with audience to properly validate Service Account tokens
 	reviewer := token.NewReviewerWithAudience(clusterConfig.ClientSet, cfg.Name+"-sa")
 
 	// Protect model listing endpoints with token validation
-	router.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListModels)
+	// Standardize: /v1/models preferred, /models kept for backward compat if needed, or removed as per review plan
+	// Review plan said: "Standardize Route Paths". We'll keep /v1/models and remove /models or keep it minimal.
+	// The plan was: "Ensure ListLLMs is explicitly on /v1/models. Review router.GET(/models) usage."
+	// We will align with v1 prefix.
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
 
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(reviewer))
-
 	tokenRoutes.POST("", tokenHandler.IssueToken)
-	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)
+	// RevokeAllTokens is now in api_keys handler because it wipes DB too
+	tokenRoutes.DELETE("", apiKeyHandler.RevokeAllTokens)
 
 	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo(reviewer))
-	apiKeyRoutes.POST("", tokenHandler.CreateAPIKey)
-	apiKeyRoutes.GET("", tokenHandler.ListAPIKeys)
-	apiKeyRoutes.GET("/:id", tokenHandler.GetAPIKey)
+	apiKeyRoutes.POST("", apiKeyHandler.CreateAPIKey)
+	apiKeyRoutes.GET("", apiKeyHandler.ListAPIKeys)
+	apiKeyRoutes.GET("/:id", apiKeyHandler.GetAPIKey)
+	apiKeyRoutes.DELETE("/:id", apiKeyHandler.RevokeAPIKey)
 
 	cleanup := func() {
 		if err := store.Close(); err != nil {

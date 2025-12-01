@@ -1,4 +1,4 @@
-package token
+package api_keys
 
 import (
 	"context"
@@ -8,16 +8,8 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
-
-// NamedToken represents metadata for a single token
-type NamedToken struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	CreationDate   string `json:"creationDate"`
-	ExpirationDate string `json:"expirationDate"`
-	Status         string `json:"status"` // "active", "expired"
-}
 
 // Store handles the persistence of token metadata using SQLite
 type Store struct {
@@ -74,16 +66,16 @@ func (s *Store) initSchema() error {
 }
 
 // AddTokenMetadata adds a new token to the database
-func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username, tokenName, jti string, expiresAt int64) error {
+func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username string, tok *token.Token) error {
 	now := time.Now()
 	creationDate := now.Format(time.RFC3339)
-	expirationDate := time.Unix(expiresAt, 0).Format(time.RFC3339)
+	expirationDate := time.Unix(tok.ExpiresAt, 0).Format(time.RFC3339)
 
 	query := `
 	INSERT INTO tokens (id, username, name, namespace, creation_date, expiration_date)
 	VALUES (?, ?, ?, ?, ?, ?)
 	`
-	_, err := s.db.ExecContext(ctx, query, jti, username, tokenName, namespace, creationDate, expirationDate)
+	_, err := s.db.ExecContext(ctx, query, tok.JTI, username, tok.Name, namespace, creationDate, expirationDate)
 	if err != nil {
 		return fmt.Errorf("failed to insert token metadata: %w", err)
 	}
@@ -103,6 +95,21 @@ func (s *Store) DeleteTokensForUser(ctx context.Context, namespace, username str
 	return nil
 }
 
+// DeleteToken deletes a single token for a user.
+func (s *Store) DeleteToken(ctx context.Context, username, jti string) error {
+	query := `DELETE FROM tokens WHERE username = ? AND id = ?`
+	result, err := s.db.ExecContext(ctx, query, username, jti)
+	if err != nil {
+		return fmt.Errorf("failed to delete token: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("token not found")
+	}
+	return nil
+}
+
 // GetTokensForUser retrieves all tokens for a user
 func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedToken, error) {
 	query := `
@@ -118,7 +125,7 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 	defer rows.Close()
 
 	now := time.Now()
-	var tokens []NamedToken
+	tokens := []NamedToken{} // Initialize as empty slice to return [] instead of null
 
 	for rows.Next() {
 		var t NamedToken
@@ -175,3 +182,4 @@ func (s *Store) GetToken(ctx context.Context, username, jti string) (*NamedToken
 
 	return &t, nil
 }
+

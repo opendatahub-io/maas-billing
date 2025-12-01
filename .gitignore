@@ -19,6 +19,12 @@ coverage.out
 coverage.html
 bin/
 
+# Go binaries
+maas-api/main
+maas-api/*/main
+*.exe
+*.exe~
+
 # Python
 __pycache__/
 *.py[cod]

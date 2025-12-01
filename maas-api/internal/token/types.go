@@ -8,17 +8,20 @@ import (
 
 // UserContext holds user information extracted from the token.
 type UserContext struct {
-	Username        string
-	UID             string
-	Groups          []string
-	IsAuthenticated bool
-	JTI             string // JWT ID
+	Username        string   `json:"username"`
+	UID             string   `json:"uid"`
+	Groups          []string `json:"groups"`
+	IsAuthenticated bool     `json:"isAuthenticated"`
+	JTI             string   `json:"jti"` // JWT ID
 }
 
 type Token struct {
 	Token      string   `json:"token"`
 	Expiration Duration `json:"expiration"`
 	ExpiresAt  int64    `json:"expiresAt"`
+	JTI        string   `json:"jti,omitempty"`
+	Name       string   `json:"name,omitempty"`
+	Namespace  string   `json:"-"` // Internal use only
 }
 
 type Duration struct {

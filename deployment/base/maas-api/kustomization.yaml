@@ -21,5 +21,5 @@ labels:
       
 images:
   - name: maas-api
-    newName: quay.io/opendatahub/maas-api
-    newTag: latest
+    newName: default-route-openshift-image-registry.apps.dmytro-test-v1.2rle.s1.devshift.org/maas-api/maas-api
+    newTag: pr-test

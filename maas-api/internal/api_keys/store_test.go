@@ -1,23 +1,17 @@
-package token
+package api_keys
 
 import (
-	"context"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestStore(t *testing.T) {
-	// Create a temporary directory for the database
-	tmpDir, err := os.MkdirTemp("", "maas-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
+	// Create a temporary directory for the database using t.TempDir()
+	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	// Test NewStore
@@ -27,10 +21,15 @@ func TestStore(t *testing.T) {
 	}
 	assert.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", "token1", "jti1", time.Now().Add(1*time.Hour).Unix())
+		tok := &token.Token{
+			Name:      "token1",
+			JTI:       "jti1",
+			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+		}
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", tok)
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
@@ -41,7 +40,12 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("AddSecondToken", func(t *testing.T) {
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", "token2", "jti2", time.Now().Add(2*time.Hour).Unix())
+		tok := &token.Token{
+			Name:      "token2",
+			JTI:       "jti2",
+			ExpiresAt: time.Now().Add(2 * time.Hour).Unix(),
+		}
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", tok)
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user1")
@@ -50,7 +54,12 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("GetTokensForDifferentUser", func(t *testing.T) {
-		err := store.AddTokenMetadata(ctx, "test-ns", "user2", "token3", "jti3", time.Now().Add(1*time.Hour).Unix())
+		tok := &token.Token{
+			Name:      "token3",
+			JTI:       "jti3",
+			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+		}
+		err := store.AddTokenMetadata(ctx, "test-ns", "user2", tok)
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user2")
@@ -83,7 +92,12 @@ func TestStore(t *testing.T) {
 
 	t.Run("ExpiredTokenStatus", func(t *testing.T) {
 		// Add an expired token
-		err := store.AddTokenMetadata(ctx, "test-ns", "user4", "expired-token", "jti-expired", time.Now().Add(-1*time.Hour).Unix())
+		tok := &token.Token{
+			Name:      "expired-token",
+			JTI:       "jti-expired",
+			ExpiresAt: time.Now().Add(-1 * time.Hour).Unix(),
+		}
+		err := store.AddTokenMetadata(ctx, "test-ns", "user4", tok)
 		assert.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "user4")
@@ -97,3 +111,4 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, "expired", token.Status)
 	})
 }
+

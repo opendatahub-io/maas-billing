@@ -24,6 +24,7 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
@@ -140,12 +141,6 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
-	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
-	store, err := token.NewStore(dbPath)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create test store: %v", err))
-	}
-
 	tierMapper := tier.NewMapper(fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
 		TestTenant,
@@ -153,18 +148,10 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 		fakeClient,
 		namespaceLister,
 		serviceAccountLister,
-		store,
 	)
 	reviewer := token.NewReviewer(fakeClient)
 
-	cleanup := func() {
-		if err := store.Close(); err != nil {
-			fmt.Printf("failed to close store: %v\n", err)
-		}
-		if err := os.Remove(dbPath); err != nil {
-			fmt.Printf("failed to remove db file: %v\n", err)
-		}
-	}
+	cleanup := func() {}
 
 	return manager, reviewer, fakeClient, cleanup
 }
@@ -174,14 +161,22 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engi
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	handler := token.NewHandler("test", manager)
+	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
+	store, err := api_keys.NewStore(dbPath)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test store: %v", err))
+	}
+
+	tokenHandler := token.NewHandler("test", manager)
+	apiKeyService := api_keys.NewService(manager, store)
+	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
 	protected := router.Group("/v1")
 	if reviewer != nil {
-		protected.Use(handler.ExtractUserInfo(reviewer))
+		protected.Use(tokenHandler.ExtractUserInfo(reviewer))
 	}
-	protected.POST("/tokens", handler.IssueToken)
-	protected.DELETE("/tokens", handler.RevokeAllTokens)
+	protected.POST("/tokens", tokenHandler.IssueToken)
+	protected.DELETE("/tokens", apiKeyHandler.RevokeAllTokens)
 
 	return router
 }
