@@ -146,17 +146,12 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	// Create reviewer with audience to properly validate Service Account tokens
 	reviewer := token.NewReviewerWithAudience(clusterConfig.ClientSet, cfg.Name+"-sa")
 
-	// Protect model listing endpoints with token validation
-	// Standardize: /v1/models preferred, /models kept for backward compat if needed, or removed as per review plan
-	// Review plan said: "Standardize Route Paths". We'll keep /v1/models and remove /models or keep it minimal.
-	// The plan was: "Ensure ListLLMs is explicitly on /v1/models. Review router.GET(/models) usage."
-	// We will align with v1 prefix.
+	// Model listing endpoint (v1Routes is grouped under /v1, so this creates /v1/models)
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
 
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(reviewer))
 	tokenRoutes.POST("", tokenHandler.IssueToken)
-	// RevokeAllTokens is now in api_keys handler because it wipes DB too
 	tokenRoutes.DELETE("", apiKeyHandler.RevokeAllTokens)
 
 	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo(reviewer))

@@ -84,10 +84,10 @@ func TestStore(t *testing.T) {
 
 	t.Run("GetToken", func(t *testing.T) {
 		// Retrieve user2's token by JTI
-		token, err := store.GetToken(ctx, "user2", "jti3")
+		gotToken, err := store.GetToken(ctx, "user2", "jti3")
 		assert.NoError(t, err)
-		assert.NotNil(t, token)
-		assert.Equal(t, "token3", token.Name)
+		assert.NotNil(t, gotToken)
+		assert.Equal(t, "token3", gotToken.Name)
 	})
 
 	t.Run("ExpiredTokenStatus", func(t *testing.T) {
@@ -106,9 +106,9 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, "expired", tokens[0].Status)
 
 		// Get single token check
-		token, err := store.GetToken(ctx, "user4", "jti-expired")
+		gotToken, err := store.GetToken(ctx, "user4", "jti-expired")
 		assert.NoError(t, err)
-		assert.Equal(t, "expired", token.Status)
+		assert.Equal(t, "expired", gotToken.Status)
 	})
 }
 

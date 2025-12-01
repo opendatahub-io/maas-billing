@@ -45,7 +45,8 @@ func NewManager(
 }
 
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to.
-// The name parameter is optional and currently unused in this layer, but kept for interface compatibility.
+// The name parameter is optional and, when provided, is assigned to the created token's Name field.
+// It remains optional for callers and is retained for interface compatibility.
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error) {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {

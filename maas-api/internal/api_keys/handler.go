@@ -1,6 +1,7 @@
 package api_keys
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -119,8 +120,7 @@ func (h *Handler) GetAPIKey(c *gin.Context) {
 
 	tok, err := h.service.GetAPIKey(c.Request.Context(), user, tokenID)
 	if err != nil {
-		// Ideally use typed errors
-		if err.Error() == "token not found" {
+		if errors.Is(err, ErrTokenNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
 			return
 		}
@@ -153,7 +153,7 @@ func (h *Handler) RevokeAPIKey(c *gin.Context) {
 
 	err := h.service.RevokeAPIKey(c.Request.Context(), user, tokenID)
 	if err != nil {
-		if err.Error() == "token not found" {
+		if errors.Is(err, ErrTokenNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
 			return
 		}

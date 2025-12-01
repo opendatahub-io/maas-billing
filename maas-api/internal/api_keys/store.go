@@ -3,6 +3,7 @@ package api_keys
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -10,6 +11,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
+
+// ErrTokenNotFound is returned when a token is not found in the store
+var ErrTokenNotFound = errors.New("token not found")
 
 // Store handles the persistence of token metadata using SQLite
 type Store struct {
@@ -105,7 +109,7 @@ func (s *Store) DeleteToken(ctx context.Context, username, jti string) error {
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return fmt.Errorf("token not found")
+		return ErrTokenNotFound
 	}
 	return nil
 }
@@ -163,7 +167,7 @@ func (s *Store) GetToken(ctx context.Context, username, jti string) (*NamedToken
 	var t NamedToken
 	if err := row.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("token not found")
+			return nil, ErrTokenNotFound
 		}
 		return nil, err
 	}

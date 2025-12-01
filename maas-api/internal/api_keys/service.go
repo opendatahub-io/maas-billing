@@ -26,7 +26,7 @@ func NewService(tokenManager TokenManager, store *Store) *Service {
 }
 
 func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, name string, expiration time.Duration) (*token.Token, error) {
-	// Generate the token. We pass "" as name because persistence is handled here.
+	// Generate token (name is set after generation since persistence is handled here)
 	tok, err := s.tokenManager.GenerateToken(ctx, user, expiration, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
@@ -34,7 +34,6 @@ func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, nam
 
 	tok.Name = name
 
-	// Store metadata
 	if err := s.store.AddTokenMetadata(ctx, tok.Namespace, user.Username, tok); err != nil {
 		return nil, fmt.Errorf("failed to persist api key metadata: %w", err)
 	}
@@ -64,8 +63,6 @@ func (s *Service) RevokeAll(ctx context.Context, user *token.UserContext) error 
 
 	// Clean up metadata
 	if err := s.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
-		// We log error but don't fail the whole operation as the critical part (SA recreation) succeeded
-		// Ideally we should log this. returning error might be okay too.
 		return fmt.Errorf("tokens revoked but failed to clear metadata: %w", err)
 	}
 

@@ -24,6 +24,12 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
+if ! command -v kubectl &> /dev/null; then
+    echo -e "${RED}Error: 'kubectl' command not found!${NC}"
+    echo "This script requires kubectl to query Gateway resources."
+    exit 1
+fi
+
 # -----------------------------------------------------------------------------
 # Gateway URL Discovery
 # -----------------------------------------------------------------------------
@@ -40,11 +46,11 @@ if [ -z "${GATEWAY_URL:-}" ]; then
     
     if [ -z "$GATEWAY_HOSTNAME" ]; then
         echo -e "${RED}Failed to find gateway hostname automatically.${NC}"
-        echo -e "Please set GATEWAY_URL explicitly (e.g., export GATEWAY_URL=http://maas.apps.example.com)"
+        echo -e "Please set GATEWAY_URL explicitly (e.g., export GATEWAY_URL=https://maas.apps.example.com)"
         exit 1
     fi
     
-    GATEWAY_URL="http://${GATEWAY_HOSTNAME}"
+    GATEWAY_URL="https://${GATEWAY_HOSTNAME}"
     echo -e "${GREEN}✓ Found Gateway at: ${GATEWAY_URL}${NC}"
 fi
 
