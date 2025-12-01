@@ -34,7 +34,7 @@ type Config struct {
 // Load loads configuration from environment variables.
 func Load() *Config {
 	debugMode, _ := env.GetBool("DEBUG_MODE", false)
-  disableHTTP, _ := env.GetBool("DISABLE_HTTP", false)
+	disableHTTP, _ := env.GetBool("DISABLE_HTTP", false)
 	gatewayName := env.GetString("GATEWAY_NAME", constant.DefaultGatewayName)
 
 	c := &Config{
