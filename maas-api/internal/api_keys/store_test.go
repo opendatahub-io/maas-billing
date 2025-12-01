@@ -16,14 +16,14 @@ func TestStore(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
+	ctx := t.Context()
+
 	// Test NewStore
-	store, err := api_keys.NewStore(dbPath)
+	store, err := api_keys.NewStore(ctx, dbPath)
 	if err == nil && store != nil {
 		defer store.Close()
 	}
 	require.NoError(t, err)
-
-	ctx := t.Context()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
 		tok := &token.Token{

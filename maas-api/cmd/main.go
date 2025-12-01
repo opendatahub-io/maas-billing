@@ -130,7 +130,7 @@ func configureSATokenProvider(
 		log.Fatalf("Failed to sync informer caches")
 	}
 
-	store, err := api_keys.NewStore(cfg.DBPath)
+	store, err := api_keys.NewStore(ctx, cfg.DBPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize token store: %v", err)
 	}

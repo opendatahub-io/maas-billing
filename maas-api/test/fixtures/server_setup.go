@@ -1,6 +1,7 @@
 package fixtures
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -162,7 +163,7 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engi
 	router := gin.New()
 
 	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
-	store, err := api_keys.NewStore(dbPath)
+	store, err := api_keys.NewStore(context.Background(), dbPath)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test store: %v", err))
 	}

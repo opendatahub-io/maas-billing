@@ -28,13 +28,12 @@ type Store struct {
 }
 
 // NewStore creates a new TokenStore backed by SQLite.
-func NewStore(dbPath string) (*Store, error) {
+func NewStore(ctx context.Context, dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	ctx := context.Background()
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)

@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
 // MockManager is a mock type for the Manager.
