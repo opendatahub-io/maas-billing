@@ -1,35 +1,23 @@
-# e2e Smoke Tests
+# MaaS E2E Testing
 
-## Setup (one-time per workspace)
+## Quick Start
 
-**Prereqs:** Python 3.11+, `oc`, `kubectl`, `kustomize`, `jq` (and `yq` optional).
+### Prerequisites
+
+- **OpenShift Cluster**: Must be logged in as cluster admin
+- **Required Tools**: `oc`, `kubectl`, `kustomize`, `jq`
+- **Python**: with pip
+
+### Complete End-to-End Testing
+Deploys MaaS platform, creates test users, and runs smoke tests:
 
 ```bash
-# create & activate a virtualenv
-python3.11 -m venv .venv
-source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+./test/e2e/scripts/prow_run_smoke_test.sh
+```
 
-# install Python deps used by the tests
-pip install --upgrade pip
-pip install -r test/e2e/requirements.txt
+### Smoke Tests Only
 
-## What Prow needs to provide (exports)
-- `CLUSTER_DOMAIN` – from cluster (e.g., `oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'`)
-- `HOST` – maas.${CLUSTER_DOMAIN}
-- `MAAS_API_BASE_URL` – `https://${HOST}/maas-api` (or `http://` if TLS isn’t ready)
-- `MODEL_NAME` – gateway model id (e.g., `facebook/opt-125m`)
-- `ISVC_NAME` (optional) – CR name without slashes (e.g., `facebook-opt-125m-cpu`) if you deploy a sample
-
-## Typical run
+If MaaS is already deployed and you just want to run tests:
 ```bash
-export CLUSTER_DOMAIN="$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
-export HOST="maas.${CLUSTER_DOMAIN}"
-export MAAS_API_BASE_URL="https://${HOST}/maas-api"
-export MODEL_NAME="facebook/opt-125m"
-# optional if you deploy a sample:
-# export ISVC_NAME="facebook-opt-125m-cpu"
-
-# Deploy + smoke:
-bash test/e2e/run-model-and-smoke.sh
-# Or only smoke (if model is already there):
-bash test/e2e/smoke.sh
+./test/e2e/smoke.sh
+```

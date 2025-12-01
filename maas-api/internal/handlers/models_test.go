@@ -8,12 +8,13 @@ import (
 
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/pagination"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"knative.dev/pkg/apis"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
 func TestListingModels(t *testing.T) {
@@ -64,13 +65,13 @@ func TestListingModels(t *testing.T) {
 		Objects: llmInferenceServices,
 	}
 	router, clients := fixtures.SetupTestServer(t, config)
-	modelMgr := models.NewManager(clients.DynamicClient)
+	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	v1 := router.Group("/v1")
 	v1.GET("/models", modelsHandler.ListLLMs)
 
 	w := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/v1/models", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/models", nil)
 	require.NoError(t, err, "Failed to create request")
 
 	req.Header.Set("Authorization", "Bearer valid-token")
@@ -94,7 +95,7 @@ func TestListingModels(t *testing.T) {
 		name          string
 		expectedModel models.Model
 	}
-	var testCases []expectedModel
+	testCases := make([]expectedModel, 0, len(llmTestScenarios))
 
 	for _, llmTestScenario := range llmTestScenarios {
 		// expected ID mirrors toModels(): fallback to metadata.name unless spec.model.name is non-empty

@@ -99,7 +99,7 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 		log.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
 
-	modelMgr := models.NewManager(clusterConfig.DynClient)
+	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	router.GET("/models", modelsHandler.ListModels)
 	router.GET("/v1/models", modelsHandler.ListLLMs)
@@ -139,6 +139,7 @@ func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *g
 	)
 	tokenHandler := token.NewHandler(cfg.Name, manager)
 
+	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	tokenRoutes := v1Routes.Group("/tokens", token.ExtractUserInfo(token.NewReviewer(clusterConfig.ClientSet)))
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", tokenHandler.RevokeAllTokens)

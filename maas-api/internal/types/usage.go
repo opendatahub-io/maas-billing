@@ -2,7 +2,7 @@ package types
 
 import "time"
 
-// UserUsage represents aggregated usage for a specific user
+// UserUsage represents aggregated usage for a specific user.
 type UserUsage struct {
 	UserID               string          `json:"user_id"`
 	TotalTokenUsage      int64           `json:"total_token_usage"`
@@ -12,7 +12,7 @@ type UserUsage struct {
 	LastUpdated          time.Time       `json:"last_updated"`
 }
 
-// TeamUsage represents aggregated usage for a specific team (group)
+// TeamUsage represents aggregated usage for a specific team (group).
 type TeamUsage struct {
 	TeamID               string          `json:"team_id"`
 	TeamName             string          `json:"team_name"`
@@ -24,7 +24,7 @@ type TeamUsage struct {
 	LastUpdated          time.Time       `json:"last_updated"`
 }
 
-// TeamUserUsage represents a user's usage within a specific team context
+// TeamUserUsage represents a user's usage within a specific team context.
 type TeamUserUsage struct {
 	TeamID          string `json:"team_id"`
 	TeamName        string `json:"team_name"`
@@ -34,7 +34,7 @@ type TeamUserUsage struct {
 	LimitedCalls    int64  `json:"limited_calls"`
 }
 
-// UserTeamUsage represents team usage broken down by user
+// UserTeamUsage represents team usage broken down by user.
 type UserTeamUsage struct {
 	UserID          string `json:"user_id"`
 	UserEmail       string `json:"user_email"`
@@ -43,7 +43,7 @@ type UserTeamUsage struct {
 	LimitedCalls    int64  `json:"limited_calls"`
 }
 
-// PrometheusMetric represents a parsed Prometheus metric
+// PrometheusMetric represents a parsed Prometheus metric.
 type PrometheusMetric struct {
 	Name   string            `json:"name"`
 	Labels map[string]string `json:"labels"`

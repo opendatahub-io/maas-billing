@@ -21,6 +21,7 @@ theme:
     - content.code.annotate
     - search.suggest
     - search.boost
+    - navigation.instant
   palette:
     - scheme: slate
       primary: white
@@ -63,12 +64,18 @@ nav:
       - Tier Management: configuration-and-management/tier-overview.md
       - Tier Configuration: configuration-and-management/tier-configuration.md
       - Tier Concepts: configuration-and-management/tier-concepts.md
+      - Token Management: configuration-and-management/token-management.md
     - Model Setup: configuration-and-management/model-setup.md
     - Advanced Administration:
       - Observability: advanced-administration/observability.md
       - Limitador Persistence: advanced-administration/limitador-persistence.md
   - End User Guide:
     - Self Service Model Access: user-guide/self-service-model-access.md
+
+extra:
+  version:
+    provider: mike
+    default: latest
 
 markdown_extensions:
   - pymdownx.highlight:

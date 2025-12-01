@@ -22,8 +22,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: PROVIDER
-          value: sa-tokens
         resources:
           requests:
             memory: "64Mi"

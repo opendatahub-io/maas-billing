@@ -2,12 +2,13 @@ package token
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"time"
 )
 
-// UserContext contains user information extracted from a token
+// UserContext contains user information extracted from a token.
 type UserContext struct {
 	Username        string   `json:"username"`
 	UID             string   `json:"uid"`
@@ -32,7 +33,7 @@ func (d *Duration) MarshalJSON() ([]byte, error) {
 var allowedUnits = regexp.MustCompile(`^(\d+(?:\.\d+)?[hms])+$`)
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
-	var v interface{}
+	var v any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
@@ -61,7 +62,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	}
 
 	if d.Duration < 10*time.Minute {
-		return fmt.Errorf("token expiration must be at least 10 minutes")
+		return errors.New("token expiration must be at least 10 minutes")
 	}
 
 	return nil

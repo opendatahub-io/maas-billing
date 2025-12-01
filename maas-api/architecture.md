@@ -587,7 +587,6 @@ Example tier-based access pattern:
 
 **MaaS API Deployment**:
 - `NAMESPACE`: Namespace where MaaS API is deployed (from fieldRef)
-- `PROVIDER`: Token provider type (value: `sa-tokens`)
 - `PORT`: HTTP server port (default: `8080`)
 - `DEBUG_MODE`: Enable CORS and debug logging (default: `false`)
 

@@ -8,7 +8,8 @@
 #   - Default: redis-limitador (created if it doesn't exist)
 #
 # WARNING: This is a basic, non-production Redis instance intended
-# for local development and validation only.
+# for local development and validation only. Redis persistence (RDB/AOF)
+# is disabled to avoid disk write issues in ephemeral test environments.
 #
 
 set -e
@@ -24,6 +25,12 @@ if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
 fi
 
 echo "🔧 Deploying Redis Deployment and Service to namespace '$NAMESPACE'..."
+echo ""
+echo "⚠️  WARNING: This Redis instance has persistence disabled (no RDB/AOF)."
+echo "   It runs in-memory only and is intended for local development and validation."
+echo "   Data will be lost if the Redis pod restarts."
+echo "   For production, use proper Redis with persistent volumes."
+echo ""
 
 # Create the Redis Deployment
 kubectl apply -n "$NAMESPACE" -f - <<EOF
@@ -47,6 +54,10 @@ spec:
       containers:
       - name: redis
         image: redis:7-alpine
+        command:
+        - redis-server
+        - --save ""
+        - --appendonly no
         ports:
         - containerPort: 6379
         resources:
@@ -80,15 +91,28 @@ echo "⏳ Waiting for Redis to be ready..."
 kubectl wait --for=condition=available deployment/redis -n "$NAMESPACE" --timeout=120s
 
 if [ $? -eq 0 ]; then
+  REDIS_URL="redis://redis-service.$NAMESPACE.svc:6379"
   echo ""
   echo "✅ Redis deployment successful."
   echo ""
-  echo "📝 Use this URL in your Limitador CR 'spec.storage.redis.config.url':"
+  echo "📝 Next steps to configure Limitador:"
   echo ""
-  echo "   redis://redis-service.$NAMESPACE.svc:6379"
+  echo "1. Create a Secret with the Redis URL (replace <target-namespace> with your Limitador's namespace):"
+  echo ""
+  echo "   kubectl create secret generic redis-config \\"
+  echo "     --from-literal=URL=$REDIS_URL \\"
+  echo "     --namespace=<target-namespace>"
+  echo ""
+  echo "2. Add this configuration to your Limitador CR:"
+  echo ""
+  echo "   spec:"
+  echo "     storage:"
+  echo "       redis:"
+  echo "         configSecretRef:"
+  echo "           name: redis-config"
   echo ""
   echo "💡 To edit your Limitador CR:"
-  echo "   kubectl edit limitador <your-limitador-instance-name>"
+  echo "   kubectl edit limitador <your-limitador-instance-name> -n <target-namespace>"
   echo ""
   echo "📚 For more information, see: docs/content/advanced-administration/limitador-persistence.md"
 else

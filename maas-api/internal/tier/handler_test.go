@@ -11,7 +11,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
-// createTestMapper wraps the unified fixtures function for backward compatibility
+// createTestMapper wraps the unified fixtures function for backward compatibility.
 func createTestMapper(withConfigMap bool) *tier.Mapper {
 	return fixtures.CreateTestMapper(withConfigMap)
 }
@@ -67,10 +67,13 @@ func TestHandler_PostTierLookup_Success(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reqBody := tier.LookupRequest{Groups: tt.groups}
-			jsonBody, _ := json.Marshal(reqBody)
+			jsonBody, err := json.Marshal(reqBody)
+			if err != nil {
+				t.Fatalf("failed to marshal request body: %v", err)
+			}
 
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
+			req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/tiers/lookup", bytes.NewBuffer(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(w, req)
 
@@ -95,10 +98,13 @@ func TestHandler_PostTierLookup_GroupNotFound(t *testing.T) {
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"unknown-group"}}
-	jsonBody, _ := json.Marshal(reqBody)
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/tiers/lookup", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
@@ -150,7 +156,7 @@ func TestHandler_PostTierLookup_BadRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBufferString(tt.requestBody))
+			req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/tiers/lookup", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(w, req)
 
@@ -175,10 +181,13 @@ func TestHandler_PostTierLookup_ConfigMapMissing_ShouldError(t *testing.T) {
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"any-group"}}
-	jsonBody, _ := json.Marshal(reqBody)
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/tiers/lookup", bytes.NewBuffer(jsonBody))
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/tiers/lookup", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 

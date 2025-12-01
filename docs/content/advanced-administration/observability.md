@@ -2,6 +2,11 @@
 
 This document covers the observability stack for the MaaS Platform, including metrics collection, monitoring, and visualization.
 
+!!! warning "Important"
+     [User Workload Monitoring](https://docs.redhat.com/en/documentation/openshift_container_platform/4.19/html/monitoring/configuring-user-workload-monitoring) must be enabled in order to collect metrics.
+
+     Add `enableUserWorkload: true` to the `cluster-monitoring-config` in the `openshift-monitoring` namespace
+
 ## Overview
 
 As part of Dev Preview MaaS Platform includes a basic observability stack that provides insights into system performance, usage patterns, and operational health. The observability stack consists of:
