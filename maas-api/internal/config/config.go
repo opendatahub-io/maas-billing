@@ -43,10 +43,10 @@ func Load() *Config {
 		GatewayName:      env.GetString("GATEWAY_NAME", gatewayName),
 		GatewayNamespace: env.GetString("GATEWAY_NAMESPACE", constant.DefaultGatewayNamespace),
 		Port:             env.GetString("PORT", "8080"),
-    TLSPort:          env.GetString("TLS_PORT", "8443"),
+		TLSPort:          env.GetString("TLS_PORT", "8443"),
 		TLSCertFile:      env.GetString("TLS_CERT_FILE", ""),
 		TLSKeyFile:       env.GetString("TLS_KEY_FILE", ""),
-    DisableHTTP:      disableHTTP,
+		DisableHTTP:      disableHTTP,
 		DebugMode:        debugMode,
 	}
 	c.bindFlags(flag.CommandLine)
