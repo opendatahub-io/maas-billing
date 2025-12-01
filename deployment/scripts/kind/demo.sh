@@ -77,7 +77,7 @@ demo_quick_start() {
     # Setup
     print_step "Setting up test user..."
     kubectl create sa demo-user -n maas-api 2>/dev/null || true
-    kubectl create clusterrole llm-model-access --verb=get,list,post --resource=llminferenceservices 2>/dev/null || true
+    kubectl create clusterrole llm-model-access --verb=get,list,create --resource=llminferenceservices 2>/dev/null || true
     kubectl create clusterrolebinding demo-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:demo-user 2>/dev/null || true
     TOKEN=$(kubectl create token demo-user -n maas-api --duration=1h --audience=maas-default-gateway-sa)
     print_success "Demo user created"
@@ -145,7 +145,7 @@ demo_auth() {
     kubectl create sa enterprise-user -n maas-api 2>/dev/null || echo "  enterprise-user exists"
 
     print_step "Granting RBAC permissions..."
-    kubectl create clusterrole llm-model-access --verb=get,list,post --resource=llminferenceservices 2>/dev/null || true
+    kubectl create clusterrole llm-model-access --verb=get,list,create --resource=llminferenceservices 2>/dev/null || true
     kubectl create clusterrolebinding free-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:free-user 2>/dev/null || true
     kubectl create clusterrolebinding premium-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:premium-user 2>/dev/null || true
     kubectl create clusterrolebinding enterprise-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:enterprise-user 2>/dev/null || true
@@ -223,7 +223,7 @@ demo_rate_limiting() {
     # Setup
     print_step "Setting up Free tier user..."
     kubectl create sa free-user -n maas-api 2>/dev/null || true
-    kubectl create clusterrole llm-model-access --verb=get,list,post --resource=llminferenceservices 2>/dev/null || true
+    kubectl create clusterrole llm-model-access --verb=get,list,create --resource=llminferenceservices 2>/dev/null || true
     kubectl create clusterrolebinding free-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:free-user 2>/dev/null || true
     FREE_TOKEN=$(kubectl create token free-user -n maas-api --duration=1h --audience=maas-default-gateway-sa)
     print_success "Free tier user ready"

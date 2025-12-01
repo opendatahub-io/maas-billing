@@ -1,15 +1,15 @@
-# llm-katan Test Model for Kind
+# Model-A Test Simulator for Kind
 
-This directory contains Kubernetes manifests for deploying [llm-katan](https://github.com/vllm-project/semantic-router/tree/main/e2e-tests/llm-katan) as a test model in the Kind local development environment.
+This directory contains Kubernetes manifests for deploying **model-a** as a test LLMInferenceService in the Kind local development environment.
 
-## What is llm-katan?
+## What is model-a?
 
-llm-katan is a lightweight LLM serving package designed for **testing and development**:
-- Ultra-small model (Qwen2.5-0.5B - 500M parameters)
-- CPU-only inference (no GPU needed)
-- OpenAI-compatible API
-- Fast startup (~30 seconds)
-- Minimal resources (2-3GB RAM)
+Model-a is a **free tier** test model using the lightweight LLM inference simulator:
+- **Tier**: Free (accessible to all user types: free, premium, enterprise)
+- **Simulator**: Fast inference simulator for testing (not real LLM)
+- **OpenAI-compatible API**: `/v1/models`, `/v1/chat/completions`
+- **Fast startup**: ~10-15 seconds
+- **Minimal resources**: 100m CPU, 128Mi memory
 
 Perfect for testing the MaaS platform without heavy models!
 
@@ -19,28 +19,44 @@ Perfect for testing the MaaS platform without heavy models!
 # 1. Create namespace (if not exists)
 kubectl create namespace llm --dry-run=client -o yaml | kubectl apply -f -
 
-# 2. (Optional) Create HuggingFace token secret for private models
-kubectl create secret generic huggingface-token -n llm \
-  --from-literal=token=YOUR_HUGGINGFACE_TOKEN
+# 2. Deploy model-a
+kubectl apply -k deployment/overlays/kind/test-models/model-a/
 
-# 3. Deploy llm-katan
-kubectl apply -k deployment/overlays/kind/test-models/llm-katan/
+# 3. Wait for LLMInferenceService to be ready
+kubectl wait --for=condition=Ready llminferenceservice/model-a -n llm --timeout=60s
 
-# 4. Wait for pod to be ready (may take 30-60 seconds for model download)
-kubectl wait --for=condition=Ready pod -l app=llm-katan -n llm --timeout=300s
-
-# 5. Check status
-kubectl get pods -n llm
-kubectl logs -n llm -l app=llm-katan
+# 4. Check status
+kubectl get llminferenceservices -n llm
+kubectl get pods -n llm -l serving.kserve.io/inferenceservice=model-a
 ```
 
 ## Test the Model
 
-### Via Port-Forward
+### Via Gateway (MaaS Platform)
 
 ```bash
-# Port-forward to local machine
-kubectl port-forward -n llm svc/llm-katan 8000:8000
+# Get auth token (any user type can access model-a)
+TOKEN=$(kubectl create token free-user -n maas-api --audience=maas-default-gateway-sa --duration=1h)
+
+# List models
+curl -H "Authorization: Bearer $TOKEN" http://localhost/v1/models
+
+# Test model-a
+curl -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "model-a",
+    "messages": [{"role": "user", "content": "Hello, how are you?"}],
+    "max_tokens": 50
+  }' \
+  http://localhost/llm/model-a/v1/chat/completions
+```
+
+### Via Port-Forward (Direct Access)
+
+```bash
+# Port-forward to the simulator service
+kubectl port-forward -n llm svc/model-a-kserve-workload-svc 8000:8000
 
 # Test health endpoint
 curl http://localhost:8000/health
@@ -52,104 +68,79 @@ curl http://localhost:8000/v1/models
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "llm-katan",
+    "model": "model-a",
     "messages": [{"role": "user", "content": "Hello! What is 2+2?"}],
     "max_tokens": 50
   }'
 ```
 
-### Via Gateway (with MaaS Platform)
-
-```bash
-# Get auth token
-TOKEN=$(kubectl create token default -n maas-api --duration=10m)
-
-# Test via gateway
-kubectl port-forward -n maas-api svc/maas-gateway-istio 8080:80
-
-curl -X POST http://localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "llm-katan",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
 ## Resource Requirements
 
-- **CPU**: 500m (request), 2 cores (limit)
-- **Memory**: 1Gi (request), 3Gi (limit)
-- **Disk**: ~2GB for model cache
-- **Startup Time**: 30-60 seconds (first time, includes model download)
+- **CPU**: 100m (request), 500m (limit)
+- **Memory**: 128Mi (request), 256Mi (limit)
+- **Startup Time**: 10-15 seconds
+- **Access Tier**: Free (no restrictions)
+
+## Architecture
+
+This model uses:
+- **LLMInferenceService CRD** (KServe v0.16.0+)
+- **Inference Simulator**: `ghcr.io/llm-d/llm-d-inference-sim:v0.5.1`
+- **PVC approach**: Workaround for storage-initializer requirements
+- **HTTPRoute**: Gateway API routing with URL rewriting
 
 ## Troubleshooting
 
-### Pod Not Starting
+### LLMInferenceService Not Ready
 
 ```bash
+# Check LLMInferenceService status
+kubectl describe llminferenceservice model-a -n llm
+
 # Check pod status
-kubectl describe pod -n llm -l app=llm-katan
+kubectl get pods -n llm -l serving.kserve.io/inferenceservice=model-a
+kubectl describe pod -n llm -l serving.kserve.io/inferenceservice=model-a
 
 # Check logs
-kubectl logs -n llm -l app=llm-katan --tail=50
-
-# Common issues:
-# 1. Model download timeout - increase startupProbe failureThreshold
-# 2. Out of memory - increase memory limits
-# 3. HuggingFace token - check secret or use public models
+kubectl logs -n llm -l serving.kserve.io/inferenceservice=model-a --tail=50
 ```
 
-### Model Download Issues
+### Gateway Access Issues
 
-If using a private model or hitting rate limits:
 ```bash
-# Create HuggingFace token secret
-kubectl create secret generic huggingface-token -n llm \
-  --from-literal=token=hf_YOUR_TOKEN_HERE
+# Check HTTPRoute
+kubectl get httproute -n llm model-a-route -o yaml
 
-# Delete and recreate pod to pick up secret
-kubectl delete pod -n llm -l app=llm-katan
+# Check service endpoints
+kubectl get endpoints -n llm model-a-kserve-workload-svc
+
+# Test token
+TOKEN=$(kubectl create token free-user -n maas-api --audience=maas-default-gateway-sa --duration=1h)
+echo "Token: $TOKEN"
 ```
-
-### Test Different Models
-
-Edit `deployment.yaml` to use different models:
-```yaml
-args:
-- "--model"
-- "Qwen/Qwen2.5-0.5B-Instruct"  # Change this
-- "--served-model-name"
-- "my-model-name"  # Change this
-```
-
-Recommended lightweight models:
-- `Qwen/Qwen2.5-0.5B-Instruct` (500M - fastest)
-- `Qwen/Qwen2.5-1.5B-Instruct` (1.5B - better quality)
-- `facebook/opt-125m` (125M - smallest)
 
 ## Use Cases for Testing
 
-### 1. Policy Enforcement
-Test AuthPolicy and RateLimitPolicy against real model endpoint
+### 1. Free Tier Access Control
+Test that all user types (free, premium, enterprise) can access model-a
 
-### 2. Multi-Model Routing
-Deploy multiple llm-katan instances with different names to test routing
+### 2. Rate Limiting
+Test request and token rate limits against free tier model
 
-### 3. Load Testing
-Lightweight enough to run multiple instances for load testing
+### 3. Multi-Model Routing
+Use alongside model-b to test tier-based routing
 
-### 4. Integration Testing
-Real AI responses for realistic end-to-end testing
+### 4. Load Testing
+Lightweight enough for concurrent request testing
 
 ## Cleanup
 
 ```bash
-kubectl delete -k deployment/overlays/kind/test-models/llm-katan/
+kubectl delete -k deployment/overlays/kind/test-models/model-a/
 ```
 
 ## References
 
-- GitHub: https://github.com/vllm-project/semantic-router/tree/main/e2e-tests/llm-katan
-- PyPI: https://pypi.org/project/llm-katan/
-- Docker: ghcr.io/vllm-project/semantic-router/llm-katan
+- [KServe LLMInferenceService Documentation](https://github.com/kserve/kserve/tree/master/docs)
+- [LLM-D Inference Simulator](https://github.com/llm-d/llm-d-inference-sim)
+- [Gateway API HTTPRoute](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.HTTPRoute)

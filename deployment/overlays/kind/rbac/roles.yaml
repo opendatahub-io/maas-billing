@@ -13,7 +13,7 @@ rules:
 - apiGroups: ["serving.kserve.io"]
   resources: ["inferenceservices", "llminferenceservices"]
   resourceNames: ["model-a"]
-  verbs: ["get", "list", "post"]
+  verbs: ["get", "list", "create"]
 ---
 # Role for model-b access (premium tier - premium/enterprise only)
 apiVersion: rbac.authorization.k8s.io/v1
@@ -29,4 +29,4 @@ rules:
 - apiGroups: ["serving.kserve.io"]
   resources: ["inferenceservices", "llminferenceservices"]
   resourceNames: ["model-b"]
-  verbs: ["get", "list", "post"]
+  verbs: ["get", "list", "create"]

@@ -60,7 +60,7 @@ kubectl create sa premium-user -n maas-api 2>/dev/null || true
 kubectl create sa enterprise-user -n maas-api 2>/dev/null || true
 
 echo "Setting up RBAC permissions..."
-kubectl create clusterrole llm-model-access --verb=get,list,post --resource=llminferenceservices 2>/dev/null || true
+kubectl create clusterrole llm-model-access --verb=get,list,create --resource=llminferenceservices 2>/dev/null || true
 kubectl create clusterrolebinding free-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:free-user 2>/dev/null || true
 kubectl create clusterrolebinding premium-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:premium-user 2>/dev/null || true
 kubectl create clusterrolebinding enterprise-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:enterprise-user 2>/dev/null || true

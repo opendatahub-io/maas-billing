@@ -35,7 +35,7 @@ nodes:
 
 # Networking configuration
 networking:
-  # Disable default CNI to allow manual CNI installation if needed
+  # Keep default CNI enabled for Kind cluster networking
   disableDefaultCNI: false
 
   # Pod and service subnets

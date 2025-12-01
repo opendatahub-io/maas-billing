@@ -57,7 +57,7 @@ cd deployment/scripts/kind
 - RBAC-based authorization
 - Request rate limiting (5 req/2min for Free tier)
 - Token rate limiting (100 tokens/min for Free tier)
-- LLM inference with llm-katan model
+- LLM inference with simulator models
 - OpenAI API compatibility
 
 ## Manual Testing
@@ -67,7 +67,7 @@ cd deployment/scripts/kind
 First, create a test user token:
 ```bash
 kubectl create sa demo-user -n maas-api
-kubectl create clusterrole llm-model-access --verb=get,list,post --resource=llminferenceservices
+kubectl create clusterrole llm-model-access --verb=get,list,create --resource=llminferenceservices
 kubectl create clusterrolebinding demo-user-llm-access --clusterrole=llm-model-access --serviceaccount=maas-api:demo-user
 TOKEN=$(kubectl create token demo-user -n maas-api --duration=1h --audience=maas-default-gateway-sa)
 ```

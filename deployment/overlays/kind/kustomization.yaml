@@ -62,6 +62,9 @@ patches:
       - op: replace
         path: /spec/targetRef/name
         value: maas-gateway
+      - op: replace
+        path: /spec/rules/authorization/tier-access/kubernetesSubjectAccessReview/resourceAttributes/verb/value
+        value: create
 
   # Patch Gateway rate limit policies namespace and target to istio-system/maas-gateway
   - target:

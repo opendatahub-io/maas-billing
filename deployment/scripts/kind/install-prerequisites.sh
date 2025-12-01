@@ -104,7 +104,8 @@ install_linux() {
     # Install kubectl
     if ! command_exists kubectl; then
         log_info "Installing kubectl..."
-        local kubectl_version=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+        local kubectl_version
+        kubectl_version=$(curl -L -s https://dl.k8s.io/release/stable.txt)
         curl -LO "https://dl.k8s.io/release/${kubectl_version}/bin/linux/${arch_suffix}/kubectl"
         chmod +x kubectl
         sudo mv kubectl /usr/local/bin/
