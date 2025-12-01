@@ -11,6 +11,8 @@ import (
 type TokenManager interface {
 	GenerateToken(ctx context.Context, user *token.UserContext, expiration time.Duration, name string) (*token.Token, error)
 	RevokeTokens(ctx context.Context, user *token.UserContext) (string, error)
+	// GetNamespaceForUser returns the namespace for a user based on their tier
+	GetNamespaceForUser(ctx context.Context, user *token.UserContext) (string, error)
 }
 
 type Service struct {
@@ -42,15 +44,27 @@ func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, nam
 }
 
 func (s *Service) ListAPIKeys(ctx context.Context, user *token.UserContext) ([]NamedToken, error) {
-	return s.store.GetTokensForUser(ctx, user.Username)
+	namespace, err := s.tokenManager.GetNamespaceForUser(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine namespace for user: %w", err)
+	}
+	return s.store.GetTokensForUser(ctx, namespace, user.Username)
 }
 
 func (s *Service) GetAPIKey(ctx context.Context, user *token.UserContext, id string) (*NamedToken, error) {
-	return s.store.GetToken(ctx, user.Username, id)
+	namespace, err := s.tokenManager.GetNamespaceForUser(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine namespace for user: %w", err)
+	}
+	return s.store.GetToken(ctx, namespace, user.Username, id)
 }
 
 func (s *Service) RevokeAPIKey(ctx context.Context, user *token.UserContext, id string) error {
-	return s.store.DeleteToken(ctx, user.Username, id)
+	namespace, err := s.tokenManager.GetNamespaceForUser(ctx, user)
+	if err != nil {
+		return fmt.Errorf("failed to determine namespace for user: %w", err)
+	}
+	return s.store.DeleteToken(ctx, namespace, user.Username, id)
 }
 
 // RevokeAll invalidates all tokens for the user (ephemeral and persistent)

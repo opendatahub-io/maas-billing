@@ -30,7 +30,15 @@ func (m *MockManager) GenerateToken(ctx context.Context, user *token.UserContext
 
 func (m *MockManager) ValidateToken(ctx context.Context, tokenStr string, reviewer *token.Reviewer) (*token.UserContext, error) {
 	args := m.Called(ctx, tokenStr, reviewer)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(*token.UserContext), args.Error(1)
+}
+
+func (m *MockManager) GetNamespaceForUser(ctx context.Context, user *token.UserContext) (string, error) {
+	args := m.Called(ctx, user)
+	return args.String(0), args.Error(1)
 }
 
 func TestAPIEndpoints(t *testing.T) {

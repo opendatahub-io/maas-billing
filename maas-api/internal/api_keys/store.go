@@ -99,10 +99,10 @@ func (s *Store) DeleteTokensForUser(ctx context.Context, namespace, username str
 	return nil
 }
 
-// DeleteToken deletes a single token for a user.
-func (s *Store) DeleteToken(ctx context.Context, username, jti string) error {
-	query := `DELETE FROM tokens WHERE username = ? AND id = ?`
-	result, err := s.db.ExecContext(ctx, query, username, jti)
+// DeleteToken deletes a single token for a user in a specific namespace.
+func (s *Store) DeleteToken(ctx context.Context, namespace, username, jti string) error {
+	query := `DELETE FROM tokens WHERE username = ? AND namespace = ? AND id = ?`
+	result, err := s.db.ExecContext(ctx, query, username, namespace, jti)
 	if err != nil {
 		return fmt.Errorf("failed to delete token: %w", err)
 	}
@@ -114,15 +114,15 @@ func (s *Store) DeleteToken(ctx context.Context, username, jti string) error {
 	return nil
 }
 
-// GetTokensForUser retrieves all tokens for a user
-func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedToken, error) {
+// GetTokensForUser retrieves all tokens for a user in a specific namespace
+func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string) ([]NamedToken, error) {
 	query := `
 	SELECT id, name, creation_date, expiration_date
 	FROM tokens 
-	WHERE username = ?
+	WHERE username = ? AND namespace = ?
 	ORDER BY creation_date DESC
 	`
-	rows, err := s.db.QueryContext(ctx, query, username)
+	rows, err := s.db.QueryContext(ctx, query, username, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -155,14 +155,14 @@ func (s *Store) GetTokensForUser(ctx context.Context, username string) ([]NamedT
 	return tokens, nil
 }
 
-// GetToken retrieves a single token for a user by its JTI
-func (s *Store) GetToken(ctx context.Context, username, jti string) (*NamedToken, error) {
+// GetToken retrieves a single token for a user by its JTI in a specific namespace
+func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (*NamedToken, error) {
 	query := `
 	SELECT id, name, creation_date, expiration_date
 	FROM tokens 
-	WHERE username = ? AND id = ?
+	WHERE username = ? AND namespace = ? AND id = ?
 	`
-	row := s.db.QueryRowContext(ctx, query, username, jti)
+	row := s.db.QueryRowContext(ctx, query, username, namespace, jti)
 
 	var t NamedToken
 	if err := row.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
