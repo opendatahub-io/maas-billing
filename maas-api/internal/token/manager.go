@@ -80,16 +80,11 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	if !ok {
 		return nil, fmt.Errorf("jti claim not found or not a string in new token")
 	}
-	expFloat, ok := claims["exp"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("exp claim not found or not a number in new token")
-	}
-	exp := int64(expFloat)
 
 	result := &Token{
 		Token:      token.Status.Token,
 		Expiration: Duration{expiration},
-		ExpiresAt:  exp,
+		ExpiresAt:  token.Status.ExpirationTimestamp.Unix(),
 		JTI:        jti,
 		Name:       name,
 		Namespace:  namespace,
