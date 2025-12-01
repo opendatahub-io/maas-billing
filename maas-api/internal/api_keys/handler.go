@@ -165,7 +165,7 @@ func (h *Handler) RevokeAPIKey(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
-// RevokeAllTokens handles DELETE /v1/tokens
+// RevokeAllTokens handles DELETE /v1/tokens.
 func (h *Handler) RevokeAllTokens(c *gin.Context) {
 	userCtx, exists := c.Get("user")
 	if !exists {

@@ -68,7 +68,7 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 	}
 }
 
-// IssueToken handles POST /v1/tokens for issuing ephemeral tokens
+// IssueToken handles POST /v1/tokens for issuing ephemeral tokens.
 func (h *Handler) IssueToken(c *gin.Context) {
 	var req Request
 	// BindJSON will still parse the request body, but we'll ignore the name field.

@@ -67,7 +67,7 @@ func (s *Service) RevokeAPIKey(ctx context.Context, user *token.UserContext, id 
 	return s.store.DeleteToken(ctx, namespace, user.Username, id)
 }
 
-// RevokeAll invalidates all tokens for the user (ephemeral and persistent)
+// RevokeAll invalidates all tokens for the user (ephemeral and persistent).
 func (s *Service) RevokeAll(ctx context.Context, user *token.UserContext) error {
 	// Revoke in K8s (recreate SA)
 	namespace, err := s.tokenManager.RevokeTokens(ctx, user)

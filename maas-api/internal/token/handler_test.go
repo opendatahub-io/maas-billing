@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockManager is a mock type for the Manager
+// MockManager is a mock type for the Manager.
 type MockManager struct {
 	mock.Mock
 }

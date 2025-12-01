@@ -12,15 +12,22 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
-// ErrTokenNotFound is returned when a token is not found in the store
+// ErrTokenNotFound is returned when a token is not found in the store.
 var ErrTokenNotFound = errors.New("token not found")
 
-// Store handles the persistence of token metadata using SQLite
+const (
+	// TokenStatusActive indicates the token is active.
+	TokenStatusActive = "active"
+	// TokenStatusExpired indicates the token has expired.
+	TokenStatusExpired = "expired"
+)
+
+// Store handles the persistence of token metadata using SQLite.
 type Store struct {
 	db *sql.DB
 }
 
-// NewStore creates a new TokenStore backed by SQLite
+// NewStore creates a new TokenStore backed by SQLite.
 func NewStore(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -34,7 +41,7 @@ func NewStore(dbPath string) (*Store, error) {
 	}
 
 	s := &Store{db: db}
-	if err := s.initSchema(); err != nil {
+	if err := s.initSchema(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
@@ -42,13 +49,12 @@ func NewStore(dbPath string) (*Store, error) {
 	return s, nil
 }
 
-// Close closes the database connection
+// Close closes the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) initSchema() error {
-	ctx := context.Background()
+func (s *Store) initSchema(ctx context.Context) error {
 	// 1. Create table
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS tokens (
@@ -71,7 +77,7 @@ func (s *Store) initSchema() error {
 	return nil
 }
 
-// AddTokenMetadata adds a new token to the database
+// AddTokenMetadata adds a new token to the database.
 func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username string, tok *token.Token) error {
 	now := time.Now()
 	creationDate := now.Format(time.RFC3339)
@@ -116,7 +122,7 @@ func (s *Store) DeleteToken(ctx context.Context, namespace, username, jti string
 	return nil
 }
 
-// GetTokensForUser retrieves all tokens for a user in a specific namespace
+// GetTokensForUser retrieves all tokens for a user in a specific namespace.
 func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string) ([]NamedToken, error) {
 	query := `
 	SELECT id, name, creation_date, expiration_date
@@ -142,12 +148,12 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 		expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
 		if err != nil {
 			log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
-			t.Status = "expired" // Mark as expired if date is unreadable
+			t.Status = TokenStatusExpired // Mark as expired if date is unreadable
 		} else {
 			if now.After(expiration) {
-				t.Status = "expired"
+				t.Status = TokenStatusExpired
 			} else {
-				t.Status = "active"
+				t.Status = TokenStatusActive
 			}
 		}
 
@@ -161,7 +167,7 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 	return tokens, nil
 }
 
-// GetToken retrieves a single token for a user by its JTI in a specific namespace
+// GetToken retrieves a single token for a user by its JTI in a specific namespace.
 func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (*NamedToken, error) {
 	query := `
 	SELECT id, name, creation_date, expiration_date
@@ -181,12 +187,12 @@ func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (
 	expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
 	if err != nil {
 		log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
-		t.Status = "expired"
+		t.Status = TokenStatusExpired
 	} else {
 		if time.Now().After(expiration) {
-			t.Status = "expired"
+			t.Status = TokenStatusExpired
 		} else {
-			t.Status = "active"
+			t.Status = TokenStatusActive
 		}
 	}
 

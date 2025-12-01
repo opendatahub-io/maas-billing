@@ -135,7 +135,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, 
 	return namespace, nil
 }
 
-// GetNamespaceForUser returns the namespace for a user based on their tier
+// GetNamespaceForUser returns the namespace for a user based on their tier.
 func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (string, error) {
 	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
 	if err != nil {
@@ -150,7 +150,7 @@ func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (s
 	return namespace, nil
 }
 
-// ValidateToken verifies the token with K8s
+// ValidateToken verifies the token with K8s.
 func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error) {
 	// 1. Check K8s validity
 	userCtx, err := reviewer.ExtractUserInfo(ctx, token)

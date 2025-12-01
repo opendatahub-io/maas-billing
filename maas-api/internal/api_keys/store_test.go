@@ -38,7 +38,7 @@ func TestStore(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token1", tokens[0].Name)
-		assert.Equal(t, "active", tokens[0].Status)
+		assert.Equal(t, api_keys.TokenStatusActive, tokens[0].Status)
 	})
 
 	t.Run("AddSecondToken", func(t *testing.T) {
@@ -105,12 +105,12 @@ func TestStore(t *testing.T) {
 		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user4")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
-		assert.Equal(t, "expired", tokens[0].Status)
+		assert.Equal(t, api_keys.TokenStatusExpired, tokens[0].Status)
 
 		// Get single token check
 		gotToken, err := store.GetToken(ctx, "test-ns", "user4", "jti-expired")
 		require.NoError(t, err)
-		assert.Equal(t, "expired", gotToken.Status)
+		assert.Equal(t, api_keys.TokenStatusExpired, gotToken.Status)
 	})
 
 	t.Run("CrossNamespaceIsolation", func(t *testing.T) {
