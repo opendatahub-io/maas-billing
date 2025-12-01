@@ -27,7 +27,8 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	if err := db.Ping(); err != nil {
+	ctx := context.Background()
+	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
@@ -47,6 +48,7 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) initSchema() error {
+	ctx := context.Background()
 	// 1. Create table
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS tokens (
@@ -57,12 +59,12 @@ func (s *Store) initSchema() error {
 		creation_date TEXT NOT NULL,
 		expiration_date TEXT NOT NULL
 	);`
-	if _, err := s.db.Exec(createTableQuery); err != nil {
+	if _, err := s.db.ExecContext(ctx, createTableQuery); err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
 
 	// 2. Create indices
-	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tokens_username ON tokens(username)`); err != nil {
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tokens_username ON tokens(username)`); err != nil {
 		return fmt.Errorf("failed to create username index: %w", err)
 	}
 
@@ -150,6 +152,10 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 		}
 
 		tokens = append(tokens, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return tokens, nil

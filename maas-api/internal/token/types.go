@@ -2,7 +2,7 @@ package token
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"time"
 )
 
@@ -56,6 +56,6 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("invalid duration")
+		return errors.New("invalid duration")
 	}
 }

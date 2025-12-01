@@ -101,7 +101,13 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	return configureSATokenProvider(ctx, cfg, router, clusterConfig, modelsHandler)
 }
 
-func configureSATokenProvider(ctx context.Context, cfg *config.Config, router *gin.Engine, clusterConfig *config.K8sClusterConfig, modelsHandler *handlers.ModelsHandler) (func(), *api_keys.Store) {
+func configureSATokenProvider(
+	ctx context.Context,
+	cfg *config.Config,
+	router *gin.Engine,
+	clusterConfig *config.K8sClusterConfig,
+	modelsHandler *handlers.ModelsHandler,
+) (func(), *api_keys.Store) {
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 

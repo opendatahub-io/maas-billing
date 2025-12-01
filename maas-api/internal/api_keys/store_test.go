@@ -152,7 +152,7 @@ func TestStore(t *testing.T) {
 
 		// Verify token from different namespace is not found
 		_, err = store.GetToken(ctx, "namespace-1", "shared-user", "jti-ns2")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
 }
