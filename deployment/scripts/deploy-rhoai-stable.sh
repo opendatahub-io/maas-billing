@@ -261,7 +261,7 @@ metadata:
   name: rhoai3-operator
   namespace: redhat-ods-operator
 spec:
-  channel: fast-3.x
+  channel: fast
   installPlanApproval: Automatic
   name: rhods-operator
   source: redhat-operators
