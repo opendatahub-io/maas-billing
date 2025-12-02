@@ -137,12 +137,12 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, 
 
 // GetNamespaceForUser returns the namespace for a user based on their tier.
 func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (string, error) {
-	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
+	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
 		return "", fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
-	namespace, errNS := m.tierMapper.Namespace(ctx, userTier)
+	namespace, errNS := m.tierMapper.Namespace(userTier)
 	if errNS != nil {
 		return "", fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
 	}
