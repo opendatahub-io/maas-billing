@@ -142,7 +142,7 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
-	tierMapper := tier.NewMapper(t.Context(), fakeClient, TestTenant, TestNamespace)
+	tierMapper := tier.NewMapper(context.Background(), fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
 		TestTenant,
 		tierMapper,

@@ -297,7 +297,7 @@ paths:
             tags:
                 - api-keys
             summary: Create a new named API key (long-lived token)
-            description: Creates a new named API key with specified expiration. Named tokens are tracked in the database and can be listed and revoked individually.
+            description: Creates a new named API key with specified expiration. Named tokens are tracked in the database and can be listed. Revocation is supported only via the bulk DELETE /v1/tokens endpoint (per-key revocation is not currently supported).
             operationId: api-keys#create
             requestBody:
                 required: true

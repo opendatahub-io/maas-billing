@@ -175,7 +175,7 @@ func (h *Handler) RevokeAPIKey(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	c.Status(http.StatusNoContent)
 }
 
 // RevokeAllTokens handles DELETE /v1/tokens.
@@ -199,5 +199,5 @@ func (h *Handler) RevokeAllTokens(c *gin.Context) {
 	}
 
 	log.Printf("Successfully revoked all tokens for user %s", user.Username)
-	c.JSON(http.StatusNoContent, nil)
+	c.Status(http.StatusNoContent)
 }
