@@ -9,9 +9,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 // Use unified test constants from fixtures.

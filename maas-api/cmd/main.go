@@ -16,12 +16,12 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/config"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/handlers"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
 
 func main() {

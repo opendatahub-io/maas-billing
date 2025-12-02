@@ -25,8 +25,8 @@ import (
 	gatewayclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1"
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
 
 // TokenReviewScenario defines how TokenReview should respond for a given token.

@@ -71,5 +71,5 @@ jobs:
           echo "- Version: \`${{ steps.get_version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Alias: \`latest\`" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: \`gh-pages\`" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: https://opendatahub-io.github.io/maas-billing/" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://opendatahub-io.github.io/models-as-a-service/" >> $GITHUB_STEP_SUMMARY
 

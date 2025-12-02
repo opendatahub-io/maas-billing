@@ -16,7 +16,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
 )
 
 func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is complaining about the test cases being in a different order than the expected match

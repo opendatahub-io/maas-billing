@@ -1,4 +1,4 @@
-# MaaS Billing Makefile
+# MaaS API Makefile
 
 # Container Engine to be used for building image and with kind
 CONTAINER_ENGINE ?= podman
@@ -43,7 +43,7 @@ LDFLAGS ?= -ldflags "-s -w -X main.version=$(TAG) -X main.commit=$(GIT_COMMIT) -
 
 .PHONY: help
 help: ## Show this help message
-	@echo "MaaS Billing Makefile"
+	@echo "MaaS API Makefile"
 	@echo ""
 	@echo "Usage: make <target> [REPO=your-repo] [TAG=your-tag]"
 	@echo ""
