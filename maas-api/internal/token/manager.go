@@ -78,6 +78,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	}
 	jti, ok := claims["jti"].(string)
 	if !ok {
+		//nolint:perfsprint // Cannot use errors.New here as errors is k8s package
 		return nil, fmt.Errorf("jti claim not found or not a string in new token")
 	}
 

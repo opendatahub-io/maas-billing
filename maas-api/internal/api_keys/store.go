@@ -103,12 +103,12 @@ func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username string
 	// Validate required fields
 	jti := strings.TrimSpace(tok.JTI)
 	if jti == "" {
-		return fmt.Errorf("token JTI is required and cannot be empty")
+		return errors.New("token JTI is required and cannot be empty")
 	}
 
 	name := strings.TrimSpace(tok.Name)
 	if name == "" {
-		return fmt.Errorf("token name is required and cannot be empty")
+		return errors.New("token name is required and cannot be empty")
 	}
 
 	now := time.Now()
