@@ -117,7 +117,7 @@ func (s *Store) MarkTokensAsExpiredForUser(ctx context.Context, namespace, usern
 // Use MarkTokensAsExpiredForUser to revoke all tokens for a user.
 func (s *Store) DeleteToken(ctx context.Context, namespace, username, jti string) error {
 	// This method is intentionally non-functional - single token deletion removed for initial release
-	return fmt.Errorf("single token deletion not supported - use DELETE /v1/tokens to revoke all tokens")
+	return errors.New("single token deletion not supported - use DELETE /v1/tokens to revoke all tokens")
 }
 
 // GetTokensForUser retrieves all tokens for a user in a specific namespace.
