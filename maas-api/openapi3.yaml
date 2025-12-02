@@ -547,6 +547,10 @@ components:
                     type: string
                     description: Optional name for the token. If provided, the token will be tracked in the metadata store.
                     example: my-application-token
+                description:
+                    type: string
+                    description: Optional description for the token. Provides additional context about the token's purpose.
+                    example: Production API key for backend service
         
         # Token metadata
         TokenMetadata:
@@ -558,6 +562,9 @@ components:
                 name:
                     type: string
                     description: User-friendly name
+                description:
+                    type: string
+                    description: Optional description providing context about the token's purpose
                 creationDate:
                     type: string
                     format: date-time
@@ -597,6 +604,18 @@ components:
                     description: Token expiration timestamp (Unix seconds)
                     example: 1672531200
                     format: int64
+                jti:
+                    type: string
+                    description: JWT ID (JTI) - unique identifier for the token. Present in API key responses.
+                    example: abc123def456
+                name:
+                    type: string
+                    description: Token name. Present in API key responses.
+                    example: my-production-app
+                description:
+                    type: string
+                    description: Token description. Present in API key responses if provided.
+                    example: Production API key for backend service
             required:
                 - token
                 - expiration

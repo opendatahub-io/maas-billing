@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -60,7 +61,8 @@ func (s *Store) initSchema(ctx context.Context) error {
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL,
 		name TEXT NOT NULL,
-		namespace TEXT,
+		description TEXT,
+		namespace TEXT NOT NULL,
 		creation_date TEXT NOT NULL,
 		expiration_date TEXT NOT NULL
 	);`
@@ -68,9 +70,29 @@ func (s *Store) initSchema(ctx context.Context) error {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
 
-	// 2. Create indices
+	// 2. Migrate existing tables: add description column if it doesn't exist
+	// SQLite doesn't support "ALTER TABLE ... ADD COLUMN IF NOT EXISTS", so we check first
+	var columnExists int
+	checkColumnQuery := `
+	SELECT COUNT(*) FROM pragma_table_info('tokens') WHERE name='description';
+	`
+	err := s.db.QueryRowContext(ctx, checkColumnQuery).Scan(&columnExists)
+	if err == nil && columnExists == 0 {
+		// Column doesn't exist, add it
+		alterTableQuery := `ALTER TABLE tokens ADD COLUMN description TEXT;`
+		if _, err := s.db.ExecContext(ctx, alterTableQuery); err != nil {
+			return fmt.Errorf("failed to add description column: %w", err)
+		}
+		log.Printf("Added description column to tokens table")
+	}
+
+	// 3. Create indices
 	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tokens_username ON tokens(username)`); err != nil {
 		return fmt.Errorf("failed to create username index: %w", err)
+	}
+
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tokens_username_namespace ON tokens(username, namespace)`); err != nil {
+		return fmt.Errorf("failed to create username-namespace composite index: %w", err)
 	}
 
 	return nil
@@ -78,15 +100,27 @@ func (s *Store) initSchema(ctx context.Context) error {
 
 // AddTokenMetadata adds a new token to the database.
 func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username string, tok *token.Token) error {
+	// Validate required fields
+	jti := strings.TrimSpace(tok.JTI)
+	if jti == "" {
+		return fmt.Errorf("token JTI is required and cannot be empty")
+	}
+
+	name := strings.TrimSpace(tok.Name)
+	if name == "" {
+		return fmt.Errorf("token name is required and cannot be empty")
+	}
+
 	now := time.Now()
 	creationDate := now.Format(time.RFC3339)
 	expirationDate := time.Unix(tok.ExpiresAt, 0).Format(time.RFC3339)
 
 	query := `
-	INSERT INTO tokens (id, username, name, namespace, creation_date, expiration_date)
-	VALUES (?, ?, ?, ?, ?, ?)
+	INSERT INTO tokens (id, username, name, description, namespace, creation_date, expiration_date)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := s.db.ExecContext(ctx, query, tok.JTI, username, tok.Name, namespace, creationDate, expirationDate)
+	description := strings.TrimSpace(tok.Description)
+	_, err := s.db.ExecContext(ctx, query, jti, username, name, description, namespace, creationDate, expirationDate)
 	if err != nil {
 		return fmt.Errorf("failed to insert token metadata: %w", err)
 	}
@@ -98,7 +132,7 @@ func (s *Store) MarkTokensAsExpiredForUser(ctx context.Context, namespace, usern
 	now := time.Now()
 	expirationDate := now.Format(time.RFC3339)
 	nowStr := now.Format(time.RFC3339)
-	
+
 	// Update only tokens that are not already expired (expiration_date > now)
 	// This ensures we only mark active tokens as expired, not ones already expired
 	query := `UPDATE tokens SET expiration_date = ? WHERE username = ? AND namespace = ? AND expiration_date > ?`
@@ -123,7 +157,7 @@ func (s *Store) DeleteToken(ctx context.Context, namespace, username, jti string
 // GetTokensForUser retrieves all tokens for a user in a specific namespace.
 func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string) ([]NamedToken, error) {
 	query := `
-	SELECT id, name, creation_date, expiration_date
+	SELECT id, name, description, creation_date, expiration_date
 	FROM tokens 
 	WHERE username = ? AND namespace = ?
 	ORDER BY creation_date DESC
@@ -139,7 +173,7 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 
 	for rows.Next() {
 		var t NamedToken
-		if err := rows.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.CreationDate, &t.ExpirationDate); err != nil {
 			return nil, err
 		}
 
@@ -168,14 +202,14 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 // GetToken retrieves a single token for a user by its JTI in a specific namespace.
 func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (*NamedToken, error) {
 	query := `
-	SELECT id, name, creation_date, expiration_date
+	SELECT id, name, description, creation_date, expiration_date
 	FROM tokens 
 	WHERE username = ? AND namespace = ? AND id = ?
 	`
 	row := s.db.QueryRowContext(ctx, query, username, namespace, jti)
 
 	var t NamedToken
-	if err := row.Scan(&t.ID, &t.Name, &t.CreationDate, &t.ExpirationDate); err != nil {
+	if err := row.Scan(&t.ID, &t.Name, &t.Description, &t.CreationDate, &t.ExpirationDate); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrTokenNotFound
 		}
@@ -196,4 +230,3 @@ func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (
 
 	return &t, nil
 }
-

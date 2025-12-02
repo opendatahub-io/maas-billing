@@ -161,12 +161,13 @@ else
 fi
 
 # Test 3.1: Create API Key
-echo -n "  • Creating API Key ('$KEY_NAME')... "
+KEY_DESCRIPTION="Test API key for verification script"
+echo -n "  • Creating API Key ('$KEY_NAME') with description... "
 KEY_RESPONSE=$(curl -sSk \
     -H "Authorization: Bearer $OC_TOKEN" \
     -H "Content-Type: application/json" \
     -X POST \
-    -d "{\"name\": \"$KEY_NAME\", \"expiration\": \"24h\"}" \
+    -d "{\"name\": \"$KEY_NAME\", \"description\": \"$KEY_DESCRIPTION\", \"expiration\": \"24h\"}" \
     -w "\nHTTP_STATUS:%{http_code}\n" \
     "${API_BASE}/maas-api/v1/api-keys")
 
@@ -174,30 +175,44 @@ http_status=$(echo "$KEY_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
 response_body=$(echo "$KEY_RESPONSE" | sed '/HTTP_STATUS:/d')
 
 if [ "$http_status" == "201" ]; then
-    # Verify response structure: { "token": { "token": "...", "jti": "...", "expiration": "...", "expiresAt": ..., "name": "..." } }
-    HAS_TOKEN_WRAPPER=$(echo "$response_body" | jq -r 'has("token")')
-    if [ "$HAS_TOKEN_WRAPPER" != "true" ]; then
-        echo -e "${RED}✗ Failed (Invalid response structure: missing 'token' wrapper)${NC}"
-        echo "Response: $response_body"
-        exit 1
-    fi
+    # Verify response structure: { "token": "...", "expiration": "...", "expiresAt": ..., "jti": "...", "name": "...", "description": "..." }
+    HAS_TOKEN=$(echo "$response_body" | jq -r 'has("token")')
+    HAS_EXPIRATION=$(echo "$response_body" | jq -r 'has("expiration")')
+    HAS_EXPIRES_AT=$(echo "$response_body" | jq -r 'has("expiresAt")')
+    HAS_JTI=$(echo "$response_body" | jq -r 'has("jti")')
+    HAS_NAME=$(echo "$response_body" | jq -r 'has("name")')
+    HAS_DESCRIPTION=$(echo "$response_body" | jq -r 'has("description")')
     
-    TOKEN_OBJ=$(echo "$response_body" | jq '.token')
-    HAS_TOKEN_STRING=$(echo "$TOKEN_OBJ" | jq -r 'has("token")')
-    HAS_JTI=$(echo "$TOKEN_OBJ" | jq -r 'has("jti")')
-    HAS_NAME=$(echo "$TOKEN_OBJ" | jq -r 'has("name")')
-    HAS_EXPIRATION=$(echo "$TOKEN_OBJ" | jq -r 'has("expiration")')
-    HAS_EXPIRES_AT=$(echo "$TOKEN_OBJ" | jq -r 'has("expiresAt")')
-    
-    if [ "$HAS_TOKEN_STRING" == "true" ] && [ "$HAS_JTI" == "true" ] && [ "$HAS_NAME" == "true" ] && [ "$HAS_EXPIRATION" == "true" ] && [ "$HAS_EXPIRES_AT" == "true" ]; then
-        API_KEY_TOKEN=$(echo "$response_body" | jq -r '.token.token')
-        API_KEY_JTI=$(echo "$response_body" | jq -r '.token.jti')
+    if [ "$HAS_TOKEN" == "true" ] && [ "$HAS_EXPIRATION" == "true" ] && [ "$HAS_EXPIRES_AT" == "true" ] && [ "$HAS_JTI" == "true" ] && [ "$HAS_NAME" == "true" ]; then
+        API_KEY_TOKEN=$(echo "$response_body" | jq -r '.token')
+        API_KEY_JTI=$(echo "$response_body" | jq -r '.jti')
+        API_KEY_NAME=$(echo "$response_body" | jq -r '.name')
+        API_KEY_DESCRIPTION=$(echo "$response_body" | jq -r '.description // ""')
         
         echo -e "${GREEN}✓ Success${NC}"
         echo "    - JTI: $API_KEY_JTI"
-        echo "    - Response structure: ✓ Valid"
+        echo "    - Name: $API_KEY_NAME"
+        echo "    - Description: ${API_KEY_DESCRIPTION:-'(empty)'}"
+        echo "    - Response structure: ✓ Valid (all required fields present)"
+        if [ "$HAS_DESCRIPTION" == "true" ]; then
+            echo "    - Description field: ✓ Present"
+            # Verify description matches what we sent
+            if [ "$API_KEY_DESCRIPTION" == "$KEY_DESCRIPTION" ]; then
+                echo "    - Description value: ✓ Matches request"
+            else
+                echo -e "    - Description value: ${YELLOW}⚠ Mismatch (expected: $KEY_DESCRIPTION, got: $API_KEY_DESCRIPTION)${NC}"
+            fi
+        else
+            echo -e "    - Description field: ${YELLOW}⚠ Missing (expected but not present)${NC}"
+        fi
     else
         echo -e "${RED}✗ Failed (Invalid response structure)${NC}"
+        echo "  Missing fields:"
+        [ "$HAS_TOKEN" != "true" ] && echo "    - token"
+        [ "$HAS_EXPIRATION" != "true" ] && echo "    - expiration"
+        [ "$HAS_EXPIRES_AT" != "true" ] && echo "    - expiresAt"
+        [ "$HAS_JTI" != "true" ] && echo "    - jti"
+        [ "$HAS_NAME" != "true" ] && echo "    - name"
         echo "Response: $response_body"
         exit 1
     fi
@@ -234,14 +249,37 @@ if [ "$http_status" == "200" ]; then
         KEY_DATA=$(echo "$list_body" | jq ".[] | select(.name == \"$KEY_NAME\")")
         HAS_ID=$(echo "$KEY_DATA" | jq -r 'has("id")')
         HAS_NAME=$(echo "$KEY_DATA" | jq -r 'has("name")')
+        HAS_DESCRIPTION=$(echo "$KEY_DATA" | jq -r 'has("description")')
         HAS_STATUS=$(echo "$KEY_DATA" | jq -r 'has("status")')
         HAS_CREATION_DATE=$(echo "$KEY_DATA" | jq -r 'has("creationDate")')
         HAS_EXPIRATION_DATE=$(echo "$KEY_DATA" | jq -r 'has("expirationDate")')
         
         if [ "$HAS_ID" == "true" ] && [ "$HAS_NAME" == "true" ] && [ "$HAS_STATUS" == "true" ] && [ "$HAS_CREATION_DATE" == "true" ] && [ "$HAS_EXPIRATION_DATE" == "true" ]; then
-            echo "    - Response structure: ✓ Valid"
+            echo "    - Response structure: ✓ Valid (all required fields present)"
+            if [ "$HAS_DESCRIPTION" == "true" ]; then
+                LISTED_DESCRIPTION=$(echo "$KEY_DATA" | jq -r '.description // ""')
+                echo "    - Description field: ✓ Present"
+                if [ -n "$LISTED_DESCRIPTION" ]; then
+                    echo "    - Description value: $LISTED_DESCRIPTION"
+                    # Verify description matches what we sent
+                    if [ "$LISTED_DESCRIPTION" == "$KEY_DESCRIPTION" ]; then
+                        echo "    - Description matches request: ✓"
+                    else
+                        echo -e "    - Description value: ${YELLOW}⚠ Mismatch (expected: $KEY_DESCRIPTION, got: $LISTED_DESCRIPTION)${NC}"
+                    fi
+                else
+                    echo "    - Description value: (empty)"
+                fi
+            else
+                echo -e "    - Description field: ${YELLOW}⚠ Optional (not present)${NC}"
+            fi
         else
-            echo -e "${YELLOW}⚠ Warning: Missing fields in response${NC}"
+            echo -e "${YELLOW}⚠ Warning: Missing required fields in response${NC}"
+            [ "$HAS_ID" != "true" ] && echo "      - Missing: id"
+            [ "$HAS_NAME" != "true" ] && echo "      - Missing: name"
+            [ "$HAS_STATUS" != "true" ] && echo "      - Missing: status"
+            [ "$HAS_CREATION_DATE" != "true" ] && echo "      - Missing: creationDate"
+            [ "$HAS_EXPIRATION_DATE" != "true" ] && echo "      - Missing: expirationDate"
         fi
     else
         echo -e "${RED}✗ Failed (Key '$KEY_NAME' not found in list)${NC}"
@@ -263,10 +301,49 @@ get_body=$(echo "$GET_RESPONSE" | sed '/HTTP_STATUS:/d')
 
 if [ "$http_status" == "200" ]; then
     RETRIEVED_ID=$(echo "$get_body" | jq -r '.id')
+    RETRIEVED_NAME=$(echo "$get_body" | jq -r '.name')
+    RETRIEVED_DESCRIPTION=$(echo "$get_body" | jq -r '.description // ""')
+    
+    # Verify all required fields are present
+    HAS_ID=$(echo "$get_body" | jq -r 'has("id")')
+    HAS_NAME=$(echo "$get_body" | jq -r 'has("name")')
+    HAS_DESCRIPTION=$(echo "$get_body" | jq -r 'has("description")')
+    HAS_STATUS=$(echo "$get_body" | jq -r 'has("status")')
+    HAS_CREATION_DATE=$(echo "$get_body" | jq -r 'has("creationDate")')
+    HAS_EXPIRATION_DATE=$(echo "$get_body" | jq -r 'has("expirationDate")')
+    
     if [ "$RETRIEVED_ID" == "$API_KEY_JTI" ]; then
-        echo -e "${GREEN}✓ Success${NC}"
+        if [ "$HAS_ID" == "true" ] && [ "$HAS_NAME" == "true" ] && [ "$HAS_STATUS" == "true" ] && [ "$HAS_CREATION_DATE" == "true" ] && [ "$HAS_EXPIRATION_DATE" == "true" ]; then
+            echo -e "${GREEN}✓ Success${NC}"
+            echo "    - ID: $RETRIEVED_ID"
+            echo "    - Name: $RETRIEVED_NAME"
+            if [ "$HAS_DESCRIPTION" == "true" ]; then
+                echo "    - Description field: ✓ Present"
+                if [ -n "$RETRIEVED_DESCRIPTION" ]; then
+                    echo "    - Description value: $RETRIEVED_DESCRIPTION"
+                    # Verify description matches what we sent
+                    if [ "$RETRIEVED_DESCRIPTION" == "$KEY_DESCRIPTION" ]; then
+                        echo "    - Description matches request: ✓"
+                    else
+                        echo -e "    - Description value: ${YELLOW}⚠ Mismatch (expected: $KEY_DESCRIPTION, got: $RETRIEVED_DESCRIPTION)${NC}"
+                    fi
+                else
+                    echo "    - Description value: (empty)"
+                fi
+            else
+                echo -e "    - Description field: ${YELLOW}⚠ Optional (not present)${NC}"
+            fi
+            echo "    - All required fields: ✓ Present"
+        else
+            echo -e "${YELLOW}⚠ Partial success (ID matches but missing fields)${NC}"
+            [ "$HAS_ID" != "true" ] && echo "      - Missing: id"
+            [ "$HAS_NAME" != "true" ] && echo "      - Missing: name"
+            [ "$HAS_STATUS" != "true" ] && echo "      - Missing: status"
+            [ "$HAS_CREATION_DATE" != "true" ] && echo "      - Missing: creationDate"
+            [ "$HAS_EXPIRATION_DATE" != "true" ] && echo "      - Missing: expirationDate"
+        fi
     else
-        echo -e "${RED}✗ Failed (ID mismatch)${NC}"
+        echo -e "${RED}✗ Failed (ID mismatch: expected $API_KEY_JTI, got $RETRIEVED_ID)${NC}"
     fi
 else
     echo -e "${RED}✗ Failed (Status: $http_status)${NC}"
@@ -311,7 +388,25 @@ temp_key_status=$(echo "$TEMP_KEY_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f
 temp_key_body=$(echo "$TEMP_KEY_RESPONSE" | sed '/HTTP_STATUS:/d')
 
 if [ "$temp_key_status" == "201" ]; then
+    # Try to get jti directly from response (preferred)
     TEMP_KEY_JTI=$(echo "$temp_key_body" | jq -r '.jti // empty')
+    
+    # If not found, extract from JWT token
+    if [ -z "$TEMP_KEY_JTI" ]; then
+        JWT_TOKEN=$(echo "$temp_key_body" | jq -r '.token // empty')
+        if [ -n "$JWT_TOKEN" ]; then
+            # Extract payload (second segment of JWT)
+            PAYLOAD=$(echo "$JWT_TOKEN" | cut -d'.' -f2)
+            # Add padding if needed for base64 decoding
+            case $((${#PAYLOAD} % 4)) in
+                2) PAYLOAD="${PAYLOAD}==" ;;
+                3) PAYLOAD="${PAYLOAD}=" ;;
+            esac
+            # Decode and extract jti
+            TEMP_KEY_JTI=$(echo "$PAYLOAD" | base64 -d 2>/dev/null | jq -r '.jti // empty' 2>/dev/null || echo "")
+        fi
+    fi
+    
     if [ -n "$TEMP_KEY_JTI" ]; then
         echo -e "${GREEN}✓ Done (JTI: $TEMP_KEY_JTI)${NC}"
     else

@@ -272,7 +272,10 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 			"sub": "system:serviceaccount:test-namespace:test-sa",
 		}
 
-		signedToken, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("secret"))
+		signedToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("secret"))
+		if err != nil {
+			panic(fmt.Sprintf("failed to sign JWT token in test fixture: %v", err))
+		}
 
 		tokenRequest.Status = authv1.TokenRequestStatus{
 			Token:               signedToken,

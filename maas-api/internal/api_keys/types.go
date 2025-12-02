@@ -4,8 +4,8 @@ package api_keys
 type NamedToken struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
+	Description    string `json:"description,omitempty"`
 	CreationDate   string `json:"creationDate"`
 	ExpirationDate string `json:"expirationDate"`
 	Status         string `json:"status"` // "active", "expired"
 }
-

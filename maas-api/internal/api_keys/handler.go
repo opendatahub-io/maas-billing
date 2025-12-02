@@ -19,14 +19,18 @@ func NewHandler(service *Service) *Handler {
 }
 
 type CreateRequest struct {
-	Name       string          `json:"name"`
-	Expiration *token.Duration `json:"expiration"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Expiration  *token.Duration `json:"expiration"`
 }
 
 type Response struct {
-	Token     string `json:"token"`
-	Expiration string `json:"expiration"`
-	ExpiresAt int64  `json:"expiresAt"`
+	Token       string `json:"token"`
+	Expiration  string `json:"expiration"`
+	ExpiresAt   int64  `json:"expiresAt"`
+	JTI         string `json:"jti"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 }
 
 func (h *Handler) CreateAPIKey(c *gin.Context) {
@@ -68,7 +72,7 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	tok, err := h.service.CreateAPIKey(c.Request.Context(), user, req.Name, expiration)
+	tok, err := h.service.CreateAPIKey(c.Request.Context(), user, req.Name, req.Description, expiration)
 	if err != nil {
 		log.Printf("Failed to generate api key: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate api key"})
@@ -76,9 +80,12 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, Response{
-		Token:     tok.Token,
-		Expiration: tok.Expiration.String(),
-		ExpiresAt: tok.ExpiresAt,
+		Token:       tok.Token,
+		Expiration:  tok.Expiration.String(),
+		ExpiresAt:   tok.ExpiresAt,
+		JTI:         tok.JTI,
+		Name:        tok.Name,
+		Description: tok.Description,
 	})
 }
 

@@ -16,12 +16,13 @@ type UserContext struct {
 }
 
 type Token struct {
-	Token      string   `json:"token"`
-	Expiration Duration `json:"expiration"`
-	ExpiresAt  int64    `json:"expiresAt"`
-	JTI        string   `json:"jti,omitempty"`
-	Name       string   `json:"name,omitempty"`
-	Namespace  string   `json:"-"` // Internal use only
+	Token       string   `json:"token"`
+	Expiration  Duration `json:"expiration"`
+	ExpiresAt   int64    `json:"expiresAt"`
+	JTI         string   `json:"jti,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Namespace   string   `json:"-"` // Internal use only
 }
 
 type Duration struct {

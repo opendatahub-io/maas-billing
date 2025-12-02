@@ -160,4 +160,3 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
 }
-

@@ -27,7 +27,7 @@ func NewService(tokenManager TokenManager, store *Store) *Service {
 	}
 }
 
-func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, name string, expiration time.Duration) (*token.Token, error) {
+func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, name string, description string, expiration time.Duration) (*token.Token, error) {
 	// Generate token (name is set after generation since persistence is handled here)
 	tok, err := s.tokenManager.GenerateToken(ctx, user, expiration, "")
 	if err != nil {
@@ -35,6 +35,7 @@ func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, nam
 	}
 
 	tok.Name = name
+	tok.Description = description
 
 	if err := s.store.AddTokenMetadata(ctx, tok.Namespace, user.Username, tok); err != nil {
 		return nil, fmt.Errorf("failed to persist api key metadata: %w", err)
@@ -83,4 +84,3 @@ func (s *Service) RevokeAll(ctx context.Context, user *token.UserContext) error 
 
 	return nil
 }
-
