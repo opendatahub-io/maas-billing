@@ -20,12 +20,10 @@ const (
 )
 
 func TestMapper_GetTierForGroups(t *testing.T) {
-	ctx := t.Context()
-
 	configMap := fixtures.CreateTierConfigMap(testNamespace)
 
 	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
+	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
 
 	tests := []struct {
 		name          string
@@ -134,7 +132,7 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mappedTiers, err := mapper.GetTierForGroups(ctx, tt.groups...)
+			mappedTiers, err := mapper.GetTierForGroups(tt.groups...)
 
 			if tt.expectedError && err == nil {
 				t.Errorf("expected error but got none")
@@ -154,20 +152,16 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 }
 
 func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
-	ctx := t.Context()
-
 	clientset := fake.NewClientset()
-	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
+	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
 
-	_, err := mapper.GetTierForGroups(ctx, "any-group", "another-group")
+	_, err := mapper.GetTierForGroups("any-group", "another-group")
 	if err == nil {
 		t.Errorf("expected error")
 	}
 }
 
 func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
-	ctx := t.Context()
-
 	// Test case where two tiers have the same level
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -191,10 +185,10 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	}
 
 	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(clientset, testTenant, testNamespace)
+	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
 
 	// When levels are equal, first tier found should win
-	mappedTier, err := mapper.GetTierForGroups(ctx, "group-a", "group-b")
+	mappedTier, err := mapper.GetTierForGroups("group-a", "group-b")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}

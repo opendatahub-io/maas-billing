@@ -18,6 +18,7 @@ import (
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
@@ -111,11 +112,11 @@ func configureSATokenProvider(
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
-	tierMapper := tier.NewMapper(clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
+	tierMapper := tier.NewMapper(ctx, clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
 	tierHandler := tier.NewHandler(tierMapper)
 	v1Routes.POST("/tiers/lookup", tierHandler.TierLookup)
 
-	informerFactory := informers.NewSharedInformerFactory(clusterConfig.ClientSet, 30*time.Second)
+	informerFactory := informers.NewSharedInformerFactory(clusterConfig.ClientSet, constant.DefaultResyncPeriod)
 
 	namespaceInformer := informerFactory.Core().V1().Namespaces()
 	serviceAccountInformer := informerFactory.Core().V1().ServiceAccounts()

@@ -126,7 +126,12 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 }
 
 // StubTokenProviderAPIs creates common test components for token tests.
+<<<<<<< HEAD
 func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset, func()) {
+=======
+func StubTokenProviderAPIs(t *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset) {
+	t.Helper()
+>>>>>>> origin/main
 	var objects []runtime.Object
 
 	if withTierConfig {
@@ -142,7 +147,7 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
-	tierMapper := tier.NewMapper(fakeClient, TestTenant, TestNamespace)
+	tierMapper := tier.NewMapper(t.Context(), fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
 		TestTenant,
 		tierMapper,
@@ -214,7 +219,7 @@ func CreateTestMapper(withConfigMap bool) *tier.Mapper {
 	}
 
 	clientset := k8sfake.NewClientset(objects...)
-	return tier.NewMapper(clientset, TestTenant, TestNamespace)
+	return tier.NewMapper(context.Background(), clientset, TestTenant, TestNamespace)
 }
 
 // StubTokenReview sets up TokenReview API mocking for authentication tests.
