@@ -126,12 +126,7 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 }
 
 // StubTokenProviderAPIs creates common test components for token tests.
-<<<<<<< HEAD
 func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset, func()) {
-=======
-func StubTokenProviderAPIs(t *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset) {
-	t.Helper()
->>>>>>> origin/main
 	var objects []runtime.Object
 
 	if withTierConfig {
