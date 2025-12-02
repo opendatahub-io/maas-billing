@@ -36,16 +36,9 @@ func NewMapper(ctx context.Context, clientset kubernetes.Interface, tenantName, 
 	configMapInformer := informerFactory.Core().V1().ConfigMaps()
 	configMapLister := configMapInformer.Lister()
 
-	stopCh := make(chan struct{})
+	informerFactory.Start(ctx.Done())
 
-	go func() {
-		<-ctx.Done()
-		close(stopCh)
-	}()
-
-	informerFactory.Start(stopCh)
-
-	if !cache.WaitForCacheSync(stopCh, configMapInformer.Informer().HasSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), configMapInformer.Informer().HasSynced) {
 		log.Fatalf("failed to wait for caches to sync")
 	}
 
