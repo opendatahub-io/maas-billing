@@ -2,9 +2,8 @@ package token
 
 import (
 	"context"
-	"crypto/sha256" // SHA256 used for non-cryptographic hashing of usernames, not for security
+	"crypto/sha1" //nolint:gosec // SHA1 used for non-cryptographic hashing of usernames, not for security
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -13,7 +12,7 @@ import (
 
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	corelistersv1 "k8s.io/client-go/listers/core/v1"
@@ -79,7 +78,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	}
 	jti, ok := claims["jti"].(string)
 	if !ok {
-		return nil, errors.New("jti claim not found or not a string in new token")
+		return nil, fmt.Errorf("jti claim not found or not a string in new token")
 	}
 
 	result := &Token{
@@ -113,7 +112,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, 
 	}
 
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
-	if k8serrors.IsNotFound(err) {
+	if errors.IsNotFound(err) {
 		log.Printf("Service account %s not found in namespace %s, nothing to revoke", saName, namespace)
 		return namespace, nil
 	}
@@ -190,7 +189,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 		return namespace, nil
 	}
 
-	if !k8serrors.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check namespace %s: %w", namespace, err)
 	}
 
@@ -203,7 +202,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 
 	_, err = m.clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 	if err != nil {
-		if k8serrors.IsAlreadyExists(err) {
+		if errors.IsAlreadyExists(err) {
 			return namespace, nil
 		}
 		return "", fmt.Errorf("failed to create namespace %s: %w", namespace, err)
@@ -226,7 +225,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 		return saName, nil
 	}
 
-	if !k8serrors.IsNotFound(err) {
+	if !errors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
@@ -240,7 +239,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 
 	_, err = m.clientset.CoreV1().ServiceAccounts(namespace).Create(ctx, sa, metav1.CreateOptions{})
 	if err != nil {
-		if k8serrors.IsAlreadyExists(err) {
+		if errors.IsAlreadyExists(err) {
 			return saName, nil
 		}
 		return "", fmt.Errorf("failed to create service account %s in namespace %s: %w", saName, namespace, err)
@@ -274,7 +273,7 @@ func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saNa
 func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName string) error {
 	err := m.clientset.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
+		if errors.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
@@ -305,7 +304,7 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	// Append a stable short hash to reduce collisions
-	sum := sha256.Sum256([]byte(username))
+	sum := sha1.Sum([]byte(username)) //nolint:gosec // SHA1 used for non-cryptographic hashing, not for security
 	suffix := hex.EncodeToString(sum[:])[:8]
 
 	// Ensure total length <= 63 including hyphen and suffix
