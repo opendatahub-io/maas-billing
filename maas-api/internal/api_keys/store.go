@@ -112,19 +112,12 @@ func (s *Store) MarkTokensAsExpiredForUser(ctx context.Context, namespace, usern
 	return nil
 }
 
-// DeleteToken deletes a single token for a user in a specific namespace.
+// DeleteToken is deprecated and non-functional - kept for interface compatibility.
+// Single token deletion is not supported in the initial release.
+// Use MarkTokensAsExpiredForUser to revoke all tokens for a user.
 func (s *Store) DeleteToken(ctx context.Context, namespace, username, jti string) error {
-	query := `DELETE FROM tokens WHERE username = ? AND namespace = ? AND id = ?`
-	result, err := s.db.ExecContext(ctx, query, username, namespace, jti)
-	if err != nil {
-		return fmt.Errorf("failed to delete token: %w", err)
-	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return ErrTokenNotFound
-	}
-	return nil
+	// This method is intentionally non-functional - single token deletion removed for initial release
+	return fmt.Errorf("single token deletion not supported - use DELETE /v1/tokens to revoke all tokens")
 }
 
 // GetTokensForUser retrieves all tokens for a user in a specific namespace.

@@ -297,15 +297,31 @@ echo ""
 # -----------------------------------------------------------------------------
 echo -e "${MAGENTA}4. Testing Revoke All Tokens (/v1/tokens)...${NC}"
 
-# Create a temp key to ensure it gets deleted
+# Create a temp key to ensure it gets marked as expired
 echo -n "  • Creating temp key for cleanup test... "
 TEMP_KEY_RESPONSE=$(curl -sSk \
     -H "Authorization: Bearer $OC_TOKEN" \
     -H "Content-Type: application/json" \
     -X POST \
     -d "{\"name\": \"cleanup-test\", \"expiration\": \"1h\"}" \
+    -w "\nHTTP_STATUS:%{http_code}\n" \
     "${API_BASE}/maas-api/v1/api-keys")
-echo -e "${GREEN}✓ Done${NC}"
+
+temp_key_status=$(echo "$TEMP_KEY_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
+temp_key_body=$(echo "$TEMP_KEY_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+if [ "$temp_key_status" == "201" ]; then
+    TEMP_KEY_JTI=$(echo "$temp_key_body" | jq -r '.jti // empty')
+    if [ -n "$TEMP_KEY_JTI" ]; then
+        echo -e "${GREEN}✓ Done (JTI: $TEMP_KEY_JTI)${NC}"
+    else
+        echo -e "${GREEN}✓ Done${NC}"
+    fi
+else
+    echo -e "${RED}✗ Failed (Status: $temp_key_status)${NC}"
+    echo "Response: $temp_key_body"
+    exit 1
+fi
 
 echo -n "  • Revoking ALL tokens... "
 REVOKE_ALL_RESPONSE=$(curl -sSk \

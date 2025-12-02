@@ -24,7 +24,9 @@ type CreateRequest struct {
 }
 
 type Response struct {
-	Token *token.Token `json:"token"`
+	Token     string `json:"token"`
+	Expiration string `json:"expiration"`
+	ExpiresAt int64  `json:"expiresAt"`
 }
 
 func (h *Handler) CreateAPIKey(c *gin.Context) {
@@ -73,7 +75,11 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, Response{Token: tok})
+	c.JSON(http.StatusCreated, Response{
+		Token:     tok.Token,
+		Expiration: tok.Expiration.String(),
+		ExpiresAt: tok.ExpiresAt,
+	})
 }
 
 func (h *Handler) ListAPIKeys(c *gin.Context) {

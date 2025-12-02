@@ -158,7 +158,12 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			manager, reviewer, _, cleanup := fixtures.StubTokenProviderAPIs(t, true, tokenScenarios)
 			defer cleanup()
-			router := fixtures.SetupTestRouter(manager, reviewer)
+			router, cleanupRouter := fixtures.SetupTestRouter(manager, reviewer)
+			defer func() {
+				if err := cleanupRouter(); err != nil {
+					t.Logf("Router cleanup error: %v", err)
+				}
+			}()
 
 			w := httptest.NewRecorder()
 

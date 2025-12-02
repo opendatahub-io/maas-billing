@@ -158,7 +158,8 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 }
 
 // SetupTestRouter creates a test router with token endpoints.
-func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engine {
+// Returns the router and a cleanup function that must be called to close the store and remove the temp DB file.
+func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Engine, func() error) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -179,7 +180,17 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engi
 	protected.POST("/tokens", tokenHandler.IssueToken)
 	protected.DELETE("/tokens", apiKeyHandler.RevokeAllTokens)
 
-	return router
+	cleanup := func() error {
+		if err := store.Close(); err != nil {
+			return fmt.Errorf("failed to close store: %w", err)
+		}
+		if err := os.Remove(dbPath); err != nil {
+			return fmt.Errorf("failed to remove temp DB file: %w", err)
+		}
+		return nil
+	}
+
+	return router, cleanup
 }
 
 // SetupTierTestRouter creates a test router for tier endpoints.
