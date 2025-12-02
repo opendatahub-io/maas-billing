@@ -93,16 +93,22 @@ func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username string
 	return nil
 }
 
-// DeleteTokensForUser deletes all tokens for a user from the database.
-func (s *Store) DeleteTokensForUser(ctx context.Context, namespace, username string) error {
-	query := `DELETE FROM tokens WHERE username = ? AND namespace = ?`
-	result, err := s.db.ExecContext(ctx, query, username, namespace)
+// MarkTokensAsExpiredForUser marks all active tokens for a user as expired by updating their expiration_date to the current time.
+func (s *Store) MarkTokensAsExpiredForUser(ctx context.Context, namespace, username string) error {
+	now := time.Now()
+	expirationDate := now.Format(time.RFC3339)
+	nowStr := now.Format(time.RFC3339)
+	
+	// Update only tokens that are not already expired (expiration_date > now)
+	// This ensures we only mark active tokens as expired, not ones already expired
+	query := `UPDATE tokens SET expiration_date = ? WHERE username = ? AND namespace = ? AND expiration_date > ?`
+	result, err := s.db.ExecContext(ctx, query, expirationDate, username, namespace, nowStr)
 	if err != nil {
-		return fmt.Errorf("failed to delete tokens: %w", err)
+		return fmt.Errorf("failed to mark tokens as expired: %w", err)
 	}
 
 	rows, _ := result.RowsAffected()
-	log.Printf("Deleted %d tokens for user %s", rows, username)
+	log.Printf("Marked %d tokens as expired for user %s", rows, username)
 	return nil
 }
 

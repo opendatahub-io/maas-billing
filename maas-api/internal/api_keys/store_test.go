@@ -70,13 +70,17 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, "token3", tokens[0].Name)
 	})
 
-	t.Run("DeleteTokensForUser", func(t *testing.T) {
-		err := store.DeleteTokensForUser(ctx, "test-ns", "user1")
+	t.Run("MarkTokensAsExpiredForUser", func(t *testing.T) {
+		err := store.MarkTokensAsExpiredForUser(ctx, "test-ns", "user1")
 		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user1")
 		require.NoError(t, err)
-		assert.Empty(t, tokens)
+		// Tokens should still exist but marked expired status
+		assert.Len(t, tokens, 2)
+		for _, tok := range tokens {
+			assert.Equal(t, api_keys.TokenStatusExpired, tok.Status)
+		}
 
 		// User2 should still exist
 		tokens2, err := store.GetTokensForUser(ctx, "test-ns", "user2")

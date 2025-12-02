@@ -286,53 +286,9 @@ else
     echo -e "${RED}✗ Failed (Status: $http_status)${NC}"
 fi
 
-# Test 3.5: Revoke API Key
-echo -n "  • Revoking API Key... "
-REVOKE_RESPONSE=$(curl -sSk \
-    -H "Authorization: Bearer $OC_TOKEN" \
-    -X DELETE \
-    -w "\nHTTP_STATUS:%{http_code}\n" \
-    "${API_BASE}/maas-api/v1/api-keys/$API_KEY_JTI")
-
-http_status=$(echo "$REVOKE_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
-if [ "$http_status" == "204" ]; then
-    echo -e "${GREEN}✓ Success${NC}"
-else
-    echo -e "${RED}✗ Failed (Status: $http_status)${NC}"
-fi
-
-# Test 3.6: Verify Revocation (Get should fail/404)
-echo -n "  • Verifying Revocation (Get ID)... "
-GET_RESPONSE=$(curl -sSk \
-    -H "Authorization: Bearer $OC_TOKEN" \
-    -w "\nHTTP_STATUS:%{http_code}\n" \
-    "${API_BASE}/maas-api/v1/api-keys/$API_KEY_JTI")
-
-http_status=$(echo "$GET_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
-if [ "$http_status" == "404" ]; then
-    echo -e "${GREEN}✓ Success (404 Not Found)${NC}"
-else
-    echo -e "${RED}✗ Failed (Expected 404, got $http_status)${NC}"
-fi
-
-# Test 3.7: Verify Revoked Token Status
-echo -n "  • Verifying Revoked Token Status... "
-REVOKED_TOKEN_RESPONSE=$(curl -sSk \
-    -H "Authorization: Bearer $API_KEY_TOKEN" \
-    -w "\nHTTP_STATUS:%{http_code}\n" \
-    "${API_BASE}/maas-api/v1/models")
-
-revoked_status=$(echo "$REVOKED_TOKEN_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
-if [ "$revoked_status" == "401" ] || [ "$revoked_status" == "403" ]; then
-    echo -e "${GREEN}✓ Success (Token rejected: $revoked_status)${NC}"
-else
-    # Expected: Token still works because individual revocation only removes metadata
-    # Kubernetes doesn't support revoking individual tokens - only all tokens via SA recreation
-    echo -e "${BLUE}ℹ Info (Token still valid: $revoked_status)${NC}"
-    echo "    Note: Individual API key revocation removes metadata only."
-    echo "    Token remains valid until expiration or RevokeAll (recreates SA)."
-    echo "    This is expected behavior - deny-list will be added in future work."
-fi
+# Test 3.5: Note - Single key deletion removed for initial release
+echo -e "${BLUE}ℹ Note: Single API key deletion (DELETE /v1/api-keys/:id) removed for initial release${NC}"
+echo "    Use DELETE /v1/tokens to revoke all tokens (recreates Service Account)"
 
 echo ""
 
@@ -367,16 +323,16 @@ else
     exit 1
 fi
 
-# Verify list is empty
-echo -n "  • Verifying empty list... "
+# Verify tokens are marked as expired (not deleted)
+echo -n "  • Verifying tokens marked as expired... "
 LIST_RESPONSE=$(curl -sSk \
     -H "Authorization: Bearer $OC_TOKEN" \
     -w "\nHTTP_STATUS:%{http_code}\n" \
     "${API_BASE}/maas-api/v1/api-keys")
 
+http_status=$(echo "$LIST_RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
 list_body=$(echo "$LIST_RESPONSE" | sed '/HTTP_STATUS:/d')
 IS_ARRAY=$(echo "$list_body" | jq 'type == "array"')
-IS_EMPTY=$(echo "$list_body" | jq 'length == 0')
 
 if [ "$IS_ARRAY" != "true" ]; then
     echo -e "${RED}✗ Failed (Expected array, got: $(echo "$list_body" | jq 'type'))${NC}"
@@ -384,10 +340,17 @@ if [ "$IS_ARRAY" != "true" ]; then
     exit 1
 fi
 
-if [ "$IS_EMPTY" == "true" ]; then
-    echo -e "${GREEN}✓ Success (List is empty array [])${NC}"
+# Check that all tokens have status "expired"
+ALL_EXPIRED=$(echo "$list_body" | jq '[.[] | select(.status == "expired")] | length')
+TOTAL_COUNT=$(echo "$list_body" | jq 'length')
+
+if [ "$TOTAL_COUNT" -gt 0 ] && [ "$ALL_EXPIRED" == "$TOTAL_COUNT" ]; then
+    echo -e "${GREEN}✓ Success (All $TOTAL_COUNT tokens marked as expired)${NC}"
+elif [ "$TOTAL_COUNT" == "0" ]; then
+    echo -e "${YELLOW}⚠ Info (No tokens found - may have been deleted in previous test)${NC}"
 else
-    echo -e "${RED}✗ Failed (List not empty: $list_body)${NC}"
+    echo -e "${RED}✗ Failed (Expected all tokens expired, got $ALL_EXPIRED/$TOTAL_COUNT expired)${NC}"
+    echo "Response: $list_body"
 fi
 
 echo ""

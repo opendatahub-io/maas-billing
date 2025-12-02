@@ -202,15 +202,15 @@ curl -sSk \
   -H "Authorization: Bearer $(oc whoami -t)" \
   "${HOST}/maas-api/v1/api-keys/${API_KEY_ID}" | jq .
 
-# Revoke a specific API key
+# Revoke all tokens (ephemeral and API keys)
 curl -sSk \
   -H "Authorization: Bearer $(oc whoami -t)" \
   -X DELETE \
-  "${HOST}/maas-api/v1/api-keys/${API_KEY_ID}"
+  "${HOST}/maas-api/v1/tokens"
 ```
 
 > [!NOTE]
-> API keys are stored in a SQLite database (`/data/maas.db` in the container) with metadata including creation date, expiration date, and status. They can be listed, inspected, and revoked individually.
+> API keys are stored in a SQLite database (`/data/maas.db` in the container) with metadata including creation date, expiration date, and status. They can be listed and inspected individually. To revoke tokens, use `DELETE /v1/tokens` which revokes all tokens (ephemeral and API keys) by recreating the Service Account and marking API key metadata as expired.
 
 #### Calling the model and hitting the rate limit
 

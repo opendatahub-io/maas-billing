@@ -369,36 +369,6 @@ paths:
                     description: Not Found. API key not found.
                 "401":
                     description: Unauthorized response.
-        delete:
-            tags:
-                - api-keys
-            summary: Revoke a specific API key
-            description: Revokes a single named API key by ID. The token will be marked as expired and rejected in future requests.
-            operationId: api-keys#revoke
-            parameters:
-                - in: path
-                  name: id
-                  schema:
-                      type: string
-                  required: true
-                  description: ID of the API key to revoke
-            responses:
-                "204":
-                    description: No Content response. API key revoked.
-                "404":
-                    description: Not Found. API key not found.
-                "401":
-                    description: Unauthorized response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ErrorResponse'
-                "500":
-                    description: Internal Server Error response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     bearerAuth:

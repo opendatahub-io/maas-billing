@@ -166,7 +166,7 @@ func configureSATokenProvider(
 	apiKeyRoutes.POST("", apiKeyHandler.CreateAPIKey)
 	apiKeyRoutes.GET("", apiKeyHandler.ListAPIKeys)
 	apiKeyRoutes.GET("/:id", apiKeyHandler.GetAPIKey)
-	apiKeyRoutes.DELETE("/:id", apiKeyHandler.RevokeAPIKey)
+	// Note: Single key deletion removed for initial release - use DELETE /v1/tokens to revoke all tokens
 
 	cleanup := func() {
 		if err := store.Close(); err != nil {

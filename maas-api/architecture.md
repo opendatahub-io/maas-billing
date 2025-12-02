@@ -36,7 +36,7 @@ The MaaS (Model as a Service) API provides a tier-based token management system 
 | `/v1/api-keys`       | POST   | Create named API key (long-lived)      | `{"expiration", "name"}` | Token with metadata |
 | `/v1/api-keys`       | GET    | List all API keys for user             | None              | Array of API key metadata   |
 | `/v1/api-keys/{id}`  | GET    | Get specific API key by ID             | None              | API key metadata            |
-| `/v1/api-keys/{id}`  | DELETE | Revoke specific API key                | None              | Success confirmation        |
+| `/v1/api-keys/{id}`  | GET    | Get specific API key metadata           | Bearer token     | Token metadata              |
 | `/v1/tiers/lookup`   | POST   | Lookup tier for user groups (internal) | `{"groups"}`     | `{"tier"}`                 |
 
 ## Core Architecture Components

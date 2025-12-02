@@ -68,16 +68,17 @@ func (s *Service) RevokeAPIKey(ctx context.Context, user *token.UserContext, id 
 }
 
 // RevokeAll invalidates all tokens for the user (ephemeral and persistent).
+// It recreates the Service Account (invalidating all tokens) and marks API key metadata as expired.
 func (s *Service) RevokeAll(ctx context.Context, user *token.UserContext) error {
-	// Revoke in K8s (recreate SA)
+	// Revoke in K8s (recreate SA) - this invalidates all tokens
 	namespace, err := s.tokenManager.RevokeTokens(ctx, user)
 	if err != nil {
 		return fmt.Errorf("failed to revoke tokens in k8s: %w", err)
 	}
 
-	// Clean up metadata
-	if err := s.store.DeleteTokensForUser(ctx, namespace, user.Username); err != nil {
-		return fmt.Errorf("tokens revoked but failed to clear metadata: %w", err)
+	// Mark API key metadata as expired (preserves history)
+	if err := s.store.MarkTokensAsExpiredForUser(ctx, namespace, user.Username); err != nil {
+		return fmt.Errorf("tokens revoked but failed to mark metadata as expired: %w", err)
 	}
 
 	return nil
