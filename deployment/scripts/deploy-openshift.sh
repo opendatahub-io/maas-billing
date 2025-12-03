@@ -253,47 +253,39 @@ else
     "$SCRIPT_DIR/install-dependencies.sh" --ocp --odh
 fi
 
-# Patch ODH operator deployment to set RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE
+# Patch odh-model-controller deployment to set TENANT_NAMESPACE
 # This should be done whether ODH was just installed or was already present
 echo ""
-echo "   Patching ODH operator deployment with RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE..."
-# Determine operator namespace (could be openshift-operators or opendatahub-operator-system)
-ODH_OPERATOR_NS=""
-if kubectl get deployment opendatahub-operator-controller-manager -n openshift-operators &>/dev/null; then
-    ODH_OPERATOR_NS="openshift-operators"
-elif kubectl get deployment opendatahub-operator-controller-manager -n opendatahub-operator-system &>/dev/null; then
-    ODH_OPERATOR_NS="opendatahub-operator-system"
-fi
-
-if [ -n "$ODH_OPERATOR_NS" ]; then
+echo "   Setting TENANT_NAMESPACE for odh-model-controller deployment..."
+if kubectl get deployment odh-model-controller -n opendatahub &>/dev/null; then
     # Wait for deployment to be available before patching
-    echo "   Waiting for ODH operator deployment to be ready..."
-    kubectl wait deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" --for=condition=Available=True --timeout=60s 2>/dev/null || \
+    echo "   Waiting for odh-model-controller deployment to be ready..."
+    kubectl wait deployment/odh-model-controller -n opendatahub --for=condition=Available=True --timeout=60s 2>/dev/null || \
         echo "   ⚠️  Deployment may still be starting, proceeding with patch..."
     
     # Check if the environment variable already exists
-    EXISTING_ENV=$(kubectl get deployment opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE")].value}' 2>/dev/null || echo "")
+    EXISTING_ENV=$(kubectl get deployment odh-model-controller -n opendatahub -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TENANT_NAMESPACE")].value}' 2>/dev/null || echo "")
     
     if [ -n "$EXISTING_ENV" ]; then
         if [ "$EXISTING_ENV" = "$MAAS_API_NAMESPACE" ]; then
-            echo "   ✅ RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE already set to $MAAS_API_NAMESPACE"
+            echo "   ✅ TENANT_NAMESPACE already set to $MAAS_API_NAMESPACE"
         else
-            echo "   Updating RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE from '$EXISTING_ENV' to '$MAAS_API_NAMESPACE'..."
-            kubectl set env deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE="$MAAS_API_NAMESPACE"
+            echo "   Updating TENANT_NAMESPACE from '$EXISTING_ENV' to '$MAAS_API_NAMESPACE'..."
+            kubectl set env deployment/odh-model-controller -n opendatahub TENANT_NAMESPACE="$MAAS_API_NAMESPACE"
         fi
     else
-        echo "   Adding RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE=$MAAS_API_NAMESPACE..."
-        kubectl set env deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE="$MAAS_API_NAMESPACE"
+        echo "   Adding TENANT_NAMESPACE=$MAAS_API_NAMESPACE..."
+        kubectl set env deployment/odh-model-controller -n opendatahub TENANT_NAMESPACE="$MAAS_API_NAMESPACE"
     fi
     
     # Wait for deployment to roll out
     echo "   Waiting for deployment to update..."
-    kubectl rollout status deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" --timeout=120s 2>/dev/null || \
+    kubectl rollout status deployment/odh-model-controller -n opendatahub --timeout=120s 2>/dev/null || \
         echo "   ⚠️  Deployment update taking longer than expected, continuing..."
-    echo "   ✅ ODH operator deployment patched"
+    echo "   ✅ odh-model-controller deployment patched"
 else
-    echo "   ⚠️  ODH operator deployment not found in expected namespaces, skipping patch"
-    echo "      (Checked: openshift-operators, opendatahub-operator-system)"
+    echo "   ⚠️  odh-model-controller deployment not found in opendatahub namespace, skipping patch"
+    echo "      (The deployment may be created later by the ODH operator)"
 fi
 
 echo ""
@@ -328,12 +320,16 @@ echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
 # Ensure MAAS_API_NAMESPACE is set (it should already be set above, but ensure it here too)
 export MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
-# Process kustomization.yaml with envsubst to replace namespace placeholder, then build
+# Process kustomization.yaml to replace hardcoded namespace, then build
 TMP_DIR=$(mktemp -d)
 cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
+# Replace hardcoded "namespace: maas-api" with "namespace: ${MAAS_API_NAMESPACE}" in kustomization.yaml
+sed -i "s|namespace: maas-api|namespace: \${MAAS_API_NAMESPACE}|g" "$TMP_DIR/kustomization.yaml"
 # Replace ${MAAS_API_NAMESPACE} placeholder with actual value
-envsubst '$MAAS_API_NAMESPACE' < "$PROJECT_ROOT/deployment/base/maas-api/kustomization.yaml" > "$TMP_DIR/kustomization.yaml"
-kustomize build "$TMP_DIR" | kubectl apply -f -
+envsubst '$MAAS_API_NAMESPACE' < "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
+mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
+# Build and replace any remaining hardcoded namespace references in the output
+kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
 rm -rf "$TMP_DIR"
 
 # Restart Kuadrant operator to pick up the new configuration
