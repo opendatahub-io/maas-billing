@@ -314,7 +314,7 @@ if [ "$http_status" == "200" ]; then
     
     if [ "$RETRIEVED_ID" == "$API_KEY_JTI" ]; then
         if [ "$HAS_ID" == "true" ] && [ "$HAS_NAME" == "true" ] && [ "$HAS_STATUS" == "true" ] && [ "$HAS_CREATION_DATE" == "true" ] && [ "$HAS_EXPIRATION_DATE" == "true" ]; then
-            echo -e "${GREEN}✓ Success${NC}"
+        echo -e "${GREEN}✓ Success${NC}"
             echo "    - ID: $RETRIEVED_ID"
             echo "    - Name: $RETRIEVED_NAME"
             if [ "$HAS_DESCRIPTION" == "true" ]; then

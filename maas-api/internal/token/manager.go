@@ -45,9 +45,9 @@ func NewManager(
 }
 
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to.
-// The name parameter is optional and, when provided, is assigned to the created token's Name field.
-// It remains optional for callers and is retained for interface compatibility.
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error) {
+	// name parameter is ignored - kept for interface compatibility
+	_ = name
 	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
 		log.Printf("Failed to determine user tier for %s: %v", user.Username, err)
@@ -82,13 +82,25 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("jti claim not found or not a string in new token")
 	}
 
+	// Extract iat (issued at) claim from JWT
+	var issuedAt int64
+	if iatClaim, ok := claims["iat"]; ok {
+		switch v := iatClaim.(type) {
+		case float64:
+			issuedAt = int64(v)
+		case int64:
+			issuedAt = v
+		case int:
+			issuedAt = int64(v)
+		}
+	}
+
 	result := &Token{
 		Token:      token.Status.Token,
 		Expiration: Duration{expiration},
 		ExpiresAt:  token.Status.ExpirationTimestamp.Unix(),
+		IssuedAt:   issuedAt,
 		JTI:        jti,
-		Name:       name,
-		Namespace:  namespace,
 	}
 
 	return result, nil

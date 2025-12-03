@@ -62,13 +62,8 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 	}
 
 	expiration := req.Expiration.Duration
-	if expiration <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "expiration must be positive"})
-		return
-	}
-
-	if expiration < 10*time.Minute {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes"})
+	if err := token.ValidateExpiration(expiration, 10*time.Minute); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -80,7 +75,7 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, Response{
-		Token:       tok.Token,
+		Token:       tok.Token.Token,
 		Expiration:  tok.Expiration.String(),
 		ExpiresAt:   tok.ExpiresAt,
 		JTI:         tok.JTI,
@@ -143,39 +138,6 @@ func (h *Handler) GetAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, tok)
-}
-
-func (h *Handler) RevokeAPIKey(c *gin.Context) {
-	tokenID := c.Param("id")
-	if tokenID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Token ID required"})
-		return
-	}
-
-	userCtx, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
-		return
-	}
-
-	user, ok := userCtx.(*token.UserContext)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
-		return
-	}
-
-	err := h.service.RevokeAPIKey(c.Request.Context(), user, tokenID)
-	if err != nil {
-		if errors.Is(err, ErrTokenNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
-			return
-		}
-		log.Printf("Failed to revoke api key: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke API key"})
-		return
-	}
-
-	c.Status(http.StatusNoContent)
 }
 
 // RevokeAllTokens handles DELETE /v1/tokens.

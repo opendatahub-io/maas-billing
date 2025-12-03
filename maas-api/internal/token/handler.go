@@ -97,13 +97,12 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	}
 
 	expiration := req.Expiration.Duration
-	if expiration <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "expiration must be positive"})
-		return
-	}
-
-	if expiration < 10*time.Minute {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token expiration must be at least 10 minutes", "provided_expiration": expiration.String()})
+	if err := ValidateExpiration(expiration, 10*time.Minute); err != nil {
+		response := gin.H{"error": err.Error()}
+		if expiration > 0 && expiration < 10*time.Minute {
+			response["provided_expiration"] = expiration.String()
+		}
+		c.JSON(http.StatusBadRequest, response)
 		return
 	}
 

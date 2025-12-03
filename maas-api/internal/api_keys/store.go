@@ -10,7 +10,6 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
 // ErrTokenNotFound is returned when a token is not found in the store.
@@ -98,28 +97,33 @@ func (s *Store) initSchema(ctx context.Context) error {
 	return nil
 }
 
-// AddTokenMetadata adds a new token to the database.
-func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username string, tok *token.Token) error {
+// AddTokenMetadata adds a new API key metadata to the database.
+func (s *Store) AddTokenMetadata(ctx context.Context, namespace, username string, apiKey *APIKey) error {
 	// Validate required fields
-	jti := strings.TrimSpace(tok.JTI)
+	jti := strings.TrimSpace(apiKey.JTI)
 	if jti == "" {
 		return errors.New("token JTI is required and cannot be empty")
 	}
 
-	name := strings.TrimSpace(tok.Name)
+	name := strings.TrimSpace(apiKey.Name)
 	if name == "" {
 		return errors.New("token name is required and cannot be empty")
 	}
 
-	now := time.Now()
-	creationDate := now.Format(time.RFC3339)
-	expirationDate := time.Unix(tok.ExpiresAt, 0).Format(time.RFC3339)
+	// Use JWT iat claim if available, otherwise fall back to current time
+	var creationDate string
+	if apiKey.IssuedAt > 0 {
+		creationDate = time.Unix(apiKey.IssuedAt, 0).Format(time.RFC3339)
+	} else {
+		creationDate = time.Now().Format(time.RFC3339)
+	}
+	expirationDate := time.Unix(apiKey.ExpiresAt, 0).Format(time.RFC3339)
 
 	query := `
 	INSERT INTO tokens (id, username, name, description, namespace, creation_date, expiration_date)
 	VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	description := strings.TrimSpace(tok.Description)
+	description := strings.TrimSpace(apiKey.Description)
 	_, err := s.db.ExecContext(ctx, query, jti, username, name, description, namespace, creationDate, expirationDate)
 	if err != nil {
 		return fmt.Errorf("failed to insert token metadata: %w", err)
@@ -155,7 +159,7 @@ func (s *Store) DeleteToken(ctx context.Context, namespace, username, jti string
 }
 
 // GetTokensForUser retrieves all tokens for a user in a specific namespace.
-func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string) ([]NamedToken, error) {
+func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string) ([]ApiKeyMetadata, error) {
 	query := `
 	SELECT id, name, description, creation_date, expiration_date
 	FROM tokens 
@@ -169,10 +173,10 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 	defer rows.Close()
 
 	now := time.Now()
-	tokens := []NamedToken{} // Initialize as empty slice to return [] instead of null
+	tokens := []ApiKeyMetadata{} // Initialize as empty slice to return [] instead of null
 
 	for rows.Next() {
-		var t NamedToken
+		var t ApiKeyMetadata
 		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.CreationDate, &t.ExpirationDate); err != nil {
 			return nil, err
 		}
@@ -200,7 +204,7 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 }
 
 // GetToken retrieves a single token for a user by its JTI in a specific namespace.
-func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (*NamedToken, error) {
+func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (*ApiKeyMetadata, error) {
 	query := `
 	SELECT id, name, description, creation_date, expiration_date
 	FROM tokens 
@@ -208,7 +212,7 @@ func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (
 	`
 	row := s.db.QueryRowContext(ctx, query, username, namespace, jti)
 
-	var t NamedToken
+	var t ApiKeyMetadata
 	if err := row.Scan(&t.ID, &t.Name, &t.Description, &t.CreationDate, &t.ExpirationDate); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrTokenNotFound

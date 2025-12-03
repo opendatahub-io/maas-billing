@@ -26,12 +26,14 @@ func TestStore(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
-		tok := &token.Token{
-			Name:      "token1",
-			JTI:       "jti1",
-			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+		apiKey := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "jti1",
+				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+			},
+			Name: "token1",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", tok)
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
 		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user1")
@@ -42,12 +44,14 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("AddSecondToken", func(t *testing.T) {
-		tok := &token.Token{
-			Name:      "token2",
-			JTI:       "jti2",
-			ExpiresAt: time.Now().Add(2 * time.Hour).Unix(),
+		apiKey := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "jti2",
+				ExpiresAt: time.Now().Add(2 * time.Hour).Unix(),
+			},
+			Name: "token2",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", tok)
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
 		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user1")
@@ -56,12 +60,14 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("GetTokensForDifferentUser", func(t *testing.T) {
-		tok := &token.Token{
-			Name:      "token3",
-			JTI:       "jti3",
-			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+		apiKey := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "jti3",
+				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+			},
+			Name: "token3",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user2", tok)
+		err := store.AddTokenMetadata(ctx, "test-ns", "user2", apiKey)
 		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user2")
@@ -98,12 +104,14 @@ func TestStore(t *testing.T) {
 
 	t.Run("ExpiredTokenStatus", func(t *testing.T) {
 		// Add an expired token
-		tok := &token.Token{
-			Name:      "expired-token",
-			JTI:       "jti-expired",
-			ExpiresAt: time.Now().Add(-1 * time.Hour).Unix(),
+		apiKey := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "jti-expired",
+				ExpiresAt: time.Now().Add(-1 * time.Hour).Unix(),
+			},
+			Name: "expired-token",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user4", tok)
+		err := store.AddTokenMetadata(ctx, "test-ns", "user4", apiKey)
 		require.NoError(t, err)
 
 		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user4")
@@ -119,20 +127,24 @@ func TestStore(t *testing.T) {
 
 	t.Run("CrossNamespaceIsolation", func(t *testing.T) {
 		// Create tokens for the same username in two different namespaces
-		tok1 := &token.Token{
-			Name:      "ns1-token",
-			JTI:       "jti-ns1",
-			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+		apiKey1 := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "jti-ns1",
+				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+			},
+			Name: "ns1-token",
 		}
-		err := store.AddTokenMetadata(ctx, "namespace-1", "shared-user", tok1)
+		err := store.AddTokenMetadata(ctx, "namespace-1", "shared-user", apiKey1)
 		require.NoError(t, err)
 
-		tok2 := &token.Token{
-			Name:      "ns2-token",
-			JTI:       "jti-ns2",
-			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+		apiKey2 := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "jti-ns2",
+				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+			},
+			Name: "ns2-token",
 		}
-		err = store.AddTokenMetadata(ctx, "namespace-2", "shared-user", tok2)
+		err = store.AddTokenMetadata(ctx, "namespace-2", "shared-user", apiKey2)
 		require.NoError(t, err)
 
 		// Verify namespace-1 only returns tokens from namespace-1

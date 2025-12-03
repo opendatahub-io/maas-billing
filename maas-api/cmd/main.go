@@ -52,8 +52,18 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	cleanup, _ := registerHandlers(ctx, router, cfg)
-	defer cleanup()
+	// Initialize store in main for proper cleanup
+	store, err := api_keys.NewStore(ctx, cfg.DBPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize token store: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("Failed to close token store: %v", err)
+		}
+	}()
+
+	registerHandlers(ctx, router, cfg, store)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -88,7 +98,7 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config) (func(), *api_keys.Store) {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -99,16 +109,6 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 
-	return configureSATokenProvider(ctx, cfg, router, clusterConfig, modelsHandler)
-}
-
-func configureSATokenProvider(
-	ctx context.Context,
-	cfg *config.Config,
-	router *gin.Engine,
-	clusterConfig *config.K8sClusterConfig,
-	modelsHandler *handlers.ModelsHandler,
-) (func(), *api_keys.Store) {
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
@@ -129,11 +129,6 @@ func configureSATokenProvider(
 
 	if !cache.WaitForNamedCacheSync("maas-api", ctx.Done(), informersSynced...) {
 		log.Fatalf("Failed to sync informer caches")
-	}
-
-	store, err := api_keys.NewStore(ctx, cfg.DBPath)
-	if err != nil {
-		log.Fatalf("Failed to initialize token store: %v", err)
 	}
 
 	// Create token manager (ephemeral, K8s logic)
@@ -168,11 +163,4 @@ func configureSATokenProvider(
 	apiKeyRoutes.GET("", apiKeyHandler.ListAPIKeys)
 	apiKeyRoutes.GET("/:id", apiKeyHandler.GetAPIKey)
 	// Note: Single key deletion removed for initial release - use DELETE /v1/tokens to revoke all tokens
-
-	cleanup := func() {
-		if err := store.Close(); err != nil {
-			log.Printf("Failed to close token store: %v", err)
-		}
-	}
-	return cleanup, store
 }

@@ -16,13 +16,11 @@ type UserContext struct {
 }
 
 type Token struct {
-	Token       string   `json:"token"`
-	Expiration  Duration `json:"expiration"`
-	ExpiresAt   int64    `json:"expiresAt"`
-	JTI         string   `json:"jti,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Namespace   string   `json:"-"` // Internal use only
+	Token      string   `json:"token"`
+	Expiration Duration `json:"expiration"`
+	ExpiresAt  int64    `json:"expiresAt"`
+	IssuedAt   int64    `json:"issuedAt,omitempty"` // JWT iat claim
+	JTI        string   `json:"jti,omitempty"`
 }
 
 type Duration struct {
@@ -43,12 +41,17 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	}
 	switch value := v.(type) {
 	case float64:
-		d.Duration = time.Duration(value) * time.Second
+		if value == 0 {
+			d.Duration = 0
+			return nil // Let the caller handle defaulting
+		}
+		// JSON numbers are unmarshaled as float64.
+		d.Duration = time.Duration(value * float64(time.Second))
 		return nil
 	case string:
 		if value == "" {
 			d.Duration = 0
-			return nil
+			return nil // Let the caller handle defaulting
 		}
 		var err error
 		d.Duration, err = time.ParseDuration(value)
@@ -59,4 +62,17 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	default:
 		return errors.New("invalid duration")
 	}
+}
+
+// ValidateExpiration validates that a duration is positive and meets minimum requirements.
+// This provides consistent validation across handlers while keeping business rules
+// (like minimum duration) in the handlers that use them.
+func ValidateExpiration(d time.Duration, minDuration time.Duration) error {
+	if d <= 0 {
+		return errors.New("expiration must be positive")
+	}
+	if d < minDuration {
+		return errors.New("token expiration must be at least " + minDuration.String())
+	}
+	return nil
 }

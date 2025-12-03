@@ -27,24 +27,35 @@ func NewService(tokenManager TokenManager, store *Store) *Service {
 	}
 }
 
-func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, name string, description string, expiration time.Duration) (*token.Token, error) {
-	// Generate token (name is set after generation since persistence is handled here)
+func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, name string, description string, expiration time.Duration) (*APIKey, error) {
+	// Generate token
 	tok, err := s.tokenManager.GenerateToken(ctx, user, expiration, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
 
-	tok.Name = name
-	tok.Description = description
+	// Get namespace for the user
+	namespace, err := s.tokenManager.GetNamespaceForUser(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine namespace for user: %w", err)
+	}
 
-	if err := s.store.AddTokenMetadata(ctx, tok.Namespace, user.Username, tok); err != nil {
+	// Create APIKey with embedded Token and metadata
+	apiKey := &APIKey{
+		Token:       *tok,
+		Name:        name,
+		Description: description,
+		Namespace:   namespace,
+	}
+
+	if err := s.store.AddTokenMetadata(ctx, namespace, user.Username, apiKey); err != nil {
 		return nil, fmt.Errorf("failed to persist api key metadata: %w", err)
 	}
 
-	return tok, nil
+	return apiKey, nil
 }
 
-func (s *Service) ListAPIKeys(ctx context.Context, user *token.UserContext) ([]NamedToken, error) {
+func (s *Service) ListAPIKeys(ctx context.Context, user *token.UserContext) ([]ApiKeyMetadata, error) {
 	namespace, err := s.tokenManager.GetNamespaceForUser(ctx, user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine namespace for user: %w", err)
@@ -52,20 +63,12 @@ func (s *Service) ListAPIKeys(ctx context.Context, user *token.UserContext) ([]N
 	return s.store.GetTokensForUser(ctx, namespace, user.Username)
 }
 
-func (s *Service) GetAPIKey(ctx context.Context, user *token.UserContext, id string) (*NamedToken, error) {
+func (s *Service) GetAPIKey(ctx context.Context, user *token.UserContext, id string) (*ApiKeyMetadata, error) {
 	namespace, err := s.tokenManager.GetNamespaceForUser(ctx, user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine namespace for user: %w", err)
 	}
 	return s.store.GetToken(ctx, namespace, user.Username, id)
-}
-
-func (s *Service) RevokeAPIKey(ctx context.Context, user *token.UserContext, id string) error {
-	namespace, err := s.tokenManager.GetNamespaceForUser(ctx, user)
-	if err != nil {
-		return fmt.Errorf("failed to determine namespace for user: %w", err)
-	}
-	return s.store.DeleteToken(ctx, namespace, user.Username, id)
 }
 
 // RevokeAll invalidates all tokens for the user (ephemeral and persistent).

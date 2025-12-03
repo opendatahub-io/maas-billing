@@ -1,7 +1,20 @@
 package api_keys
 
-// NamedToken represents metadata for a single token.
-type NamedToken struct {
+import "github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+
+// APIKey represents a full API key with token and metadata.
+// It embeds token.Token and adds API key-specific fields.
+type APIKey struct {
+	token.Token
+
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Namespace   string `json:"-"` // Internal use only
+}
+
+// ApiKeyMetadata represents metadata for a single API key (without the token itself).
+// Used for listing and retrieving API key metadata from the database.
+type ApiKeyMetadata struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Description    string `json:"description,omitempty"`
