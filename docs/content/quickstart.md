@@ -16,10 +16,11 @@ This guide provides quickstart instructions for deploying the MaaS Platform infr
       - RHCL 1.2 +
 - **Cluster admin** or equivalent permissions
 - **Required tools**:
-      - `oc` (OpenShift CLI)
-      - `kubectl`
-      - `jq`
-      - `kustomize` (v5.7.0+)
+  - `oc` (OpenShift CLI)
+  - `kubectl`
+  - `jq`
+  - `kustomize` (v5.7.0+)
+  - `openssl`
 
 ## Quick Start
 
