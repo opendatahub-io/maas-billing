@@ -195,15 +195,22 @@ fi
 echo ""
 echo "2️⃣ Creating namespaces..."
 echo "   ℹ️  Note: If ODH/RHOAI is already installed, some namespaces may already exist"
-for ns in opendatahub kserve kuadrant-system llm maas-api; do
+
+# Determine MaaS API namespace: use MAAS_API_NAMESPACE env var if set, otherwise default to maas-api
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
+export MAAS_API_NAMESPACE
+echo "   MaaS API namespace: $MAAS_API_NAMESPACE (set MAAS_API_NAMESPACE env var to override)"
+
+for ns in opendatahub kserve kuadrant-system llm "$MAAS_API_NAMESPACE"; do
     kubectl create namespace $ns 2>/dev/null || echo "   Namespace $ns already exists"
 done
 
 echo ""
 echo "3️⃣ Installing dependencies..."
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# PROJECT_ROOT is already set above
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
@@ -246,6 +253,49 @@ else
     "$SCRIPT_DIR/install-dependencies.sh" --ocp --odh
 fi
 
+# Patch ODH operator deployment to set RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE
+# This should be done whether ODH was just installed or was already present
+echo ""
+echo "   Patching ODH operator deployment with RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE..."
+# Determine operator namespace (could be openshift-operators or opendatahub-operator-system)
+ODH_OPERATOR_NS=""
+if kubectl get deployment opendatahub-operator-controller-manager -n openshift-operators &>/dev/null; then
+    ODH_OPERATOR_NS="openshift-operators"
+elif kubectl get deployment opendatahub-operator-controller-manager -n opendatahub-operator-system &>/dev/null; then
+    ODH_OPERATOR_NS="opendatahub-operator-system"
+fi
+
+if [ -n "$ODH_OPERATOR_NS" ]; then
+    # Wait for deployment to be available before patching
+    echo "   Waiting for ODH operator deployment to be ready..."
+    kubectl wait deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" --for=condition=Available=True --timeout=60s 2>/dev/null || \
+        echo "   ⚠️  Deployment may still be starting, proceeding with patch..."
+    
+    # Check if the environment variable already exists
+    EXISTING_ENV=$(kubectl get deployment opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE")].value}' 2>/dev/null || echo "")
+    
+    if [ -n "$EXISTING_ENV" ]; then
+        if [ "$EXISTING_ENV" = "$MAAS_API_NAMESPACE" ]; then
+            echo "   ✅ RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE already set to $MAAS_API_NAMESPACE"
+        else
+            echo "   Updating RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE from '$EXISTING_ENV' to '$MAAS_API_NAMESPACE'..."
+            kubectl set env deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE="$MAAS_API_NAMESPACE"
+        fi
+    else
+        echo "   Adding RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE=$MAAS_API_NAMESPACE..."
+        kubectl set env deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" RELATED_IMAGE_ODH_MODEL_CONTROLLER_IMAGE="$MAAS_API_NAMESPACE"
+    fi
+    
+    # Wait for deployment to roll out
+    echo "   Waiting for deployment to update..."
+    kubectl rollout status deployment/opendatahub-operator-controller-manager -n "$ODH_OPERATOR_NS" --timeout=120s 2>/dev/null || \
+        echo "   ⚠️  Deployment update taking longer than expected, continuing..."
+    echo "   ✅ ODH operator deployment patched"
+else
+    echo "   ⚠️  ODH operator deployment not found in expected namespaces, skipping patch"
+    echo "      (Checked: openshift-operators, opendatahub-operator-system)"
+fi
+
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
 # Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
@@ -276,7 +326,15 @@ kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 echo ""
 echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
-kustomize build deployment/base/maas-api | envsubst | kubectl apply -f -
+# Ensure MAAS_API_NAMESPACE is set (it should already be set above, but ensure it here too)
+export MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
+# Process kustomization.yaml with envsubst to replace namespace placeholder, then build
+TMP_DIR=$(mktemp -d)
+cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
+# Replace ${MAAS_API_NAMESPACE} placeholder with actual value
+envsubst '$MAAS_API_NAMESPACE' < "$PROJECT_ROOT/deployment/base/maas-api/kustomization.yaml" > "$TMP_DIR/kustomization.yaml"
+kustomize build "$TMP_DIR" | kubectl apply -f -
+rm -rf "$TMP_DIR"
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
@@ -309,14 +367,16 @@ kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshif
 echo ""
 echo "1️⃣1️⃣ Applying Gateway Policies..."
 cd "$PROJECT_ROOT"
-kustomize build deployment/base/policies | kubectl apply --server-side=true --force-conflicts -f -
+# Ensure MAAS_API_NAMESPACE is set with default (it should already be set above)
+export MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
+kustomize build deployment/base/policies | envsubst '$MAAS_API_NAMESPACE' | kubectl apply --server-side=true --force-conflicts -f -
 
 echo ""
 echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
 AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
 if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
     echo "   Detected audience: $AUD"
-    kubectl patch authpolicy maas-api-auth-policy -n maas-api \
+    kubectl patch authpolicy maas-api-auth-policy -n "$MAAS_API_NAMESPACE" \
       --type='json' \
       -p "$(jq -nc --arg aud "$AUD" '[{
         op:"replace",
@@ -381,7 +441,7 @@ echo ""
 
 # Check component status
 echo "Component Status:"
-kubectl get pods -n maas-api --no-headers | grep Running | wc -l | xargs echo "  MaaS API pods running:"
+kubectl get pods -n "$MAAS_API_NAMESPACE" --no-headers | grep Running | wc -l | xargs echo "  MaaS API pods running:"
 kubectl get pods -n kuadrant-system --no-headers | grep Running | wc -l | xargs echo "  Kuadrant pods running:"
 kubectl get pods -n opendatahub --no-headers | grep Running | wc -l | xargs echo "  KServe pods running:"
 
