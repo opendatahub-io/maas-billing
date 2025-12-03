@@ -3,7 +3,6 @@ package models
 import (
 	"context"
 	"fmt"
-	"log"
 
 	kservev1beta1 "github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	kserveclientv1alpha1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1alpha1"
@@ -13,6 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 	gatewayclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 )
 
 // Manager handles model discovery and listing.
@@ -21,6 +22,7 @@ type Manager struct {
 	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface
 	gatewayClient  gatewayclient.GatewayV1Interface
 	gatewayRef     GatewayRef
+	logger         *logger.Logger
 }
 
 // NewManager creates a new model manager.
@@ -29,12 +31,14 @@ func NewManager(
 	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface,
 	gatewayClient gatewayclient.GatewayV1Interface,
 	gatewayRef GatewayRef,
+	log *logger.Logger,
 ) *Manager {
 	return &Manager{
 		v1beta1Client:  v1beta1Client,
 		v1alpha1Client: v1alpha1Client,
 		gatewayClient:  gatewayClient,
 		gatewayRef:     gatewayRef,
+		logger:         log,
 	}
 }
 
@@ -45,16 +49,20 @@ func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
 		return nil, fmt.Errorf("failed to list InferenceServices: %w", err)
 	}
 
-	return inferenceServicesToModels(list.Items)
+	return m.inferenceServicesToModels(ctx, list.Items)
 }
 
-func inferenceServicesToModels(items []kservev1beta1.InferenceService) ([]Model, error) {
+func (m *Manager) inferenceServicesToModels(ctx context.Context, items []kservev1beta1.InferenceService) ([]Model, error) {
 	models := make([]Model, 0, len(items))
+	log := m.logger.WithContext(ctx)
 
 	for _, item := range items {
-		url := findInferenceServiceURL(&item)
+		url := m.findInferenceServiceURL(ctx, &item)
 		if url == nil {
-			log.Printf("DEBUG: Failed to find URL for InferenceService %s/%s", item.Namespace, item.Name)
+			log.Debug("Failed to find URL for InferenceService",
+				"namespace", item.Namespace,
+				"name", item.Name,
+			)
 		}
 
 		modelID := item.Name
@@ -70,14 +78,14 @@ func inferenceServicesToModels(items []kservev1beta1.InferenceService) ([]Model,
 				Created: item.CreationTimestamp.Unix(),
 			},
 			URL:   url,
-			Ready: checkInferenceServiceReadiness(&item),
+			Ready: m.checkInferenceServiceReadiness(ctx, &item),
 		})
 	}
 
 	return models, nil
 }
 
-func findInferenceServiceURL(is *kservev1beta1.InferenceService) *apis.URL {
+func (m *Manager) findInferenceServiceURL(ctx context.Context, is *kservev1beta1.InferenceService) *apis.URL {
 	if is.Status.URL != nil {
 		return is.Status.URL
 	}
@@ -86,23 +94,33 @@ func findInferenceServiceURL(is *kservev1beta1.InferenceService) *apis.URL {
 		return is.Status.Address.URL
 	}
 
-	log.Printf("DEBUG: No URL found for InferenceService %s/%s", is.Namespace, is.Name)
+	m.logger.WithContext(ctx).Debug("No URL found for InferenceService",
+		"namespace", is.Namespace,
+		"name", is.Name,
+	)
 	return nil
 }
 
-func checkInferenceServiceReadiness(is *kservev1beta1.InferenceService) bool {
+func (m *Manager) checkInferenceServiceReadiness(ctx context.Context, is *kservev1beta1.InferenceService) bool {
 	if is.DeletionTimestamp != nil {
 		return false
 	}
 
 	if is.Generation > 0 && is.Status.ObservedGeneration != is.Generation {
-		log.Printf("DEBUG: observedGeneration %d is stale (expected %d), not ready yet",
-			is.Status.ObservedGeneration, is.Generation)
+		m.logger.WithContext(ctx).Debug("ObservedGeneration is stale, not ready yet",
+			"namespace", is.Namespace,
+			"name", is.Name,
+			"observed_generation", is.Status.ObservedGeneration,
+			"expected_generation", is.Generation,
+		)
 		return false
 	}
 
 	if len(is.Status.Conditions) == 0 {
-		log.Printf("DEBUG: No conditions found for InferenceService %s/%s", is.Namespace, is.Name)
+		m.logger.WithContext(ctx).Debug("No conditions found for InferenceService",
+			"namespace", is.Namespace,
+			"name", is.Name,
+		)
 		return false
 	}
 
