@@ -38,7 +38,7 @@ spec:
               auth.identity.user.username.split(":")[3]
         cache:
           key:
-            selector: context.request.http.headers.authorization
+            selector: context.request.http.headers.authorization.@case:lower
           ttl: 600
     authorization:
       tier-access:
