@@ -5,7 +5,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["configmaps"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 # SA token provider resources
 - apiGroups: [""]

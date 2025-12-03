@@ -106,7 +106,11 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 		log.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
 
-	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1)
+	gatewayRef := models.GatewayRef{
+		Name:      cfg.GatewayName,
+		Namespace: cfg.GatewayNamespace,
+	}
+	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 
 	// V1 API routes

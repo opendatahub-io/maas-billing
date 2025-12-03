@@ -20,6 +20,7 @@ This guide provides quickstart instructions for deploying the MaaS Platform infr
       - `kubectl`
       - `jq`
       - `kustomize` (v5.7.0+)
+      - `gsed` (GNU sed) - **macOS only**: `brew install gnu-sed`
 
 ## Quick Start
 

@@ -36,8 +36,16 @@ spec:
           userid:
             expression: |
               auth.identity.user.username.split(":")[3]
+        cache:
+          key:
+            selector: context.request.http.headers.authorization.@case:lower
+          ttl: 600
     authorization:
       tier-access:
+        cache:
+          key:
+            selector: "{auth.identity.user.username}:{request.path}"
+          ttl: 60
         kubernetesSubjectAccessReview:
           user:
             expression: auth.identity.user.username
