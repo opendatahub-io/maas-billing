@@ -3,6 +3,7 @@ package token
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -72,6 +73,11 @@ func ValidateExpiration(d time.Duration, minDuration time.Duration) error {
 		return errors.New("expiration must be positive")
 	}
 	if d < minDuration {
+		// Format duration in a user-friendly way
+		minutes := int(minDuration.Minutes())
+		if minutes > 0 && minDuration == time.Duration(minutes)*time.Minute {
+			return errors.New("token expiration must be at least " + fmt.Sprintf("%d minutes", minutes))
+		}
 		return errors.New("token expiration must be at least " + minDuration.String())
 	}
 	return nil
