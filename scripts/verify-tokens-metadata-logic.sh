@@ -1,17 +1,13 @@
 #!/bin/bash
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
-NC='\033[0m' # No Color
+NC='\033[0m' 
 
-# -----------------------------------------------------------------------------
-# Prerequisites Check
-# -----------------------------------------------------------------------------
 if ! command -v oc &> /dev/null; then
     echo -e "${RED}Error: 'oc' command not found!${NC}"
     echo "This script requires OpenShift CLI to obtain identity tokens."
@@ -30,9 +26,7 @@ if ! command -v kubectl &> /dev/null; then
     exit 1
 fi
 
-# -----------------------------------------------------------------------------
 # Gateway URL Discovery
-# -----------------------------------------------------------------------------
 if [ -z "${GATEWAY_URL:-}" ]; then
     echo -e "${BLUE}Looking up gateway configuration...${NC}"
     
@@ -63,9 +57,7 @@ echo ""
 echo -e "${BLUE}Gateway URL:${NC} ${GATEWAY_URL}"
 echo ""
 
-# -----------------------------------------------------------------------------
 # 1. Authentication (OpenShift Identity)
-# -----------------------------------------------------------------------------
 echo -e "${MAGENTA}1. Authenticating with OpenShift...${NC}"
 OC_TOKEN=$(oc whoami -t 2>/dev/null)
 if [ -z "$OC_TOKEN" ]; then
@@ -76,9 +68,7 @@ fi
 echo -e "${GREEN}✓ Authenticated successfully${NC}"
 echo ""
 
-# -----------------------------------------------------------------------------
 # 2. Ephemeral Tokens (Stateless)
-# -----------------------------------------------------------------------------
 echo -e "${MAGENTA}2. Testing Ephemeral Tokens (/v1/tokens)...${NC}"
 
 # Test 2.1: Issue Ephemeral Token
@@ -136,9 +126,7 @@ else
 fi
 echo ""
 
-# -----------------------------------------------------------------------------
 # 3. API Keys (Persistent)
-# -----------------------------------------------------------------------------
 echo -e "${MAGENTA}3. Testing API Keys (Persistent /v1/api-keys)...${NC}"
 
 KEY_NAME="test-key-$(date +%s)"
@@ -369,9 +357,7 @@ echo "    Use DELETE /v1/tokens to revoke all tokens (recreates Service Account)
 
 echo ""
 
-# -----------------------------------------------------------------------------
 # 4. Revoke All Tokens
-# -----------------------------------------------------------------------------
 echo -e "${MAGENTA}4. Testing Revoke All Tokens (/v1/tokens)...${NC}"
 
 # Create a temp key to ensure it gets marked as expired
@@ -395,14 +381,11 @@ if [ "$temp_key_status" == "201" ]; then
     if [ -z "$TEMP_KEY_JTI" ]; then
         JWT_TOKEN=$(echo "$temp_key_body" | jq -r '.token // empty')
         if [ -n "$JWT_TOKEN" ]; then
-            # Extract payload (second segment of JWT)
             PAYLOAD=$(echo "$JWT_TOKEN" | cut -d'.' -f2)
-            # Add padding if needed for base64 decoding
             case $((${#PAYLOAD} % 4)) in
                 2) PAYLOAD="${PAYLOAD}==" ;;
                 3) PAYLOAD="${PAYLOAD}=" ;;
             esac
-            # Decode and extract jti
             TEMP_KEY_JTI=$(echo "$PAYLOAD" | base64 -d 2>/dev/null | jq -r '.jti // empty' 2>/dev/null || echo "")
         fi
     fi
