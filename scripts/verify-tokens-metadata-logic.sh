@@ -57,12 +57,38 @@ echo ""
 echo -e "${BLUE}Gateway URL:${NC} ${GATEWAY_URL}"
 echo ""
 
-# 1. Authentication (OpenShift Identity)
 echo -e "${MAGENTA}1. Authenticating with OpenShift...${NC}"
-OC_TOKEN=$(oc whoami -t 2>/dev/null)
+
+OC_TOKEN="$(oc whoami -t || true)"
+
+# If that failed, try fallback methods (for Prow CI compatibility)
+if [ -z "$OC_TOKEN" ]; then
+    if [ -f "/var/run/secrets/kubernetes.io/serviceaccount/token" ]; then
+        OC_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || true)
+    fi
+    
+    # Try extracting from kubeconfig (Prow CI)
+    if [ -z "$OC_TOKEN" ] && [ -n "${KUBECONFIG:-}" ]; then
+        OC_TOKEN=$(oc config view --raw -o jsonpath='{.users[0].user.token}' 2>/dev/null || true)
+    fi
+    
+    # Try oc create token for service account (Prow CI)
+    if [ -z "$OC_TOKEN" ]; then
+        CURRENT_USER=$(oc whoami 2>/dev/null || true)
+        if [ -n "$CURRENT_USER" ] && [[ "$CURRENT_USER" == system:serviceaccount:* ]]; then
+            SA_NAMESPACE=$(echo "$CURRENT_USER" | cut -d: -f3)
+            SA_NAME=$(echo "$CURRENT_USER" | cut -d: -f4)
+            if [ -n "$SA_NAMESPACE" ] && [ -n "$SA_NAME" ]; then
+                OC_TOKEN=$(oc create token "$SA_NAME" -n "$SA_NAMESPACE" 2>/dev/null || true)
+            fi
+        fi
+    fi
+fi
+
 if [ -z "$OC_TOKEN" ]; then
     echo -e "${RED}✗ Failed to obtain OpenShift identity token!${NC}"
     echo "Please ensure you are logged in: oc login"
+    echo "Or in Prow CI, ensure proper service account authentication is configured"
     exit 1
 fi
 echo -e "${GREEN}✓ Authenticated successfully${NC}"
