@@ -33,7 +33,7 @@ func (h *Handler) TierLookup(c *gin.Context) {
 		return
 	}
 
-	tier, err := h.mapper.GetTierForGroups(c.Request.Context(), req.Groups...)
+	tier, err := h.mapper.GetTierForGroups(req.Groups...)
 	if err != nil {
 		var groupNotFoundErr *GroupNotFoundError
 		if errors.As(err, &groupNotFoundErr) {

@@ -46,7 +46,7 @@ func NewManager(
 
 // GenerateToken creates a Service Account token in the namespace bound to the tier the user belongs to.
 func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration) (*Token, error) {
-	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
+	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
 		log.Printf("Failed to determine user tier for %s: %v", user.Username, err)
 		return nil, fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
@@ -79,12 +79,12 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account.
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
-	userTier, err := m.tierMapper.GetTierForGroups(ctx, user.Groups...)
+	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
 		return fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
-	namespace, errNS := m.tierMapper.Namespace(ctx, userTier)
+	namespace, errNS := m.tierMapper.Namespace(userTier)
 	if errNS != nil {
 		return fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
 	}
@@ -120,7 +120,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
 // It takes a tier name, formats it as {instance}-tier-{tier}, and returns the namespace name.
 func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string, error) {
-	namespace, errNs := m.tierMapper.Namespace(ctx, tier)
+	namespace, errNs := m.tierMapper.Namespace(tier)
 	if errNs != nil {
 		return "", fmt.Errorf("failed to determine namespace for tier %q: %w", tier, errNs)
 	}

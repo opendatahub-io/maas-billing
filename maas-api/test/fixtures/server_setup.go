@@ -1,6 +1,7 @@
 package fixtures
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -21,6 +22,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	gatewayclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1"
+	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
@@ -43,11 +46,11 @@ type TestServerConfig struct {
 	TestTenant     string
 }
 
-// TestClients holds the test clients.
 type TestClients struct {
 	K8sClient      kubernetes.Interface
 	KServeV1Beta1  kserveclientv1beta1.ServingV1beta1Interface
 	KServeV1Alpha1 kserveclientv1alpha1.ServingV1alpha1Interface
+	Gateway        gatewayclient.GatewayV1Interface
 }
 
 // TestComponents holds common test components.
@@ -112,17 +115,22 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 	kserveV1Beta1 := &kservefakev1beta1.FakeServingV1beta1{Fake: &fakeKServeClient}
 	kserveV1Alpha1 := &kservefakev1alpha1.FakeServingV1alpha1{Fake: &fakeKServeClient}
 
+	fakeGatewayClient := k8stesting.Fake{}
+	gatewayV1 := &gatewayfake.FakeGatewayV1{Fake: &fakeGatewayClient}
+
 	clients := &TestClients{
 		K8sClient:      k8sClient,
 		KServeV1Beta1:  kserveV1Beta1,
 		KServeV1Alpha1: kserveV1Alpha1,
+		Gateway:        gatewayV1,
 	}
 
 	return gin.New(), clients
 }
 
 // StubTokenProviderAPIs creates common test components for token tests.
-func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset) {
+func StubTokenProviderAPIs(t *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset) {
+	t.Helper()
 	var objects []runtime.Object
 
 	if withTierConfig {
@@ -138,7 +146,7 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
-	tierMapper := tier.NewMapper(fakeClient, TestTenant, TestNamespace)
+	tierMapper := tier.NewMapper(t.Context(), fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
 		TestTenant,
 		tierMapper,
@@ -189,7 +197,7 @@ func CreateTestMapper(withConfigMap bool) *tier.Mapper {
 	}
 
 	clientset := k8sfake.NewClientset(objects...)
-	return tier.NewMapper(clientset, TestTenant, TestNamespace)
+	return tier.NewMapper(context.Background(), clientset, TestTenant, TestNamespace)
 }
 
 // StubTokenReview sets up TokenReview API mocking for authentication tests.
