@@ -33,7 +33,7 @@ The MaaS (Model as a Service) API provides a tier-based token management system 
 | `/v1/models`         | GET    | List available LLMInferenceServices    | None              | OpenAI-compatible list      |
 | `/v1/tokens`         | POST   | Issue short-lived token for user       | `{"expiration"}` | Token with expiration       |
 | `/v1/tokens`         | DELETE | Revoke all tokens for user             | None              | Success confirmation        |
-| `/v1/tiers/lookup`   | POST   | Lookup tier for user groups (internal) | `{"groups"}`     | `{"tier"}`                 |
+| `/v1/tiers/lookup`   | POST   | Lookup tier for user groups (internal) | `{"groups"}`     | `{"tier", "displayName"}`  |
 
 ## Core Architecture Components
 
@@ -366,7 +366,8 @@ sequenceDiagram
 **Response**:
 ```json
 {
-  "tier": "premium"
+  "tier": "premium",
+  "displayName": "Premium Tier"
 }
 ```
 
@@ -375,7 +376,7 @@ sequenceDiagram
 2. Load tier configuration from ConfigMap `tier-to-group-mapping`
 3. Sort tiers by level (highest first)
 4. Find first tier containing any of the user groups
-5. Return tier name or 404 if no match
+5. Return tier info (name and displayName) or 404 if no match
 
 **Error Handling**:
 - 400: Invalid request body
@@ -594,10 +595,11 @@ Example tier-based access pattern:
 
 **ConfigMap**: `tier-to-group-mapping` (namespace: `maas-api`)
 
-The tier configuration uses a list structure with three key fields per tier:
+The tier configuration uses a list structure with the following fields per tier:
 
 **Tier Fields**:
 - `name`: Tier identifier (used in namespace naming and policy matching)
+- `displayName`: Optional UI-friendly label (falls back to `name` if not set)
 - `level`: Priority integer (higher wins in case of multiple group matches)
 - `groups`: Array of Kubernetes groups that belong to this tier
 

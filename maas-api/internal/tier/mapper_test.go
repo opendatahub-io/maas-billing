@@ -1,6 +1,7 @@
 package tier_test
 
 import (
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -132,7 +133,7 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mappedTiers, err := mapper.GetTierForGroups(tt.groups...)
+			mappedTier, err := mapper.GetTierForGroups(tt.groups...)
 
 			if tt.expectedError && err == nil {
 				t.Errorf("expected error but got none")
@@ -144,20 +145,10 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 				return
 			}
 
-			if mappedTiers != tt.expectedTier {
-				t.Errorf("expected mappedTiers %s, got %s", tt.expectedTier, mappedTiers)
+			if !tt.expectedError && mappedTier.Name != tt.expectedTier {
+				t.Errorf("expected tier name %s, got %s", tt.expectedTier, mappedTier.Name)
 			}
 		})
-	}
-}
-
-func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
-	clientset := fake.NewClientset()
-	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
-
-	_, err := mapper.GetTierForGroups("any-group", "another-group")
-	if err == nil {
-		t.Errorf("expected error")
 	}
 }
 
@@ -194,7 +185,78 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	}
 
 	// Should return tier-a since it appears first in the config and has same level
-	if mappedTier != "tier-a" {
-		t.Errorf("expected mappedTier 'tier-a', got %s", mappedTier)
+	if mappedTier.Name != "tier-a" {
+		t.Errorf("expected tier name 'tier-a', got %s", mappedTier.Name)
+	}
+}
+
+func TestMapper_GetTierForGroups_InvalidConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		tiersYAML   string
+		errContains string
+	}{
+		{
+			name: "duplicate tier names",
+			tiersYAML: `
+- name: free
+  level: 0
+  groups:
+  - group-a
+- name: free
+  level: 1
+  groups:
+  - group-b
+`,
+			errContains: "duplicate tier name",
+		},
+		{
+			name: "whitespace-only displayName",
+			tiersYAML: `
+- name: free
+  displayName: "   "
+  level: 0
+  groups:
+  - group-a
+`,
+			errContains: "whitespace-only displayName",
+		},
+		{
+			name: "empty tier name",
+			tiersYAML: `
+- name: ""
+  level: 0
+  groups:
+  - group-a
+`,
+			errContains: "empty name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      constant.TierMappingConfigMap,
+					Namespace: testNamespace,
+				},
+				Data: map[string]string{
+					"tiers": tt.tiersYAML,
+				},
+			}
+
+			clientset := fake.NewClientset([]runtime.Object{configMap}...)
+			mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
+
+			_, err := mapper.GetTierForGroups("group-a")
+			if err == nil {
+				t.Errorf("expected error containing %q, got nil", tt.errContains)
+				return
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("expected error containing %q, got %v", tt.errContains, err)
+			}
+		})
 	}
 }

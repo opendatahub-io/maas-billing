@@ -52,13 +52,13 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
-	namespace, errNs := m.ensureTierNamespace(ctx, userTier)
+	namespace, errNs := m.ensureTierNamespace(ctx, userTier.Name)
 	if errNs != nil {
-		log.Printf("Failed to ensure tier namespace for user %s: %v", userTier, errNs)
-		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier, errNs)
+		log.Printf("Failed to ensure tier namespace for user %s: %v", userTier.Name, errNs)
+		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier.Name, errNs)
 	}
 
-	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, userTier)
+	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, userTier.Name)
 	if errSA != nil {
 		log.Printf("Failed to ensure service account for user %s in namespace %s: %v", user.Username, namespace, errSA)
 		return nil, fmt.Errorf("failed to ensure service account for user %s in namespace %s: %w", user.Username, namespace, errSA)
@@ -84,7 +84,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 		return fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
-	namespace, errNS := m.tierMapper.Namespace(userTier)
+	namespace, errNS := m.tierMapper.Namespace(userTier.Name)
 	if errNS != nil {
 		return fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
 	}
@@ -109,7 +109,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	_, err = m.ensureServiceAccount(ctx, namespace, user.Username, userTier)
+	_, err = m.ensureServiceAccount(ctx, namespace, user.Username, userTier.Name)
 	if err != nil {
 		return fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
 	}

@@ -7,7 +7,8 @@ import "fmt"
 // Level determines precedence, where higher values take precedence over lower values.
 // This can be needed in scenarios when users belong to multiple groups across different tiers.
 type Tier struct {
-	Name        string   `yaml:"name"`                  // Tier name (e.g., "free", "premium", "enterprise")
+	Name        string   `yaml:"name"`                  // Tier name - stable identifier (e.g., "free", "premium", "enterprise")
+	DisplayName string   `yaml:"displayName,omitempty"` // Human-friendly label (optional, falls back to Name)
 	Description string   `yaml:"description,omitempty"` // Human-readable description
 	Groups      []string `yaml:"groups"`                // List of groups that belong to this tier
 	Level       int      `yaml:"level,omitempty"`       // Level for importance (higher wins)

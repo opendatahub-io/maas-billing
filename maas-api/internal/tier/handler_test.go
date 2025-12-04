@@ -7,6 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
@@ -21,46 +27,53 @@ func TestHandler_PostTierLookup_Success(t *testing.T) {
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	tests := []struct {
-		name         string
-		groups       []string
-		expectedTier string
-		expectedCode int
+		name                string
+		groups              []string
+		expectedTier        string
+		expectedDisplayName string
+		expectedCode        int
 	}{
 		{
-			name:         "single group - free tier",
-			groups:       []string{"system:authenticated"},
-			expectedTier: "free",
-			expectedCode: http.StatusOK,
+			name:                "single group - free tier",
+			groups:              []string{"system:authenticated"},
+			expectedTier:        "free",
+			expectedDisplayName: "Free Tier",
+			expectedCode:        http.StatusOK,
 		},
 		{
-			name:         "single group - premium tier",
-			groups:       []string{"premium-users"},
-			expectedTier: "premium",
-			expectedCode: http.StatusOK,
+			name:                "single group - premium tier",
+			groups:              []string{"premium-users"},
+			expectedTier:        "premium",
+			expectedDisplayName: "Premium Tier",
+			expectedCode:        http.StatusOK,
 		},
 		{
-			name:         "single group - enterprise tier",
-			groups:       []string{"enterprise-users"},
-			expectedTier: "enterprise",
-			expectedCode: http.StatusOK,
+			name:                "single group - enterprise tier",
+			groups:              []string{"enterprise-users"},
+			expectedTier:        "enterprise",
+			expectedDisplayName: "Enterprise Tier",
+			expectedCode:        http.StatusOK,
 		},
 		{
-			name:         "multiple groups - enterprise wins over free",
-			groups:       []string{"system:authenticated", "enterprise-users"},
-			expectedTier: "enterprise",
-			expectedCode: http.StatusOK,
+			name:                "multiple groups - enterprise wins over free",
+			groups:              []string{"system:authenticated", "enterprise-users"},
+			expectedTier:        "enterprise",
+			expectedDisplayName: "Enterprise Tier",
+			expectedCode:        http.StatusOK,
 		},
 		{
-			name:         "multiple groups - premium wins over free",
-			groups:       []string{"system:authenticated", "premium-users"},
-			expectedTier: "premium",
-			expectedCode: http.StatusOK,
+			name:                "multiple groups - premium wins over free",
+			groups:              []string{"system:authenticated", "premium-users"},
+			expectedTier:        "premium",
+			expectedDisplayName: "Premium Tier",
+			expectedCode:        http.StatusOK,
 		},
 		{
-			name:         "all tiers - enterprise wins",
-			groups:       []string{"system:authenticated", "premium-users", "admin-users"},
-			expectedTier: "enterprise",
-			expectedCode: http.StatusOK,
+			name:                "all tiers - enterprise wins",
+			groups:              []string{"system:authenticated", "premium-users", "admin-users"},
+			expectedTier:        "enterprise",
+			expectedDisplayName: "Enterprise Tier",
+			expectedCode:        http.StatusOK,
 		},
 	}
 
@@ -88,6 +101,10 @@ func TestHandler_PostTierLookup_Success(t *testing.T) {
 
 			if response.Tier != tt.expectedTier {
 				t.Errorf("expected tier %s, got %s", tt.expectedTier, response.Tier)
+			}
+
+			if response.DisplayName != tt.expectedDisplayName {
+				t.Errorf("expected displayName %s, got %s", tt.expectedDisplayName, response.DisplayName)
 			}
 		})
 	}
@@ -192,6 +209,53 @@ func TestHandler_PostTierLookup_ConfigMapMissing_ShouldError(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code == http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, w.Code)
+		t.Errorf("expected error status, got %d", w.Code)
+	}
+}
+
+func TestHandler_PostTierLookup_DisplayNameFallback(t *testing.T) {
+	// Create a ConfigMap without displayName to test fallback to name
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      constant.TierMappingConfigMap,
+			Namespace: fixtures.TestNamespace,
+		},
+		Data: map[string]string{
+			"tiers": `
+- name: basic
+  level: 1
+  groups:
+  - basic-users
+`,
+		},
+	}
+
+	clientset := fake.NewClientset([]runtime.Object{configMap}...)
+	mapper := tier.NewMapper(t.Context(), clientset, fixtures.TestTenant, fixtures.TestNamespace)
+	router := fixtures.SetupTierTestRouter(mapper)
+
+	reqBody := tier.LookupRequest{Groups: []string{"basic-users"}}
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/tiers/lookup", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response tier.LookupResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	// displayName should fall back to name when not provided
+	if response.DisplayName != "basic" {
+		t.Errorf("expected displayName to fall back to 'basic', got %s", response.DisplayName)
 	}
 }

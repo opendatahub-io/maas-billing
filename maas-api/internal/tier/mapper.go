@@ -67,34 +67,33 @@ func (m *Mapper) Namespace(tier string) (string, error) {
 // GetTierForGroups returns the highest level tier for a user with multiple group memberships.
 //
 // Returns error if no groups provided or no groups found in any tier.
-// Returns "free" as default if mapping is missing (fallback).
-func (m *Mapper) GetTierForGroups(groups ...string) (string, error) {
+func (m *Mapper) GetTierForGroups(groups ...string) (*Tier, error) {
 	if len(groups) == 0 {
-		return "", errors.New("no groups provided")
+		return nil, errors.New("no groups provided")
 	}
 
 	tiers, err := m.loadTierConfig()
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return "", fmt.Errorf("tier mapping not found, provide configuration in %s", constant.TierMappingConfigMap)
+			return nil, fmt.Errorf("tier mapping not found, provide configuration in %s", constant.TierMappingConfigMap)
 		}
 		log.Printf("Failed to load tier configuration from ConfigMap %s: %v", constant.TierMappingConfigMap, err)
-		return "", fmt.Errorf("failed to load tier configuration: %w", err)
+		return nil, fmt.Errorf("failed to load tier configuration: %w", err)
 	}
 
 	sort.SliceStable(tiers, func(i, j int) bool {
 		return tiers[i].Level > tiers[j].Level
 	})
 
-	for _, tier := range tiers {
+	for i := range tiers {
 		for _, userGroup := range groups {
-			if slices.Contains(tier.Groups, userGroup) {
-				return tier.Name, nil
+			if slices.Contains(tiers[i].Groups, userGroup) {
+				return &tiers[i], nil
 			}
 		}
 	}
 
-	return "", &GroupNotFoundError{Group: fmt.Sprintf("groups [%s]", strings.Join(groups, ", "))}
+	return nil, &GroupNotFoundError{Group: fmt.Sprintf("groups [%s]", strings.Join(groups, ", "))}
 }
 
 // ProjectedSAGroup returns the projected SA group for a tier.
@@ -123,10 +122,39 @@ func (m *Mapper) loadTierConfig() ([]Tier, error) {
 		return nil, fmt.Errorf("failed to parse tier configuration: %w", err)
 	}
 
+	// Validate tier configuration on every load
+	if err := validateTierConfig(tiers); err != nil {
+		return nil, fmt.Errorf("invalid tier configuration: %w", err)
+	}
+
 	for i := range tiers {
 		tier := &tiers[i]
 		tier.Groups = append(tier.Groups, m.ProjectedSAGroup(tier))
 	}
 
 	return tiers, nil
+}
+
+// validateTierConfig validates that tier configuration is valid:
+// - All tier names must be unique
+// - If displayName is provided, it must be non-empty.
+func validateTierConfig(tiers []Tier) error {
+	seenNames := make(map[string]bool)
+
+	for i, tier := range tiers {
+		if tier.Name == "" {
+			return fmt.Errorf("tier at index %d has empty name", i)
+		}
+
+		if seenNames[tier.Name] {
+			return fmt.Errorf("duplicate tier name %q found", tier.Name)
+		}
+		seenNames[tier.Name] = true
+
+		if tier.DisplayName != "" && strings.TrimSpace(tier.DisplayName) == "" {
+			return fmt.Errorf("tier %q has whitespace-only displayName", tier.Name)
+		}
+	}
+
+	return nil
 }
