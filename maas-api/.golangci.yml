@@ -117,7 +117,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/opendatahub-io/maas-billing/maas-api/)
+        - prefix(github.com/opendatahub-io/models-as-a-service/maas-api/)
         - blank
         - dot
       custom-order: true

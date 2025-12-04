@@ -1,7 +1,7 @@
 # Install Open Data Hub project
 
 This guide covers the installation of the Open Data Hub project, with the required
-configuration to deploy the Model-as-a-Service capability (MaaS).
+configuration to deploy the Models-as-a-Service capability (MaaS).
 
 You need a Red Hat OpenShift cluster version 4.19.9 or later. Older OpenShift
 versions are not suitable.

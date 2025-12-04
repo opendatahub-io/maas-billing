@@ -71,7 +71,7 @@ For detailed, official instructions on production Redis setup, refer to the Red 
 
 A basic Redis setup script is provided for local development and validation. This script deploys a non-production Redis instance.
 
-**Script Location:** [`deployment/scripts/setup-redis.sh`](https://github.com/opendatahub-io/maas-billing/blob/main/deployment/scripts/setup-redis.sh)
+**Script Location:** [`deployment/scripts/setup-redis.sh`](https://github.com/opendatahub-io/models-as-a-service/blob/main/deployment/scripts/setup-redis.sh)
 
 ### Namespace Selection
 

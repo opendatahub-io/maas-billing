@@ -11,7 +11,7 @@ import (
 
 	authv1 "k8s.io/api/authentication/v1"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 func TestIssueToken_ExpirationFormats(t *testing.T) {

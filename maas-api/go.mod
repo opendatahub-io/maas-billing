@@ -1,4 +1,4 @@
-module github.com/opendatahub-io/maas-billing/maas-api
+module github.com/opendatahub-io/models-as-a-service/maas-api
 
 go 1.24.1
 

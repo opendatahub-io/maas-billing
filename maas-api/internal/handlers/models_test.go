@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"knative.dev/pkg/apis"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/handlers"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 func TestListingModels(t *testing.T) {

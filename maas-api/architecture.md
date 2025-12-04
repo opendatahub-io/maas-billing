@@ -2,7 +2,7 @@
 
 ## Overview
 
-The MaaS (Model as a Service) API provides a tier-based token management system for accessing AI models through KServe. It integrates with OpenShift authentication, Kuadrant policies, and Gateway API to deliver multi-tenant access control, rate limiting, and usage metrics for LLM inference services.
+The MaaS (Models as a Service) API provides a tier-based token management system for accessing AI models through KServe. It integrates with OpenShift authentication, Kuadrant policies, and Gateway API to deliver multi-tenant access control, rate limiting, and usage metrics for LLM inference services.
 
 ## Key Features
 

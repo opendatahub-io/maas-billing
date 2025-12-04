@@ -16,7 +16,7 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 )
 
 // Mapper handles tier-to-group mapping lookups.
