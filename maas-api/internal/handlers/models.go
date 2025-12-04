@@ -8,6 +8,7 @@ import (
 	"github.com/openai/openai-go/v2/packages/pagination"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
 // ModelsHandler handles model-related endpoints.
@@ -39,9 +40,30 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 
 // ListLLMs handles GET /v1/models.
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
-	modelList, err := h.modelMgr.ListAvailableLLMs(c.Request.Context())
+	// Extract user context from middleware
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "User context not found",
+				"type":    "server_error",
+			}})
+		return
+	}
+
+	user, ok := userCtx.(*token.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "Invalid user context type",
+				"type":    "server_error",
+			}})
+		return
+	}
+
+	modelList, err := h.modelMgr.ListAvailableLLMsForUser(c.Request.Context(), user)
 	if err != nil {
-		log.Printf("Failed to get available LLM models: %v", err)
+		log.Printf("Failed to get available LLM models for user %s: %v", user.Username, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": "Failed to retrieve LLM models",

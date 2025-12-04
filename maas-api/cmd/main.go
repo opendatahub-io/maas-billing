@@ -98,10 +98,13 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 		Name:      cfg.GatewayName,
 		Namespace: cfg.GatewayNamespace,
 	}
-	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef)
+	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, clusterConfig.ClientSet, gatewayRef)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	router.GET("/models", modelsHandler.ListModels)
-	router.GET("/v1/models", modelsHandler.ListLLMs)
+
+	// Add authentication middleware to /v1/models endpoint
+	tokenReviewer := token.NewReviewer(clusterConfig.ClientSet)
+	router.GET("/v1/models", token.ExtractUserInfo(tokenReviewer), modelsHandler.ListLLMs)
 
 	configureSATokenProvider(ctx, cfg, router, clusterConfig)
 }
