@@ -10,23 +10,27 @@ import (
 // Standard tier configuration used across tests.
 const TierConfigYAML = `
 - name: free
+  displayName: Free Tier
   description: Free tier
   level: 1
   groups:
   - system:authenticated
   - free-users
 - name: premium
+  displayName: Premium Tier
   description: Premium tier
   level: 10
   groups:
   - premium-users
   - beta-testers
 - name: developer
+  displayName: Developer Tier
   description: Developer tier
   level: 15
   groups:
   - developer-users
 - name: enterprise
+  displayName: Enterprise Tier
   description: Enterprise tier
   level: 20
   groups:

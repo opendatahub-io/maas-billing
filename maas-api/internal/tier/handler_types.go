@@ -5,7 +5,8 @@ type LookupRequest struct {
 }
 
 type LookupResponse struct {
-	Tier string `json:"tier,inline"`
+	Tier        string `json:"tier"`
+	DisplayName string `json:"displayName"`
 }
 
 type ErrorResponse struct {

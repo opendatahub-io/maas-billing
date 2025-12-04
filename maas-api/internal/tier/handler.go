@@ -52,8 +52,14 @@ func (h *Handler) TierLookup(c *gin.Context) {
 		return
 	}
 
+	displayName := tier.DisplayName
+	if displayName == "" {
+		displayName = tier.Name
+	}
+
 	response := LookupResponse{
-		Tier: tier,
+		Tier:        tier.Name,
+		DisplayName: displayName,
 	}
 
 	c.JSON(http.StatusOK, response)

@@ -14,22 +14,26 @@ data:
   tiers: |
     # Free tier - default for all authenticated users
     - name: free
+      displayName: Free Tier
       level: 0
       groups:
         - tier-free-users
         - system:authenticated  # Default for all authenticated users
-    
+
     # Premium tier - for premium users
     - name: premium
+      displayName: Premium Tier
       level: 1
       groups:
         - tier-premium-users
         - premium-group
-    
+
     # Enterprise tier - highest level
     - name: enterprise
+      displayName: Enterprise Tier
       level: 2
       groups:
         - tier-enterprise-users
         - enterprise-group
-        - admin-group 
+        - admin-group
+
