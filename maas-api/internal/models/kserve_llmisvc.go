@@ -7,10 +7,13 @@ import (
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	"github.com/openai/openai-go/v2"
+	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"knative.dev/pkg/apis"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
 type GatewayRef struct {
@@ -33,6 +36,56 @@ func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
 	}
 
 	return llmInferenceServicesToModels(instanceLLMs)
+}
+
+// ListAvailableLLMsForUser lists LLMInferenceServices that the user has access to.
+// This method filters models based on user's RBAC permissions using SubjectAccessReview.
+func (m *Manager) ListAvailableLLMsForUser(ctx context.Context, user *token.UserContext) ([]Model, error) {
+	// First get all MaaS instance models
+	allModels, err := m.ListAvailableLLMs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter models based on user's permissions
+	var authorizedModels []Model
+	for _, model := range allModels {
+		namespace := model.OwnedBy // model.OwnedBy contains the namespace
+		modelName := model.ID      // model.ID contains the model name
+
+		if m.userCanAccessModel(ctx, user, namespace, modelName) {
+			authorizedModels = append(authorizedModels, model)
+		}
+	}
+
+	return authorizedModels, nil
+}
+
+// userCanAccessModel checks if a user has access to a specific model using SubjectAccessReview.
+// This mirrors the authorization logic used by the gateway's AuthPolicy.
+func (m *Manager) userCanAccessModel(ctx context.Context, user *token.UserContext, namespace, modelName string) bool {
+	// Create SubjectAccessReview request matching the gateway's AuthPolicy
+	review := &authv1.SubjectAccessReview{
+		Spec: authv1.SubjectAccessReviewSpec{
+			User:   user.Username,
+			Groups: user.Groups,
+			ResourceAttributes: &authv1.ResourceAttributes{
+				Group:     "serving.kserve.io",
+				Resource:  "llminferenceservices",
+				Name:      modelName,
+				Namespace: namespace,
+				Verb:      "post", // This matches the AuthPolicy's verb check
+			},
+		},
+	}
+
+	result, err := m.k8sClient.AuthorizationV1().SubjectAccessReviews().Create(ctx, review, metav1.CreateOptions{})
+	if err != nil {
+		log.Printf("Failed to check access for user %s to model %s/%s: %v", user.Username, namespace, modelName, err)
+		return false
+	}
+
+	return result.Status.Allowed
 }
 
 // partOfMaaSInstance checks if the given LLMInferenceService is part of this "MaaS instance". This means that it is

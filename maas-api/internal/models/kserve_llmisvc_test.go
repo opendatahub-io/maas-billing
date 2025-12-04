@@ -293,6 +293,7 @@ func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is compla
 				&kservefakev1beta1.FakeServingV1beta1{Fake: fakeKServe},
 				&kservefakev1alpha1.FakeServingV1alpha1{Fake: fakeKServe},
 				&gatewayfake.FakeGatewayV1{Fake: fakeGateway},
+				nil, // k8sClient not needed for this test
 				gateway,
 			)
 

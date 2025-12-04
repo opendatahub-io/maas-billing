@@ -11,6 +11,7 @@ import (
 	"github.com/openai/openai-go/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"knative.dev/pkg/apis"
 	gatewayclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1"
 )
@@ -20,6 +21,7 @@ type Manager struct {
 	v1beta1Client  kserveclientv1beta1.ServingV1beta1Interface
 	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface
 	gatewayClient  gatewayclient.GatewayV1Interface
+	k8sClient      kubernetes.Interface
 	gatewayRef     GatewayRef
 }
 
@@ -28,12 +30,14 @@ func NewManager(
 	v1beta1Client kserveclientv1beta1.ServingV1beta1Interface,
 	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface,
 	gatewayClient gatewayclient.GatewayV1Interface,
+	k8sClient kubernetes.Interface,
 	gatewayRef GatewayRef,
 ) *Manager {
 	return &Manager{
 		v1beta1Client:  v1beta1Client,
 		v1alpha1Client: v1alpha1Client,
 		gatewayClient:  gatewayClient,
+		k8sClient:      k8sClient,
 		gatewayRef:     gatewayRef,
 	}
 }
