@@ -74,7 +74,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, user *token.UserContex
 				Resource:  "llminferenceservices",
 				Name:      modelName,
 				Namespace: namespace,
-				Verb:      "post", // This matches the AuthPolicy's verb check
+				Verb:      "get", // Check if user can access the model resource
 			},
 		},
 	}
