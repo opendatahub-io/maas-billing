@@ -2,6 +2,7 @@ package token
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha1" //nolint:gosec // SHA1 used for non-cryptographic hashing of usernames, not for security
 	"encoding/hex"
 	"fmt"
@@ -77,9 +78,14 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("failed to extract claims from new token: %w", err)
 	}
 	jti, ok := claims["jti"].(string)
-	if !ok {
-		//nolint:perfsprint // Cannot use errors.New here as errors is k8s package
-		return nil, fmt.Errorf("jti claim not found or not a string in new token")
+	if !ok || jti == "" {
+		// Fallback: cluster does not emit a jti claim (ServiceAccountTokenJTI feature gate disabled or K8s < 1.29).
+		// Generate a stable identifier locally for API key metadata.
+		var errJTI error
+		jti, errJTI = generateLocalJTI()
+		if errJTI != nil {
+			return nil, fmt.Errorf("jti claim not found and fallback generation failed: %w", errJTI)
+		}
 	}
 
 	// Extract iat (issued at) claim from JWT
@@ -154,7 +160,6 @@ func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (s
 		return "", fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
-	// Use ProjectedNsName which takes *Tier directly, or use Namespace with tier name
 	namespace := m.tierMapper.ProjectedNsName(userTier)
 	return namespace, nil
 }
@@ -326,4 +331,15 @@ func (m *Manager) sanitizeServiceAccountName(username string) (string, error) {
 	}
 
 	return name + "-" + suffix, nil
+}
+
+// generateLocalJTI generates a local JTI identifier when the cluster does not provide one.
+// This is needed for clusters running Kubernetes < 1.29 or when ServiceAccountTokenJTI feature gate is disabled.
+func generateLocalJTI() (string, error) {
+	const size = 16
+	b := make([]byte, size)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes for JTI: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
