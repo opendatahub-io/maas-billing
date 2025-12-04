@@ -154,11 +154,8 @@ func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (s
 		return "", fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
 	}
 
-	namespace, errNS := m.tierMapper.Namespace(userTier)
-	if errNS != nil {
-		return "", fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
-	}
-
+	// Use ProjectedNsName which takes *Tier directly, or use Namespace with tier name
+	namespace := m.tierMapper.ProjectedNsName(userTier)
 	return namespace, nil
 }
 
