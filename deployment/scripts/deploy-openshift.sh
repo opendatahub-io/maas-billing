@@ -401,9 +401,8 @@ else
 fi
 if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
     echo "   Detected audience: $AUD"
-    kubectl patch authpolicy maas-api-auth-policy -n "$MAAS_API_NAMESPACE" \
     PATCH_JSON="[{\"op\":\"replace\",\"path\":\"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0\",\"value\":\"$AUD\"}]"
-    kubectl patch authpolicy maas-api-auth-policy -n maas-api \
+    kubectl patch authpolicy maas-api-auth-policy -n "$MAAS_API_NAMESPACE"  \
       --type='json' \
       -p "$PATCH_JSON" 2>/dev/null && echo "   ✅ AuthPolicy patched" || echo "   ⚠️  Failed to patch AuthPolicy (may need manual configuration)"
 else
