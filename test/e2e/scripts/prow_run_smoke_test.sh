@@ -11,11 +11,11 @@
 #   1. Deploy MaaS platform on OpenShift
 #   2. Deploy simulator model for testing
 #   3. Validate deployment functionality
-#   4. Verify token metadata logic (ephemeral tokens, API keys)
-#   5. Create test users with different permission levels:
+#   4. Create test users with different permission levels:
 #      - Admin user (cluster-admin role)
 #      - Edit user (edit role) 
 #      - View user (view role)
+#   5. Run token metadata verification (as admin user)
 #   6. Run smoke tests for each user
 # 
 # USAGE:
@@ -223,9 +223,6 @@ setup_vars_for_tests
 print_header "Validating Deployment"
 validate_deployment
 
-print_header "Verifying Token Metadata Logic"
-run_token_verification
-
 setup_test_user() {
     local username="$1"
     local cluster_role="$2"
@@ -262,6 +259,11 @@ print_header "Running tests for all users"
 print_header "Running Maas e2e Tests as admin user"
 ADMIN_TOKEN=$(oc create token tester-admin-user -n default)
 oc login --token "$ADMIN_TOKEN" --server "$K8S_CLUSTER_URL"
+
+# Run token verification as admin user (needs valid oc login first)
+print_header "Verifying Token Metadata Logic"
+run_token_verification
+
 run_smoke_tests
 
 # Test edit user  

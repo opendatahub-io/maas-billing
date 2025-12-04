@@ -44,7 +44,13 @@ if [ -z "${GATEWAY_URL:-}" ]; then
         exit 1
     fi
     
-    GATEWAY_URL="https://${GATEWAY_HOSTNAME}"
+    # Try HTTPS first, fall back to HTTP if it fails
+    SCHEME="https"
+    if ! curl -skS -m 5 "${SCHEME}://${GATEWAY_HOSTNAME}/maas-api/healthz" -o /dev/null 2>/dev/null; then
+        SCHEME="http"
+    fi
+    
+    GATEWAY_URL="${SCHEME}://${GATEWAY_HOSTNAME}"
     echo -e "${GREEN}✓ Found Gateway at: ${GATEWAY_URL}${NC}"
 fi
 
@@ -59,20 +65,22 @@ echo ""
 
 echo -e "${MAGENTA}1. Authenticating with OpenShift...${NC}"
 
-OC_TOKEN="$(oc whoami -t || true)"
+# Try oc whoami -t first, redirect stderr to avoid error message in logs
+OC_TOKEN="$(oc whoami -t 2>/dev/null || true)"
 
 # If that failed, try fallback methods (for Prow CI compatibility)
 if [ -z "$OC_TOKEN" ]; then
+    # Try reading from mounted service account token (Prow CI pods)
     if [ -f "/var/run/secrets/kubernetes.io/serviceaccount/token" ]; then
         OC_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || true)
     fi
     
-    # Try extracting from kubeconfig (Prow CI)
+    # Extracting from kubeconfig (Prow CI)
     if [ -z "$OC_TOKEN" ] && [ -n "${KUBECONFIG:-}" ]; then
         OC_TOKEN=$(oc config view --raw -o jsonpath='{.users[0].user.token}' 2>/dev/null || true)
     fi
     
-    # Try oc create token for service account (Prow CI)
+    # oc create token for service account (Prow CI)
     if [ -z "$OC_TOKEN" ]; then
         CURRENT_USER=$(oc whoami 2>/dev/null || true)
         if [ -n "$CURRENT_USER" ] && [[ "$CURRENT_USER" == system:serviceaccount:* ]]; then
