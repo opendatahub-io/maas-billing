@@ -9,8 +9,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
@@ -214,7 +212,6 @@ func TestHandler_PostTierLookup_ConfigMapMissing_ShouldError(t *testing.T) {
 }
 
 func TestHandler_PostTierLookup_DisplayNameFallback(t *testing.T) {
-	// Create a ConfigMap without displayName to test fallback to name
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      constant.TierMappingConfigMap,
@@ -230,8 +227,7 @@ func TestHandler_PostTierLookup_DisplayNameFallback(t *testing.T) {
 		},
 	}
 
-	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(t.Context(), clientset, fixtures.TestTenant, fixtures.TestNamespace)
+	mapper := tier.NewMapper(fixtures.NewConfigMapLister(configMap), fixtures.TestTenant, fixtures.TestNamespace)
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"basic-users"}}
