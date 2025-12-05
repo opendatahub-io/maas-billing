@@ -6,6 +6,7 @@ namespace: maas-api
 resources:
   - deployment.yaml
   - service.yaml
+  - pvc.yaml
   - rbac
   - networking
   - policies
