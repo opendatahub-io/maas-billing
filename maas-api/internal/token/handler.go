@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 )
 
 type TokenManager interface {
@@ -20,12 +21,14 @@ type TokenManager interface {
 type Handler struct {
 	name    string
 	manager TokenManager
+	logger  *logger.Logger
 }
 
-func NewHandler(name string, manager TokenManager) *Handler {
+func NewHandler(name string, manager TokenManager, log *logger.Logger) *Handler {
 	return &Handler{
 		name:    name,
 		manager: manager,
+		logger:  log,
 	}
 }
 
@@ -50,14 +53,18 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 		// Validate with Manager (K8s validation)
 		userContext, err := h.manager.ValidateToken(c.Request.Context(), token, reviewer)
 		if err != nil {
-			log.Printf("Token validation failed: %v", err)
+			h.logger.WithContext(c.Request.Context()).Warn("Token validation failed",
+				"error", err,
+			)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "validation failed"})
 			c.Abort()
 			return
 		}
 
 		if !userContext.IsAuthenticated {
-			log.Printf("Token is not authenticated for user: %s", userContext.Username)
+			h.logger.WithContext(c.Request.Context()).Warn("Token is not authenticated",
+				"username", userContext.Username,
+			)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 			c.Abort()
 			return
@@ -109,7 +116,11 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	// For ephemeral tokens, we explicitly pass an empty name.
 	token, err := h.manager.GenerateToken(c.Request.Context(), user, expiration, "")
 	if err != nil {
-		log.Printf("Failed to generate token: %v", err)
+		h.logger.WithContext(c.Request.Context()).Error("Failed to generate token",
+			"error", err,
+			"username", user.Username,
+			"expiration", expiration.String(),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}

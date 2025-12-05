@@ -28,6 +28,7 @@ import (
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
@@ -148,13 +149,15 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
-	tierMapper := tier.NewMapper(context.Background(), fakeClient, TestTenant, TestNamespace)
+	testLogger := logger.New(false) // Use production logger for tests
+	tierMapper := tier.NewMapper(context.Background(), fakeClient, TestTenant, TestNamespace, testLogger)
 	manager := token.NewManager(
 		TestTenant,
 		tierMapper,
 		fakeClient,
 		namespaceLister,
 		serviceAccountLister,
+		testLogger,
 	)
 	reviewer := token.NewReviewer(fakeClient)
 
@@ -169,13 +172,14 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Eng
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
+	testLogger := logger.New(false) // Use production logger for tests
 	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
 	store, err := api_keys.NewStore(context.Background(), dbPath)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test store: %v", err))
 	}
 
-	tokenHandler := token.NewHandler("test", manager)
+	tokenHandler := token.NewHandler("test", manager, testLogger)
 	apiKeyService := api_keys.NewService(manager, store)
 	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
@@ -220,7 +224,8 @@ func CreateTestMapper(withConfigMap bool) *tier.Mapper {
 	}
 
 	clientset := k8sfake.NewClientset(objects...)
-	return tier.NewMapper(context.Background(), clientset, TestTenant, TestNamespace)
+	testLogger := logger.New(false) // Use production logger for tests
+	return tier.NewMapper(context.Background(), clientset, TestTenant, TestNamespace, testLogger)
 }
 
 // StubTokenReview sets up TokenReview API mocking for authentication tests.
