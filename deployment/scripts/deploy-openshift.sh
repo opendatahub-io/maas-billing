@@ -210,8 +210,6 @@ done
 echo ""
 echo "3️⃣ Installing dependencies..."
 
-# PROJECT_ROOT is already set above
-
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
 if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&1; then
@@ -318,8 +316,6 @@ kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 echo ""
 echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
-# Ensure MAAS_API_NAMESPACE is set (it should already be set above, but ensure it here too)
-export MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
 # Process kustomization.yaml to replace hardcoded namespace, then build
 TMP_DIR=$(mktemp -d)
 cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
@@ -363,8 +359,6 @@ kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshif
 echo ""
 echo "1️⃣1️⃣ Applying Gateway Policies..."
 cd "$PROJECT_ROOT"
-# Ensure MAAS_API_NAMESPACE is set with default (it should already be set above)
-export MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
 kustomize build deployment/base/policies | envsubst '$MAAS_API_NAMESPACE' | kubectl apply --server-side=true --force-conflicts -f -
 
 echo ""
