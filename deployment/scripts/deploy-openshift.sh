@@ -27,6 +27,75 @@ wait_for_crd() {
   return 1
 }
 
+# Helper function to extract version from CSV name (e.g., "operator.v1.2.3" -> "1.2.3")
+extract_version_from_csv() {
+  local csv_name="$1"
+  echo "$csv_name" | sed -n 's/.*\.v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p'
+}
+
+# Helper function to compare semantic versions (returns 0 if version1 >= version2)
+version_compare() {
+  local version1="$1"
+  local version2="$2"
+  
+  # Convert versions to comparable numbers (e.g., "1.2.3" -> "001002003")
+  local v1=$(echo "$version1" | awk -F. '{printf "%03d%03d%03d", $1, $2, $3}')
+  local v2=$(echo "$version2" | awk -F. '{printf "%03d%03d%03d", $1, $2, $3}')
+  
+  [ "$v1" -ge "$v2" ]
+}
+
+# Helper function to find CSV by operator name and check minimum version
+find_csv_with_min_version() {
+  local operator_prefix="$1"
+  local min_version="$2"
+  local namespace="${3:-kuadrant-system}"
+  
+  local csv_name=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}' || echo "")
+  
+  if [ -z "$csv_name" ]; then
+    echo ""
+    return 1
+  fi
+  
+  local installed_version=$(extract_version_from_csv "$csv_name")
+  if version_compare "$installed_version" "$min_version"; then
+    echo "$csv_name"
+    return 0
+  else
+    echo ""
+    return 1
+  fi
+}
+
+# Helper function to wait for CSV with minimum version requirement
+wait_for_csv_with_min_version() {
+  local operator_prefix="$1"
+  local min_version="$2"
+  local namespace="${3:-kuadrant-system}"
+  local timeout="${4:-180}"
+  
+  echo "⏳ Looking for ${operator_prefix} (minimum version: ${min_version})..."
+  
+  local csv_name=$(find_csv_with_min_version "$operator_prefix" "$min_version" "$namespace")
+  if [ -z "$csv_name" ]; then
+    # Check if any version exists (for better error message)
+    local any_csv=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}' || echo "")
+    if [ -n "$any_csv" ]; then
+      local installed_version=$(extract_version_from_csv "$any_csv")
+      echo "❌ Found ${any_csv} with version ${installed_version}, but minimum required is ${min_version}"
+      return 1
+    else
+      echo "❌ No CSV found for operator ${operator_prefix} in namespace ${namespace}"
+      return 1
+    fi
+  fi
+  
+  local installed_version=$(extract_version_from_csv "$csv_name")
+  echo "✅ Found CSV: ${csv_name} (version: ${installed_version} >= ${min_version})"
+  wait_for_csv "$csv_name" "$namespace" "$timeout"
+}
+
 # Helper function to wait for CSV to reach Succeeded state
 wait_for_csv() {
   local csv_name="$1"
@@ -84,18 +153,6 @@ wait_for_pods() {
   return 1
 }
 
-# version_compare <version1> <version2>
-#   Compares two version strings in semantic version format (e.g., "4.19.9")
-#   Returns 0 if version1 >= version2, 1 otherwise
-version_compare() {
-  local version1="$1"
-  local version2="$2"
-  
-  local v1=$(echo "$version1" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
-  local v2=$(echo "$version2" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
-  
-  [ "$v1" -ge "$v2" ]
-}
 
 wait_for_validating_webhooks() {
     local namespace="$1"
@@ -207,7 +264,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
-if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&1; then
+EXISTING_KUADRANT_CSV=$(find_csv_with_min_version "kuadrant-operator" "1.3.0" "kuadrant-system")
+if [ -z "$EXISTING_KUADRANT_CSV" ]; then
     echo "   No existing installation found, checking for leftover CRDs..."
     LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
     if [ -n "$LEFTOVER_CRDS" ]; then
@@ -216,7 +274,7 @@ if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&
         sleep 5  # Brief wait for cleanup to complete
     fi
 else
-    echo "   ✅ Kuadrant operator already installed, skipping CRD cleanup"
+    echo "   ✅ Kuadrant operator already installed ($EXISTING_KUADRANT_CSV), skipping CRD cleanup"
 fi
 
 echo "   Installing Kuadrant..."
@@ -248,17 +306,17 @@ fi
 
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
-# Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
-wait_for_csv "kuadrant-operator.v1.3.0" "kuadrant-system" 300 || \
+# Wait for CSVs to reach Succeeded state with minimum version requirements
+wait_for_csv_with_min_version "kuadrant-operator" "1.3.0" "kuadrant-system" 300 || \
     echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
 
-wait_for_csv "authorino-operator.v0.22.0" "kuadrant-system" 60 || \
+wait_for_csv_with_min_version "authorino-operator" "0.22.0" "kuadrant-system" 60 || \
     echo "   ⚠️  Authorino operator CSV did not succeed"
 
-wait_for_csv "limitador-operator.v0.16.0" "kuadrant-system" 60 || \
+wait_for_csv_with_min_version "limitador-operator" "0.16.0" "kuadrant-system" 60 || \
     echo "   ⚠️  Limitador operator CSV did not succeed"
 
-wait_for_csv "dns-operator.v0.15.0" "kuadrant-system" 60 || \
+wait_for_csv_with_min_version "dns-operator" "0.15.0" "kuadrant-system" 60 || \
     echo "   ⚠️  DNS operator CSV did not succeed"
 
 # Verify CRDs are present
@@ -373,9 +431,15 @@ kubectl delete pod -n kuadrant-system -l control-plane=controller-manager 2>/dev
   echo "   ✅ Kuadrant operator restarted" || \
   echo "   ⚠️  Could not restart Kuadrant operator"
 
-kubectl rollout restart deployment authorino-operator -n kuadrant-system 2>/dev/null && \
-  echo "   ✅ Authorino operator restarted" || \
-  echo "   ⚠️  Could not restart Authorino operator"
+# Find and restart Authorino deployment dynamically
+AUTHORINO_DEPLOYMENT=$(kubectl get deployments -n kuadrant-system --no-headers 2>/dev/null | grep authorino | head -n1 | awk '{print $1}' || echo "")
+if [ -n "$AUTHORINO_DEPLOYMENT" ]; then
+  kubectl rollout restart deployment "$AUTHORINO_DEPLOYMENT" -n kuadrant-system 2>/dev/null && \
+    echo "   ✅ Authorino operator ($AUTHORINO_DEPLOYMENT) restarted" || \
+    echo "   ⚠️  Could not restart Authorino operator ($AUTHORINO_DEPLOYMENT)"
+else
+  echo "   ⚠️  No Authorino deployment found, skipping restart"
+fi
 
 kubectl rollout restart deployment limitador-operator-controller-manager -n kuadrant-system 2>/dev/null && \
   echo "   ✅ Limitador operator restarted" || \
@@ -384,8 +448,11 @@ kubectl rollout restart deployment limitador-operator-controller-manager -n kuad
 echo "   Waiting for operators to be ready..."
 kubectl rollout status deployment kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Kuadrant operator taking longer than expected"
-kubectl rollout status deployment authorino-operator -n kuadrant-system --timeout=60s 2>/dev/null || \
-  echo "   ⚠️  Authorino operator taking longer than expected"
+# Check status of Authorino deployment dynamically
+if [ -n "$AUTHORINO_DEPLOYMENT" ]; then
+  kubectl rollout status deployment "$AUTHORINO_DEPLOYMENT" -n kuadrant-system --timeout=60s 2>/dev/null || \
+    echo "   ⚠️  Authorino operator taking longer than expected"
+fi
 kubectl rollout status deployment limitador-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
   echo "   ⚠️  Limitador operator taking longer than expected"
 
@@ -441,7 +508,9 @@ echo "   kubectl describe authpolicy gateway-auth-policy -n openshift-ingress | 
 echo ""
 echo "2. If Gateway API provider is not installed, restart all Kuadrant operators:"
 echo "   kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system"
-echo "   kubectl rollout restart deployment/authorino-operator -n kuadrant-system"
+echo "   # Find and restart Authorino deployment:"
+echo "   AUTHORINO_DEPLOYMENT=\$(kubectl get deployments -n kuadrant-system --no-headers | grep authorino | head -n1 | awk '{print \$1}')"
+echo "   kubectl rollout restart deployment/\$AUTHORINO_DEPLOYMENT -n kuadrant-system"
 echo "   kubectl rollout restart deployment/limitador-operator-controller-manager -n kuadrant-system"
 echo ""
 echo "3. Check if OpenShift Gateway Controller is available:"
