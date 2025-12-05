@@ -29,6 +29,11 @@ rules:
   resources: ["inferenceservices", "llminferenceservices"]
   verbs: ["get", "list", "watch"]
 
+# Gateway API resources for route filtering
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["httproutes"]
+  verbs: ["get", "list", "watch"]
+
 # Metrics and monitoring
 - apiGroups: [""]
   resources: ["pods", "services", "endpoints"]
