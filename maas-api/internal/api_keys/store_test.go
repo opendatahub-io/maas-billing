@@ -1,7 +1,6 @@
 package api_keys_test
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,18 +11,11 @@ import (
 )
 
 func TestStore(t *testing.T) {
-	// Create a temporary directory for the database using t.TempDir()
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
-
 	ctx := t.Context()
 
-	// Test NewStore
-	store, err := api_keys.NewStore(ctx, dbPath)
-	if err == nil && store != nil {
-		defer store.Close()
-	}
-	require.NoError(t, err)
+	// Use in-memory store for tests
+	store := api_keys.NewMemoryStore()
+	defer store.Close()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
 		apiKey := &api_keys.APIKey{

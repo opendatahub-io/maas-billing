@@ -17,10 +17,10 @@ type TokenManager interface {
 
 type Service struct {
 	tokenManager TokenManager
-	store        *Store
+	store        Store
 }
 
-func NewService(tokenManager TokenManager, store *Store) *Service {
+func NewService(tokenManager TokenManager, store Store) *Service {
 	return &Service{
 		tokenManager: tokenManager,
 		store:        store,

@@ -26,7 +26,8 @@ type Config struct {
 	DebugMode bool
 
 	// Database configuration
-	DBPath string
+	// DATABASE_URL for external SQL database connection 
+	DatabaseURL string
 }
 
 // Load loads configuration from environment variables.
@@ -41,7 +42,7 @@ func Load() *Config {
 		GatewayNamespace: env.GetString("GATEWAY_NAMESPACE", constant.DefaultGatewayNamespace),
 		Port:             env.GetString("PORT", "8080"),
 		DebugMode:        debugMode,
-		DBPath:           env.GetString("DB_PATH", "/data/maas.db"),
+		DatabaseURL:      env.GetString("DATABASE_URL", ""),
 	}
 	c.bindFlags(flag.CommandLine)
 
@@ -56,5 +57,5 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.GatewayNamespace, "gateway-namespace", c.GatewayNamespace, "Namespace where MaaS-enabled Gateway is deployed")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
-	fs.StringVar(&c.DBPath, "db-path", c.DBPath, "Path to SQLite database file")
+	fs.StringVar(&c.DatabaseURL, "database-url", c.DatabaseURL, "SQL database connection URL")
 }

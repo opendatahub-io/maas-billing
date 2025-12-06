@@ -22,11 +22,13 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: DB_PATH
-          value: /data/maas.db
-        volumeMounts:
-        - name: db-data
-          mountPath: /data
+        # Create secret: kubectl create secret generic database-config --from-literal=DATABASE_URL=<connection-string>
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-config
+              key: DATABASE_URL
+              optional: true
         resources:
           requests:
             memory: "64Mi"
@@ -57,8 +59,4 @@ spec:
             - ALL
           readOnlyRootFilesystem: true
           runAsNonRoot: true
-      volumes:
-      - name: db-data
-        persistentVolumeClaim:
-          claimName: maas-api-db
       terminationGracePeriodSeconds: 30
