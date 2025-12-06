@@ -3,8 +3,6 @@ package fixtures
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -164,16 +162,13 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 }
 
 // SetupTestRouter creates a test router with token endpoints.
-// Returns the router and a cleanup function that must be called to close the store and remove the temp DB file.
+// Returns the router and a cleanup function that must be called to close the store.
 func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Engine, func() error) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
-	store, err := api_keys.NewStore(context.Background(), dbPath)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create test store: %v", err))
-	}
+	// Use in-memory store for tests
+	store := api_keys.NewMemoryStore()
 
 	tokenHandler := token.NewHandler("test", manager)
 	apiKeyService := api_keys.NewService(manager, store)
@@ -187,13 +182,7 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Eng
 	protected.DELETE("/tokens", apiKeyHandler.RevokeAllTokens)
 
 	cleanup := func() error {
-		if err := store.Close(); err != nil {
-			return fmt.Errorf("failed to close store: %w", err)
-		}
-		if err := os.Remove(dbPath); err != nil {
-			return fmt.Errorf("failed to remove temp DB file: %w", err)
-		}
-		return nil
+		return store.Close()
 	}
 
 	return router, cleanup

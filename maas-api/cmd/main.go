@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -52,8 +53,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Initialize store in main for proper cleanup
-	store, err := api_keys.NewStore(ctx, cfg.DBPath)
+	store, err := initStore(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize token store: %v", err)
 	}
@@ -98,7 +98,20 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store) {
+// initStore creates the store based on configuration.
+// DATABASE_URL is required - the application will not start without it.
+func initStore(ctx context.Context, cfg *config.Config) (api_keys.Store, error) {
+	if cfg.DatabaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is required. " +
+			"Please configure an external SQL database. " +
+			"See deployment/scripts/setup-postgres.sh for setting up a test database")
+	}
+
+	log.Printf("Initializing SQL store...")
+	return api_keys.NewSQLStore(ctx, cfg.DatabaseURL)
+}
+
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store api_keys.Store) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -145,7 +158,6 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	)
 	tokenHandler := token.NewHandler(cfg.Name, tokenManager)
 
-	// Create api key service (persistent, SQLite logic)
 	apiKeyService := api_keys.NewService(tokenManager, store)
 	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
