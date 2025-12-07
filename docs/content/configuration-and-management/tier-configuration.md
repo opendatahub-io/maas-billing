@@ -235,3 +235,11 @@ EOF
 
 kubectl delete pod -l control-plane=controller-manager -n kuadrant-system
 ```
+
+!!!Warning "Removing Models from Tiers During Active Usage"
+    Removing a model from a tier's access list (by updating the `alpha.maas.opendatahub.io/tiers` annotation) while users have active requests may cause side effects. See [Model Tier Access Known Issues](./model-access-known-issues.md#model-tier-access-changes-during-active-usage) for details on:
+
+    - Active requests failing mid-execution
+    - RBAC propagation delays
+    - Model list visibility vs. access mismatches
+    - Recommended practices for tier access changes
