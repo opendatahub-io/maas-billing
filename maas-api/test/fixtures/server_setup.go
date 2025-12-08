@@ -174,14 +174,14 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Eng
 
 	testLogger := logger.New(false) // Use production logger for tests
 	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
-	store, err := api_keys.NewStore(context.Background(), dbPath)
+	store, err := api_keys.NewStore(context.Background(), dbPath, testLogger)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test store: %v", err))
 	}
 
 	tokenHandler := token.NewHandler("test", manager, testLogger)
 	apiKeyService := api_keys.NewService(manager, store)
-	apiKeyHandler := api_keys.NewHandler(apiKeyService)
+	apiKeyHandler := api_keys.NewHandler(apiKeyService, testLogger)
 
 	protected := router.Group("/v1")
 	if reviewer != nil {

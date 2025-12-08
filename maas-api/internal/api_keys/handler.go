@@ -2,20 +2,27 @@ package api_keys
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
 type Handler struct {
 	service *Service
+	logger  *logger.Logger
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, log *logger.Logger) *Handler {
+	if log == nil {
+		log = logger.New(false)
+	}
+	return &Handler{
+		service: service,
+		logger:  log,
+	}
 }
 
 type CreateRequest struct {
@@ -69,7 +76,10 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 
 	tok, err := h.service.CreateAPIKey(c.Request.Context(), user, req.Name, req.Description, expiration)
 	if err != nil {
-		log.Printf("Failed to generate api key: %v", err)
+		h.logger.WithContext(c.Request.Context()).Error("Failed to generate API key",
+			"error", err,
+			"username", user.Username,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate api key"})
 		return
 	}
@@ -99,7 +109,10 @@ func (h *Handler) ListAPIKeys(c *gin.Context) {
 
 	tokens, err := h.service.ListAPIKeys(c.Request.Context(), user)
 	if err != nil {
-		log.Printf("Failed to list api keys: %v", err)
+		h.logger.WithContext(c.Request.Context()).Error("Failed to list API keys",
+			"error", err,
+			"username", user.Username,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list api keys"})
 		return
 	}
@@ -132,7 +145,11 @@ func (h *Handler) GetAPIKey(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
 			return
 		}
-		log.Printf("Failed to get api key: %v", err)
+		h.logger.WithContext(c.Request.Context()).Error("Failed to get API key",
+			"error", err,
+			"username", user.Username,
+			"token_id", tokenID,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API key"})
 		return
 	}
@@ -155,11 +172,16 @@ func (h *Handler) RevokeAllTokens(c *gin.Context) {
 	}
 
 	if err := h.service.RevokeAll(c.Request.Context(), user); err != nil {
-		log.Printf("Failed to revoke all tokens for user %s: %v", user.Username, err)
+		h.logger.WithContext(c.Request.Context()).Error("Failed to revoke tokens",
+			"error", err,
+			"username", user.Username,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke tokens"})
 		return
 	}
 
-	log.Printf("Successfully revoked all tokens for user %s", user.Username)
+	h.logger.WithContext(c.Request.Context()).Info("Successfully revoked tokens for user",
+		"username", user.Username,
+	)
 	c.Status(http.StatusNoContent)
 }

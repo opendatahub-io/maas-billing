@@ -59,7 +59,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Initialize store in main for proper cleanup
-	store, err := api_keys.NewStore(ctx, cfg.DBPath)
+	store, err := api_keys.NewStore(ctx, cfg.DBPath, appLogger)
 	if err != nil {
 		appLogger.Fatal("Failed to initialize token store",
 			"error", err,
@@ -180,7 +180,7 @@ func configureSATokenProvider(
 
 	// Create api key service (persistent, SQLite logic)
 	apiKeyService := api_keys.NewService(tokenManager, store)
-	apiKeyHandler := api_keys.NewHandler(apiKeyService)
+	apiKeyHandler := api_keys.NewHandler(apiKeyService, appLogger)
 
 	// Create reviewer with audience to properly validate Service Account tokens
 	reviewer := token.NewReviewer(clusterConfig.ClientSet, cfg.Name+"-sa")

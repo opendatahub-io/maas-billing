@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,8 @@ func TestStore(t *testing.T) {
 	ctx := t.Context()
 
 	// Test NewStore
-	store, err := api_keys.NewStore(ctx, dbPath)
+	testLogger := logger.New(false)
+	store, err := api_keys.NewStore(ctx, dbPath, testLogger)
 	if err == nil && store != nil {
 		defer store.Close()
 	}
