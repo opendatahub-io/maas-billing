@@ -11,6 +11,10 @@ GO_STRICTFIPS ?= false
 
 CGO_ENABLED  ?= 1
 
+ifeq ($(GO_STRICTFIPS),true)
+  GOEXPERIMENT ?= strictfipsruntime
+endif
+
 # temp commenting to make main image working while we still have sqlite, and working on better solution
 # ifeq ($(GO_STRICTFIPS),true)
 #   GOEXPERIMENT ?= strictfipsruntime
