@@ -131,20 +131,7 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	}
 	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef, appLogger)
 	modelsHandler := handlers.NewModelsHandler(modelMgr, appLogger)
-	router.GET("/models", modelsHandler.ListModels)
 
-	configureSATokenProvider(ctx, cfg, router, clusterConfig, store, modelsHandler, appLogger)
-}
-
-func configureSATokenProvider(
-	ctx context.Context,
-	cfg *config.Config,
-	router *gin.Engine,
-	clusterConfig *config.K8sClusterConfig,
-	store *api_keys.Store,
-	modelsHandler *handlers.ModelsHandler,
-	appLogger *logger.Logger,
-) {
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
