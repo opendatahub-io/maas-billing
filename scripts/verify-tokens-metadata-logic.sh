@@ -139,6 +139,7 @@ if [ "$http_status" == "200" ]; then
     echo -e "${GREEN}✓ Success${NC}"
 else
     echo -e "${RED}✗ Failed (Status: $http_status)${NC}"
+    exit 1
 fi
 
 # Test 2.3: Verify Ephemeral Token Doesn't Appear in API Keys List
