@@ -70,6 +70,13 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 
 // IssueToken handles POST /v1/tokens for issuing ephemeral tokens.
 func (h *Handler) IssueToken(c *gin.Context) {
+	// Log MAAS identity headers when issuing a new token
+	username := c.GetHeader("X-MAAS-USERNAME")
+	group := c.GetHeader("X-MAAS-GROUP")
+	source := c.GetHeader("X-MAAS-SOURCE")
+	log.Printf("POST /v1/tokens - MAAS Identity Headers - Username: %s, Groups: %s, Source: %s",
+		username, group, source)
+
 	var req Request
 	// BindJSON will still parse the request body, but we'll ignore the name field.
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -8,7 +8,7 @@ spec:
     default:
       labels:
         model: responseBodyJSON("/model")
-        tier: auth.identity.tier
+        tier: auth.metadata.matchedTier["tier"]
         user: auth.identity.userid
   targetRef:
     group: gateway.networking.k8s.io

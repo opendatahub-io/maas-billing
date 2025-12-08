@@ -16,3 +16,21 @@ spec:
           audiences:
             - https://kubernetes.default.svc
             - maas-default-gateway-sa
+        defaults:
+          # token normalization - extract service account name from full username
+          # full username: system:serviceaccount:<ns>:<name>
+          userid:
+            expression: |
+              auth.identity.user.username.split(":")[3] if len(auth.identity.user.username.split(":")) > 3 else auth.identity.user.username
+    response:
+      success:
+        headers:
+          X-MAAS-USERNAME:
+            plain:
+              selector: auth.identity.userid
+          X-MAAS-GROUP:
+            plain:
+              selector: auth.identity.user.groups
+          X-MAAS-SOURCE:
+            plain:
+              value: "kubernetes-local"

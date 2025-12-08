@@ -15,7 +15,7 @@ spec:
           window: 2m
       when:
         - predicate: |
-            auth.identity.tier == "free"
+            auth.metadata.matchedTier["tier"] == "free"
       counters:
         - expression: auth.identity.userid
     premium:
@@ -24,7 +24,7 @@ spec:
           window: 2m
       when:
         - predicate: |
-            auth.identity.tier == "premium"
+            auth.metadata.matchedTier["tier"] == "premium"
       counters:
         - expression: auth.identity.userid
     enterprise:
@@ -33,6 +33,6 @@ spec:
           window: 2m
       when:
         - predicate: |
-            auth.identity.tier == "enterprise"
+            auth.metadata.matchedTier["tier"] == "enterprise"
       counters:
         - expression: auth.identity.userid
