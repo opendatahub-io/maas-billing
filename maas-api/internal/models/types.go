@@ -14,8 +14,9 @@ import (
 type Model struct {
 	openai.Model `json:",inline"`
 
-	URL   *apis.URL `json:"url,omitempty"`
-	Ready bool      `json:"ready"`
+	URL          *apis.URL `json:"url,omitempty"`
+	Ready        bool      `json:"ready"`
+	ResourceName string    `json:"resourceName,omitempty"` // Kubernetes metadata.name for RBAC
 }
 
 // UnmarshalJSON implements custom JSON unmarshalling to work around openai.Model's

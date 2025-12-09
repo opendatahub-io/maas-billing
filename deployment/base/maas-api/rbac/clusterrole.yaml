@@ -24,6 +24,11 @@ rules:
   resources: ["tokenreviews"]
   verbs: ["create"]
 
+# Subject access review for authorization
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews"]
+  verbs: ["create"]
+
 # KServe resources for model management
 - apiGroups: ["serving.kserve.io"]
   resources: ["inferenceservices", "llminferenceservices"]

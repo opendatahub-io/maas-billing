@@ -50,10 +50,10 @@ func (m *Manager) ListAvailableLLMsForUser(ctx context.Context, user *token.User
 	// Filter models based on user's permissions
 	var authorizedModels []Model
 	for _, model := range allModels {
-		namespace := model.OwnedBy // model.OwnedBy contains the namespace
-		modelName := model.ID      // model.ID contains the model name
+		namespace := model.OwnedBy         // model.OwnedBy contains the namespace
+		resourceName := model.ResourceName // model.ResourceName contains the Kubernetes metadata.name
 
-		if m.userCanAccessModel(ctx, user, namespace, modelName) {
+		if m.userCanAccessModel(ctx, user, namespace, resourceName) {
 			authorizedModels = append(authorizedModels, model)
 		}
 	}
@@ -63,7 +63,8 @@ func (m *Manager) ListAvailableLLMsForUser(ctx context.Context, user *token.User
 
 // userCanAccessModel checks if a user has access to a specific model using SubjectAccessReview.
 // This mirrors the authorization logic used by the gateway's AuthPolicy.
-func (m *Manager) userCanAccessModel(ctx context.Context, user *token.UserContext, namespace, modelName string) bool {
+// resourceName should be the Kubernetes metadata.name of the LLMInferenceService resource.
+func (m *Manager) userCanAccessModel(ctx context.Context, user *token.UserContext, namespace, resourceName string) bool {
 	// Create SubjectAccessReview request matching the gateway's AuthPolicy
 	review := &authv1.SubjectAccessReview{
 		Spec: authv1.SubjectAccessReviewSpec{
@@ -72,16 +73,16 @@ func (m *Manager) userCanAccessModel(ctx context.Context, user *token.UserContex
 			ResourceAttributes: &authv1.ResourceAttributes{
 				Group:     "serving.kserve.io",
 				Resource:  "llminferenceservices",
-				Name:      modelName,
+				Name:      resourceName, // Use Kubernetes metadata.name for RBAC
 				Namespace: namespace,
-				Verb:      "get", // Check if user can access the model resource
+				Verb:      "post", // Use the same verb as gateway AuthPolicy
 			},
 		},
 	}
 
 	result, err := m.k8sClient.AuthorizationV1().SubjectAccessReviews().Create(ctx, review, metav1.CreateOptions{})
 	if err != nil {
-		log.Printf("Failed to check access for user %s to model %s/%s: %v", user.Username, namespace, modelName, err)
+		log.Printf("Failed to check access for user %s to resource %s/%s: %v", user.Username, namespace, resourceName, err)
 		return false
 	}
 
@@ -136,8 +137,9 @@ func llmInferenceServicesToModels(items []kservev1alpha1.LLMInferenceService) ([
 				OwnedBy: item.Namespace,
 				Created: item.CreationTimestamp.Unix(),
 			},
-			URL:   url,
-			Ready: checkLLMInferenceServiceReadiness(&item),
+			URL:          url,
+			Ready:        checkLLMInferenceServiceReadiness(&item),
+			ResourceName: item.Name, // Always use metadata.name for RBAC
 		})
 	}
 

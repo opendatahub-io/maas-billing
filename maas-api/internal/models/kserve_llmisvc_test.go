@@ -1,26 +1,39 @@
 package models_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
+	kservev1beta1 "github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	kservefakev1alpha1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1alpha1/fake"
 	kservefakev1beta1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1beta1/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+)
+
+const (
+	testGatewayName      = "maas-gateway"
+	testGatewayNamespace = "gateway-ns"
 )
 
 func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is complaining about the test cases being in a different order than the expected match
-	gateway := models.GatewayRef{Name: "maas-gateway", Namespace: "gateway-ns"}
+	gateway := models.GatewayRef{Name: testGatewayName, Namespace: testGatewayNamespace}
 
 	tests := []struct {
 		name        string
@@ -310,6 +323,172 @@ func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is compla
 	}
 }
 
+func TestListAvailableLLMsForUser(t *testing.T) {
+	// Test scenarios for RBAC functionality
+	tests := []struct {
+		name            string
+		user            *token.UserContext
+		rbacScenarios   map[string]bool // resourceName -> allowed
+		rbacShouldError bool
+		expectModels    []string // expected model IDs
+		expectError     bool
+	}{
+		{
+			name: "user with full access",
+			user: &token.UserContext{
+				Username: "test-user",
+				Groups:   []string{"test-group"},
+			},
+			rbacScenarios: map[string]bool{
+				"llm-direct": true,
+			},
+			expectModels: []string{"llama-7b"},
+		},
+		{
+			name: "user with no access",
+			user: &token.UserContext{
+				Username: "restricted-user",
+				Groups:   []string{"restricted-group"},
+			},
+			rbacScenarios: map[string]bool{
+				"llm-direct": false,
+			},
+			expectModels: []string{}, // no models should be returned
+		},
+		{
+			name: "user with partial access",
+			user: &token.UserContext{
+				Username: "partial-user",
+				Groups:   []string{"partial-group"},
+			},
+			rbacScenarios: map[string]bool{
+				"llm-direct": true,
+				"llm-inline": false,
+			},
+			expectModels: []string{"llama-7b"}, // only allowed model
+		},
+		{
+			name: "rbac api error",
+			user: &token.UserContext{
+				Username: "error-user",
+				Groups:   []string{"error-group"},
+			},
+			rbacShouldError: true,
+			expectModels:    []string{}, // no models on error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test LLM services
+			llmTestScenarios := []fixtures.LLMTestScenario{
+				{
+					Name:             "llm-direct",
+					Namespace:        "test-ns",
+					SpecModelName:    strPtr("llama-7b"),
+					GatewayName:      testGatewayName,
+					GatewayNamespace: testGatewayNamespace,
+					Ready:            true,
+				},
+				{
+					Name:             "llm-inline",
+					Namespace:        "test-ns",
+					SpecModelName:    strPtr("gpt-3"),
+					GatewayName:      "other-gateway",
+					GatewayNamespace: testGatewayNamespace,
+					Ready:            true,
+				},
+			}
+			llmInferenceServices := fixtures.CreateLLMInferenceServices(llmTestScenarios...)
+
+			// Create test objects
+			var objects []runtime.Object
+			objects = append(objects, llmInferenceServices...)
+
+			// Setup clients
+			scheme := runtime.NewScheme()
+			_ = kservev1beta1.AddToScheme(scheme)
+			_ = kservev1alpha1.AddToScheme(scheme)
+
+			// Create fake KServe clients
+			fakeKServe := k8stesting.Fake{}
+			codecFactory := serializer.NewCodecFactory(scheme)
+			tracker := k8stesting.NewObjectTracker(scheme, codecFactory.UniversalDecoder())
+			for _, obj := range objects {
+				_ = tracker.Add(obj)
+			}
+			fakeKServe.AddReactor("*", "*", k8stesting.ObjectReaction(tracker))
+
+			// Create fake K8s client with RBAC mocking
+			k8sClient := k8sfake.NewClientset()
+
+			// Setup SubjectAccessReview mock
+			k8sClient.PrependReactor("create", "subjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if tt.rbacShouldError {
+					return true, nil, errors.New("rbac api error")
+				}
+
+				createAction, ok := action.(k8stesting.CreateAction)
+				if !ok {
+					return false, nil, fmt.Errorf("invalid action type: %T", action)
+				}
+				review, ok := createAction.GetObject().(*authv1.SubjectAccessReview)
+				if !ok {
+					return false, nil, fmt.Errorf("invalid object type: %T", createAction.GetObject())
+				}
+				resourceName := review.Spec.ResourceAttributes.Name
+
+				allowed, exists := tt.rbacScenarios[resourceName]
+				if !exists {
+					allowed = false // default deny
+				}
+
+				return true, &authv1.SubjectAccessReview{
+					Status: authv1.SubjectAccessReviewStatus{
+						Allowed: allowed,
+					},
+				}, nil
+			})
+
+			// Create manager
+			gateway := models.GatewayRef{
+				Name:      testGatewayName,
+				Namespace: testGatewayNamespace,
+			}
+
+			manager := models.NewManager(
+				&kservefakev1beta1.FakeServingV1beta1{Fake: &fakeKServe},
+				&kservefakev1alpha1.FakeServingV1alpha1{Fake: &fakeKServe},
+				&gatewayfake.FakeGatewayV1{Fake: &k8stesting.Fake{}},
+				k8sClient,
+				gateway,
+			)
+
+			// Test the user-aware filtering
+			availableModels, err := manager.ListAvailableLLMsForUser(context.Background(), tt.user)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Extract model IDs
+			var actualModelIDs []string
+			for _, model := range availableModels {
+				actualModelIDs = append(actualModelIDs, model.ID)
+			}
+
+			assert.ElementsMatch(t, tt.expectModels, actualModelIDs)
+		})
+	}
+}
+
 func ptrTo[T any](v T) *T {
 	return &v
+}
+
+func strPtr(s string) *string {
+	return &s
 }

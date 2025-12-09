@@ -6,14 +6,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/pagination"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	authv1 "k8s.io/api/authorization/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"knative.dev/pkg/apis"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
@@ -83,14 +89,32 @@ func TestListingModels(t *testing.T) {
 	}
 	router, clients := fixtures.SetupTestServer(t, config)
 
+	// Mock SubjectAccessReview to always allow access for testing
+	if fakeClient, ok := clients.K8sClient.(*k8sfake.Clientset); ok {
+		fakeClient.PrependReactor("create", "subjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, &authv1.SubjectAccessReview{
+				Status: authv1.SubjectAccessReviewStatus{
+					Allowed: true, // Allow all RBAC checks in tests
+				},
+			}, nil
+		})
+	}
+
 	gatewayRef := models.GatewayRef{
 		Name:      testGatewayName,
 		Namespace: testGatewayNamespace,
 	}
-	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1, clients.Gateway, nil, gatewayRef)
+	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1, clients.Gateway, clients.K8sClient, gatewayRef)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	v1 := router.Group("/v1")
-	v1.GET("/models", modelsHandler.ListLLMs)
+	v1.GET("/models", func(c *gin.Context) {
+		// Set up user context for testing
+		c.Set("user", &token.UserContext{
+			Username:        "test-user",
+			IsAuthenticated: true,
+		})
+		c.Next()
+	}, modelsHandler.ListLLMs)
 
 	w := httptest.NewRecorder()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/models", nil)
