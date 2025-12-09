@@ -251,10 +251,10 @@ else
     "$SCRIPT_DIR/install-dependencies.sh" --ocp --odh
 fi
 
-# Patch odh-model-controller deployment to set TENANT_NAMESPACE
+# Patch odh-model-controller deployment to set MAAS_NAMESPACE
 # This should be done whether ODH was just installed or was already present
 echo ""
-echo "   Setting TENANT_NAMESPACE for odh-model-controller deployment..."
+echo "   Setting MAAS_NAMESPACE for odh-model-controller deployment..."
 if kubectl get deployment odh-model-controller -n opendatahub &>/dev/null; then
     # Wait for deployment to be available before patching
     echo "   Waiting for odh-model-controller deployment to be ready..."
@@ -262,18 +262,18 @@ if kubectl get deployment odh-model-controller -n opendatahub &>/dev/null; then
         echo "   ⚠️  Deployment may still be starting, proceeding with patch..."
     
     # Check if the environment variable already exists
-    EXISTING_ENV=$(kubectl get deployment odh-model-controller -n opendatahub -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TENANT_NAMESPACE")].value}' 2>/dev/null || echo "")
+    EXISTING_ENV=$(kubectl get deployment odh-model-controller -n opendatahub -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="MAAS_NAMESPACE")].value}' 2>/dev/null || echo "")
     
     if [ -n "$EXISTING_ENV" ]; then
         if [ "$EXISTING_ENV" = "$MAAS_API_NAMESPACE" ]; then
-            echo "   ✅ TENANT_NAMESPACE already set to $MAAS_API_NAMESPACE"
+            echo "   ✅ MAAS_NAMESPACE already set to $MAAS_API_NAMESPACE"
         else
-            echo "   Updating TENANT_NAMESPACE from '$EXISTING_ENV' to '$MAAS_API_NAMESPACE'..."
-            kubectl set env deployment/odh-model-controller -n opendatahub TENANT_NAMESPACE="$MAAS_API_NAMESPACE"
+            echo "   Updating MAAS_NAMESPACE from '$EXISTING_ENV' to '$MAAS_API_NAMESPACE'..."
+            kubectl set env deployment/odh-model-controller -n opendatahub MAAS_NAMESPACE="$MAAS_API_NAMESPACE"
         fi
     else
-        echo "   Adding TENANT_NAMESPACE=$MAAS_API_NAMESPACE..."
-        kubectl set env deployment/odh-model-controller -n opendatahub TENANT_NAMESPACE="$MAAS_API_NAMESPACE"
+        echo "   Adding MAAS_NAMESPACE=$MAAS_API_NAMESPACE..."
+        kubectl set env deployment/odh-model-controller -n opendatahub MAAS_NAMESPACE="$MAAS_API_NAMESPACE"
     fi
     
     # Wait for deployment to roll out
