@@ -59,7 +59,7 @@ Send a request to the model endpoint (should get a 200 OK response):
 curl -sSk -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-  "${MODEL_URL}/v1/completions"
+  "${MODEL_URL}/v1/completions | jq"
 ```
 
 ### 5. Test Authorization Enforcement
