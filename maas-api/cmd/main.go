@@ -113,12 +113,17 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	tierMapper := tier.NewMapper(cluster.ConfigMapLister, cfg.Name, cfg.Namespace)
 	v1Routes.POST("/tiers/lookup", tier.NewHandler(tierMapper).TierLookup)
 
-	modelMgr := models.NewManager(
+	modelMgr, errMgr := models.NewManager(
 		cluster.InferenceServiceLister,
 		cluster.LLMInferenceServiceLister,
 		cluster.HTTPRouteLister,
 		models.GatewayRef{Name: cfg.GatewayName, Namespace: cfg.GatewayNamespace},
 	)
+
+	if errMgr != nil {
+		log.Fatalf("Failed to create model manager: %v", errMgr)
+	}
+
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 
 	tokenManager := token.NewManager(

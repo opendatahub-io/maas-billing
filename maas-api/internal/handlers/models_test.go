@@ -87,12 +87,15 @@ func TestListingModels(t *testing.T) {
 		Name:      testGatewayName,
 		Namespace: testGatewayNamespace,
 	}
-	modelMgr := models.NewManager(
+
+	modelMgr, errMgr := models.NewManager(
 		clients.InferenceServiceLister,
 		clients.LLMInferenceServiceLister,
 		clients.HTTPRouteLister,
 		gatewayRef,
 	)
+	require.NoError(t, errMgr)
+
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	v1 := router.Group("/v1")
 	v1.GET("/models", modelsHandler.ListLLMs)

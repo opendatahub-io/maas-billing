@@ -253,12 +253,13 @@ func TestListAvailableLLMs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager := models.NewManager(
+			manager, errMgr := models.NewManager(
 				fixtures.NewInferenceServiceLister(),
 				fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects(tt.llmServices)...),
 				fixtures.NewHTTPRouteLister(fixtures.ToRuntimeObjects(tt.httpRoutes)...),
 				gateway,
 			)
+			require.NoError(t, errMgr)
 
 			availableModels, err := manager.ListAvailableLLMs()
 			require.NoError(t, err)

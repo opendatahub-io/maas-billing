@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"log"
 
@@ -26,13 +27,23 @@ func NewManager(
 	llmIsvcLister kservelistersv1alpha1.LLMInferenceServiceLister,
 	httpRouteLister gatewaylisters.HTTPRouteLister,
 	gatewayRef GatewayRef,
-) *Manager {
+) (*Manager, error) {
+	if isvcLister == nil {
+		return nil, errors.New("isvcLister is required")
+	}
+	if llmIsvcLister == nil {
+		return nil, errors.New("llmIsvcLister is required")
+	}
+	if httpRouteLister == nil {
+		return nil, errors.New("httpRouteLister is required")
+	}
+
 	return &Manager{
 		isvcLister:      isvcLister,
 		llmIsvcLister:   llmIsvcLister,
 		httpRouteLister: httpRouteLister,
 		gatewayRef:      gatewayRef,
-	}
+	}, nil
 }
 
 // ListAvailableModels lists all InferenceServices across all namespaces.
