@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -99,16 +99,22 @@ func main() {
 }
 
 // initStore creates the store based on configuration.
-// DATABASE_URL is required - the application will not start without it.
+// If DATABASE_URL is set (non-empty after trimming), connects to that database.
+// If DATABASE_URL is empty or not set, uses in-memory SQLite (ephemeral).
+//
+//nolint:ireturn // Returns Store interface by design for pluggable storage backends.
 func initStore(ctx context.Context, cfg *config.Config) (api_keys.Store, error) {
-	if cfg.DatabaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required. " +
-			"Please configure an external SQL database. " +
-			"See deployment/scripts/setup-postgres.sh for setting up a test database")
+	// Trim whitespace - empty strings are treated as "not set"
+	dbURL := strings.TrimSpace(cfg.DatabaseURL)
+	if dbURL != "" {
+		log.Printf("Connecting to database...")
+		return api_keys.NewSQLStore(ctx, dbURL)
 	}
 
-	log.Printf("Initializing SQL store...")
-	return api_keys.NewSQLStore(ctx, cfg.DatabaseURL)
+	log.Printf("WARNING: DATABASE_URL not set. Using in-memory storage (data will be lost on restart). " +
+		"For persistent storage, set DATABASE_URL to a database connection string. " +
+		"Examples: postgresql://user:pass@host:5432/db or sqlite:///data/maas.db")
+	return api_keys.NewSQLiteStore(ctx, ":memory:")
 }
 
 func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store api_keys.Store) {

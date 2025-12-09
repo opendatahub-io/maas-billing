@@ -167,8 +167,10 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Eng
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	// Use in-memory store for tests
-	store := api_keys.NewMemoryStore()
+	store, err := api_keys.NewSQLiteStore(context.Background(), ":memory:")
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test store: %v", err))
+	}
 
 	tokenHandler := token.NewHandler("test", manager)
 	apiKeyService := api_keys.NewService(manager, store)

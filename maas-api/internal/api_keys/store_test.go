@@ -1,6 +1,7 @@
 package api_keys_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -10,11 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//nolint:ireturn // Returns Store interface for test flexibility.
+func createTestStore(t *testing.T) api_keys.Store {
+	t.Helper()
+	ctx := context.Background()
+	store, err := api_keys.NewSQLiteStore(ctx, ":memory:")
+	require.NoError(t, err, "failed to create test store")
+	return store
+}
+
 func TestStore(t *testing.T) {
 	ctx := t.Context()
 
-	// Use in-memory store for tests
-	store := api_keys.NewMemoryStore()
+	store := createTestStore(t)
 	defer store.Close()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
@@ -74,7 +83,6 @@ func TestStore(t *testing.T) {
 
 		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user1")
 		require.NoError(t, err)
-		// Tokens should still exist but marked expired status
 		assert.Len(t, tokens, 2)
 		for _, tok := range tokens {
 			assert.Equal(t, api_keys.TokenStatusExpired, tok.Status)
@@ -87,7 +95,6 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("GetToken", func(t *testing.T) {
-		// Retrieve user2's token by JTI
 		gotToken, err := store.GetToken(ctx, "test-ns", "user2", "jti3")
 		require.NoError(t, err)
 		assert.NotNil(t, gotToken)
@@ -95,7 +102,6 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("ExpiredTokenStatus", func(t *testing.T) {
-		// Add an expired token
 		apiKey := &api_keys.APIKey{
 			Token: token.Token{
 				JTI:       "jti-expired",
@@ -118,7 +124,6 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("CrossNamespaceIsolation", func(t *testing.T) {
-		// Create tokens for the same username in two different namespaces
 		apiKey1 := &api_keys.APIKey{
 			Token: token.Token{
 				JTI:       "jti-ns1",
@@ -139,28 +144,109 @@ func TestStore(t *testing.T) {
 		err = store.AddTokenMetadata(ctx, "namespace-2", "shared-user", apiKey2)
 		require.NoError(t, err)
 
-		// Verify namespace-1 only returns tokens from namespace-1
 		tokens1, err := store.GetTokensForUser(ctx, "namespace-1", "shared-user")
 		require.NoError(t, err)
 		assert.Len(t, tokens1, 1)
 		assert.Equal(t, "ns1-token", tokens1[0].Name)
 		assert.Equal(t, "jti-ns1", tokens1[0].ID)
 
-		// Verify namespace-2 only returns tokens from namespace-2
 		tokens2, err := store.GetTokensForUser(ctx, "namespace-2", "shared-user")
 		require.NoError(t, err)
 		assert.Len(t, tokens2, 1)
 		assert.Equal(t, "ns2-token", tokens2[0].Name)
 		assert.Equal(t, "jti-ns2", tokens2[0].ID)
 
-		// Verify GetToken respects namespace
 		gotToken1, err := store.GetToken(ctx, "namespace-1", "shared-user", "jti-ns1")
 		require.NoError(t, err)
 		assert.Equal(t, "ns1-token", gotToken1.Name)
 
-		// Verify token from different namespace is not found
 		_, err = store.GetToken(ctx, "namespace-1", "shared-user", "jti-ns2")
 		require.Error(t, err)
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
+}
+
+func TestStoreValidation(t *testing.T) {
+	ctx := t.Context()
+	store := createTestStore(t)
+	defer store.Close()
+
+	t.Run("EmptyJTI", func(t *testing.T) {
+		apiKey := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "",
+				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+			},
+			Name: "token-no-jti",
+		}
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, api_keys.ErrEmptyJTI)
+	})
+
+	t.Run("EmptyName", func(t *testing.T) {
+		apiKey := &api_keys.APIKey{
+			Token: token.Token{
+				JTI:       "some-jti",
+				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
+			},
+			Name: "",
+		}
+		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, api_keys.ErrEmptyName)
+	})
+
+	t.Run("TokenNotFound", func(t *testing.T) {
+		_, err := store.GetToken(ctx, "test-ns", "nonexistent-user", "nonexistent-jti")
+		require.Error(t, err)
+		assert.Equal(t, api_keys.ErrTokenNotFound, err)
+	})
+}
+
+func TestConnectionStringParsing(t *testing.T) {
+	ctx := context.Background()
+
+	testCases := []struct {
+		name        string
+		connStr     string
+		expectError bool
+	}{
+		{
+			name:        "SQLite memory",
+			connStr:     ":memory:",
+			expectError: false,
+		},
+		{
+			name:        "SQLite with prefix",
+			connStr:     "sqlite://:memory:",
+			expectError: false,
+		},
+		{
+			name:        "Invalid connection string",
+			connStr:     "invalid://connection-string",
+			expectError: true,
+		},
+		{
+			name:        "Unknown format",
+			connStr:     "some-random-string",
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			store, err := api_keys.NewSQLStore(ctx, tc.connStr)
+			if tc.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				defer store.Close()
+
+				tokens, err := store.GetTokensForUser(ctx, "test", "user")
+				require.NoError(t, err)
+				assert.Empty(t, tokens)
+			}
+		})
+	}
 }

@@ -21,6 +21,7 @@ require (
 
 require (
 	github.com/jackc/pgx/v5 v5.7.6
+	github.com/mattn/go-sqlite3 v1.14.32
 	sigs.k8s.io/gateway-api v1.4.0
 )
 

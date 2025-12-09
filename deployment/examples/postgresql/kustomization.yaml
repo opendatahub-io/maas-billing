@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# PostgreSQL Example (HA Mode)
+#
+# This example shows how to configure maas-api with an external PostgreSQL database.
+# This mode supports HPA (multiple replicas) for high availability.
+#
+# Prerequisites:
+#   1. Deploy PostgreSQL using an operator (CloudNativePG, Crunchy, etc.)
+#      or use a managed service (RDS, Cloud SQL, etc.)
+#   2. Update secret.yaml with your actual database credentials
+#
+# Usage:
+#   kustomize build deployment/examples/postgresql | kubectl apply -f -
+#
+# For testing, you can use the helper script to deploy a simple PostgreSQL:
+#   ./deployment/scripts/setup-postgres.sh
+
+namespace: maas-api
+
+resources:
+  - ../../base/maas-api
+  - secret.yaml
+

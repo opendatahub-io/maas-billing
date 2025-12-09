@@ -22,7 +22,11 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        # Create secret: kubectl create secret generic database-config --from-literal=DATABASE_URL=<connection-string>
+        # Database connection URL (optional)
+        # If not set, uses in-memory SQLite (ephemeral - data lost on restart)
+        # For persistent storage, create a secret with DATABASE_URL:
+        #   kubectl create secret generic database-config \
+        #     --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/db"
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:

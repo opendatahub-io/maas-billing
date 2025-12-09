@@ -26,7 +26,13 @@ type Config struct {
 	DebugMode bool
 
 	// Database configuration
-	// DATABASE_URL for external SQL database connection 
+	// DATABASE_URL specifies the database connection.
+	// Supported formats:
+	//   - postgresql://user:pass@host:5432/dbname  → PostgreSQL
+	//   - sqlite:///path/to/file.db               → SQLite file
+	//   - /path/to/file.db                        → SQLite file
+	//   - :memory:                                → SQLite in-memory
+	//   - (empty or whitespace)                   → defaults to :memory:
 	DatabaseURL string
 }
 
@@ -57,5 +63,5 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.GatewayNamespace, "gateway-namespace", c.GatewayNamespace, "Namespace where MaaS-enabled Gateway is deployed")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
-	fs.StringVar(&c.DatabaseURL, "database-url", c.DatabaseURL, "SQL database connection URL")
+	fs.StringVar(&c.DatabaseURL, "database-url", c.DatabaseURL, "Database connection URL (postgresql://... or sqlite:///path or :memory:)")
 }

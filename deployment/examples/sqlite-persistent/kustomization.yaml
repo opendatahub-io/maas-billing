@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# SQLite Persistent Storage Example
+# Usage:
+#   kustomize build deployment/examples/sqlite-persistent | kubectl apply -f -
+
+namespace: maas-api
+
+resources:
+- ../../base/maas-api
+- pvc.yaml
+- secret.yaml
+patches:
+- patch: |-
+    - op: add
+      path: /spec/template/spec/volumes
+      value:
+        - name: data
+          persistentVolumeClaim:
+            claimName: maas-api-data
+    - op: add
+      path: /spec/template/spec/containers/0/volumeMounts
+      value:
+        - name: data
+          mountPath: /data
+  target:
+    kind: Deployment
+    name: maas-api
+images:
+- name: maas-api
+  newName: image-registry.openshift-image-registry.svc:5000/maas-api/maas-api
+  newTag: test-v2
