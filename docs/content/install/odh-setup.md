@@ -48,7 +48,7 @@ lws-controller-manager   2/2     2            2           35s
 ## Install Kuadrant
 
 [Kuadrant official documentation](https://docs.kuadrant.io/latest/install-olm/)
-is used as a base to install Kuadrant's latest version (v1.3.0+ is required) using the
+is used as a base to install Kuadrant's latest version (v1.3.1+ is required) using the
 OLM method.
 
 Start by creating the `kuadrant-system` namespace:

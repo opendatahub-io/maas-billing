@@ -2,6 +2,7 @@ package token
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -72,10 +73,52 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 func (h *Handler) IssueToken(c *gin.Context) {
 	// Log MAAS identity headers when issuing a new token
 	username := c.GetHeader("X-MAAS-USERNAME")
-	group := c.GetHeader("X-MAAS-GROUP")
-	source := c.GetHeader("X-MAAS-SOURCE")
-	log.Printf("POST /v1/tokens - MAAS Identity Headers - Username: %s, Groups: %s, Source: %s",
-		username, group, source)
+	groupHeader := c.GetHeader("X-MAAS-GROUP")
+	sourceHeader := c.GetHeader("X-MAAS-SOURCE")
+	customHeader := c.GetHeader("X-MAAS-CUSTOM")
+
+	// Debug: log raw header values
+	log.Printf("DEBUG - Raw source header: %q (len=%d)", sourceHeader, len(sourceHeader))
+	if customHeader != "" {
+		log.Printf("DEBUG - X-MAAS-CUSTOM header received: %q (len=%d)", customHeader, len(customHeader))
+	}
+
+	// Parse groups from JSON array format
+	var groups []string
+	if groupHeader != "" {
+		if err := json.Unmarshal([]byte(groupHeader), &groups); err != nil {
+			// If not JSON, treat as comma-separated string
+			if strings.Contains(groupHeader, ",") {
+				groups = strings.Split(groupHeader, ",")
+				for i := range groups {
+					groups[i] = strings.TrimSpace(groups[i])
+				}
+			} else {
+				groups = []string{groupHeader}
+			}
+		}
+	}
+
+	// Parse source - handle JSON-encoded strings
+	source := sourceHeader
+	if sourceHeader != "" {
+		// Try to unmarshal as JSON string (handles "kubernetes-local")
+		var decodedSource string
+		if err := json.Unmarshal([]byte(sourceHeader), &decodedSource); err == nil {
+			source = decodedSource
+		} else {
+			// If not valid JSON, use as-is but trim quotes
+			source = strings.Trim(sourceHeader, "\"")
+		}
+	}
+
+	log.Printf("POST /v1/tokens - MAAS Identity Headers - Username: %s, Groups: %v, Source: %s",
+		username, groups, source)
+
+	// Log custom header separately if present
+	if customHeader != "" {
+		log.Printf("POST /v1/tokens - X-MAAS-CUSTOM header: %s", customHeader)
+	}
 
 	var req Request
 	// BindJSON will still parse the request body, but we'll ignore the name field.
