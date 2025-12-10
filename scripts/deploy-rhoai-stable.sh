@@ -364,7 +364,7 @@ echo "6. Test rate limiting (200 OK followed by 429 Rate Limit Exceeded after ab
 echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\"; done"
 echo ""
 echo "7. Run validation script (Runs all the checks again):"
-echo "   curl https://raw.githubusercontent.com/opendatahub-io/models-as-a-service/refs/heads/${MAAS_REF}/deployment/scripts/validate-deployment.sh | sh -v -"
+echo "   curl https://raw.githubusercontent.com/opendatahub-io/models-as-a-service/refs/heads/${MAAS_REF}/scripts/validate-deployment.sh | sh -v -"
 echo ""
 echo "8. Check metrics generation:"
 echo "   kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080 &"
