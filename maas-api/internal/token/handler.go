@@ -31,8 +31,8 @@ func NewHandler(name string, manager TokenManager) *Handler {
 	}
 }
 
-// parseGroupsHeader parses the X-MAAS-GROUP header which comes as a JSON array
-// Format: "[\"group1\",\"group2\",\"group3\"]" (JSON-encoded array string)
+// parseGroupsHeader parses the X-MAAS-GROUP header which comes as a JSON array.
+// Format: "[\"group1\",\"group2\",\"group3\"]" (JSON-encoded array string).
 func parseGroupsHeader(header string) ([]string, error) {
 	if header == "" {
 		return nil, errors.New("header is empty")
@@ -59,7 +59,6 @@ func parseGroupsHeader(header string) ([]string, error) {
 // ExtractUserInfo extracts user information from X-MAAS-* headers set by the auth policy.
 func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		username := strings.TrimSpace(c.GetHeader("X-MAAS-USERNAME"))
 		groupHeader := c.GetHeader("X-MAAS-GROUP")
 		source := strings.TrimSpace(c.GetHeader("X-MAAS-SOURCE"))
@@ -115,7 +114,6 @@ func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 
 // IssueToken handles POST /v1/tokens for issuing ephemeral tokens.
 func (h *Handler) IssueToken(c *gin.Context) {
-
 	var req Request
 	// BindJSON will still parse the request body, but we'll ignore the name field.
 	if err := c.ShouldBindJSON(&req); err != nil {

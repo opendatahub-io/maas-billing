@@ -180,9 +180,7 @@ func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Eng
 	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
 	protected := router.Group("/v1")
-	if reviewer != nil {
-		protected.Use(tokenHandler.ExtractUserInfo(reviewer))
-	}
+	protected.Use(tokenHandler.ExtractUserInfo())
 	protected.POST("/tokens", tokenHandler.IssueToken)
 	protected.DELETE("/tokens", apiKeyHandler.RevokeAllTokens)
 
