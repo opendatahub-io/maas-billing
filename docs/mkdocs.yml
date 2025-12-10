@@ -66,6 +66,8 @@ nav:
       - Tier Concepts: configuration-and-management/tier-concepts.md
       - Token Management: configuration-and-management/token-management.md
     - Model Setup: configuration-and-management/model-setup.md
+    - Known Issues:
+      - Group Membership: configuration-and-management/group-membership-known-issues.md
     - Advanced Administration:
       - Observability: advanced-administration/observability.md
       - Limitador Persistence: advanced-administration/limitador-persistence.md
