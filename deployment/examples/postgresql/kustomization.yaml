@@ -7,19 +7,19 @@ kind: Kustomization
 # This mode supports HPA (multiple replicas) for high availability.
 #
 # Prerequisites:
-#   1. Deploy PostgreSQL using an operator (CloudNativePG, Crunchy, etc.)
-#      or use a managed service (RDS, Cloud SQL, etc.)
-#   2. Update secret.yaml with your actual database credentials
+#   1. Deploy PostgreSQL using an operator (recommended: CloudNativePG)
+#      See: https://cloudnative-pg.io/documentation/current/quickstart/
+#      Or use a managed service (RDS, Cloud SQL, etc.)
 #
-# Usage:
-#   kustomize build deployment/examples/postgresql | kubectl apply -f -
+#   2. Create the database secret (use secret_example.yaml as a template):
+#      cp deployment/examples/postgresql/secret_example.yaml my-secret.yaml
+#      # Edit my-secret.yaml with your actual DATABASE_URL
+#      kubectl apply -f my-secret.yaml -n maas-api
 #
-# For testing, you can use the helper script to deploy a simple PostgreSQL:
-#   ./deployment/scripts/setup-postgres.sh
+#   3. Deploy:
+#      kustomize build deployment/examples/postgresql | kubectl apply -f -
 
 namespace: maas-api
 
 resources:
   - ../../base/maas-api
-  - secret.yaml
-

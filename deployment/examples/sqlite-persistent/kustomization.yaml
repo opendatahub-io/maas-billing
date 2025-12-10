@@ -27,7 +27,3 @@ patches:
   target:
     kind: Deployment
     name: maas-api
-images:
-- name: maas-api
-  newName: image-registry.openshift-image-registry.svc:5000/maas-api/maas-api
-  newTag: test-v2
