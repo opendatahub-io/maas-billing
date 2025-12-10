@@ -242,7 +242,7 @@ if kubectl get namespace kuadrant-system &>/dev/null; then
         print_fail "No Kuadrant pods running" "Kuadrant operators may not be installed" "Check: kubectl get pods -n kuadrant-system"
     fi
 else
-    print_fail "Kuadrant namespace not found" "Kuadrant may not be installed" "Run: ./deployment/scripts/install-dependencies.sh --kuadrant"
+    print_fail "Kuadrant namespace not found" "Kuadrant may not be installed" "Run: ./scripts/install-dependencies.sh --kuadrant"
 fi
 
 # Check OpenDataHub/KServe pods
@@ -668,7 +668,7 @@ if [ "$FAILED" -eq 0 ]; then
     echo "  1. Deploy a model: kustomize build docs/samples/models/simulator | kubectl apply -f -"
     echo "  2. Access the API at: ${HOST:-https://maas.\${CLUSTER_DOMAIN}}"
     echo "  3. Check documentation: docs/README.md"
-    echo "  4. Re-run validation with specific model: ./deployment/scripts/validate-deployment.sh MODEL_NAME"
+    echo "  4. Re-run validation with specific model: ./scripts/validate-deployment.sh MODEL_NAME"
     exit 0
 else
     print_fail "Some checks failed. Please review the errors above."
@@ -676,9 +676,9 @@ else
     echo "Common fixes:"
     echo "  - Wait for pods to start: kubectl get pods -A | grep -v Running"
     echo "  - Check operator logs: kubectl logs -n kuadrant-system -l app.kubernetes.io/name=kuadrant-operator"
-    echo "  - Re-run deployment: ./deployment/scripts/deploy-openshift.sh"
+    echo "  - Re-run deployment: ./scripts/deploy-openshift.sh"
     echo ""
-    echo "Usage: ./deployment/scripts/validate-deployment.sh [MODEL_NAME]"
+    echo "Usage: ./scripts/validate-deployment.sh [MODEL_NAME]"
     echo "  MODEL_NAME: Optional. Specify a model to validate against"
     echo ""
     exit 1
