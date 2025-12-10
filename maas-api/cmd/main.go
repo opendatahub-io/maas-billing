@@ -149,20 +149,17 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	apiKeyService := api_keys.NewService(tokenManager, store)
 	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
-	// Create reviewer with audience to properly validate Service Account tokens
-	reviewer := token.NewReviewer(clusterConfig.ClientSet, cfg.Name+"-sa")
-
 	// Model listing endpoint (v1Routes is grouped under /v1, so this creates /v1/models)
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
-	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(reviewer), modelsHandler.ListLLMs)
+	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(), modelsHandler.ListLLMs)
 
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
-	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo(reviewer))
+	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo())
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", apiKeyHandler.RevokeAllTokens)
 
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
-	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo(reviewer))
+	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo())
 	apiKeyRoutes.POST("", apiKeyHandler.CreateAPIKey)
 	apiKeyRoutes.GET("", apiKeyHandler.ListAPIKeys)
 	apiKeyRoutes.GET("/:id", apiKeyHandler.GetAPIKey)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -30,39 +31,82 @@ func NewHandler(name string, manager TokenManager) *Handler {
 	}
 }
 
-// ExtractUserInfo validates kubernetes tokens.
-func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
+// parseGroupsHeader parses the X-MAAS-GROUP header which comes as a JSON array
+// Format: "[\"group1\",\"group2\",\"group3\"]" (JSON-encoded array string)
+func parseGroupsHeader(header string) ([]string, error) {
+	if header == "" {
+		return nil, errors.New("header is empty")
+	}
+
+	// Try to unmarshal as JSON array directly
+	var groups []string
+	if err := json.Unmarshal([]byte(header), &groups); err != nil {
+		return nil, fmt.Errorf("failed to parse header as JSON array: %w", err)
+	}
+
+	if len(groups) == 0 {
+		return nil, errors.New("no groups found in header")
+	}
+
+	// Trim whitespace from each group
+	for i := range groups {
+		groups[i] = strings.TrimSpace(groups[i])
+	}
+
+	return groups, nil
+}
+
+// ExtractUserInfo extracts user information from X-MAAS-* headers set by the auth policy.
+func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+
+		username := strings.TrimSpace(c.GetHeader("X-MAAS-USERNAME"))
+		groupHeader := c.GetHeader("X-MAAS-GROUP")
+		source := strings.TrimSpace(c.GetHeader("X-MAAS-SOURCE"))
+
+		// Validate required headers exist and are not empty
+		if username == "" {
+			log.Printf("Missing or empty X-MAAS-USERNAME header")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "X-MAAS-USERNAME header required and must not be empty"})
 			c.Abort()
 			return
 		}
 
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format. Use: Authorization: Bearer <token>"})
+		if groupHeader == "" {
+			log.Printf("Missing X-MAAS-GROUP header for user: %s", username)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "X-MAAS-GROUP header required"})
 			c.Abort()
 			return
 		}
 
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if source == "" {
+			log.Printf("Missing X-MAAS-SOURCE header for user: %s", username)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "X-MAAS-SOURCE header required"})
+			c.Abort()
+			return
+		}
 
-		// Validate with Manager (K8s validation)
-		userContext, err := h.manager.ValidateToken(c.Request.Context(), token, reviewer)
+		// Parse groups from header - format: "[group1 group2 group3]"
+		groups, err := parseGroupsHeader(groupHeader)
 		if err != nil {
-			log.Printf("Token validation failed: %v", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "validation failed"})
+			log.Printf("ERROR: Failed to parse X-MAAS-GROUP header. Header value: %q, Error: %v", groupHeader, err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("Invalid X-MAAS-GROUP header format: %v. Check auth policy configuration.", err),
+			})
 			c.Abort()
 			return
 		}
 
-		if !userContext.IsAuthenticated {
-			log.Printf("Token is not authenticated for user: %s", userContext.Username)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
-			c.Abort()
-			return
+		// Create UserContext from headers
+		userContext := &UserContext{
+			Username:        username,
+			Groups:          groups,
+			IsAuthenticated: true, // Headers are set by auth policy, so user is authenticated
+			// UID and JTI are not available from headers, leave empty
 		}
+
+		log.Printf("DEBUG - Extracted user info from headers - Username: %s, Groups: %v, Source: %s",
+			username, groups, source)
 
 		c.Set("user", userContext)
 		c.Next()
@@ -71,54 +115,7 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 
 // IssueToken handles POST /v1/tokens for issuing ephemeral tokens.
 func (h *Handler) IssueToken(c *gin.Context) {
-	// Log MAAS identity headers when issuing a new token
-	username := c.GetHeader("X-MAAS-USERNAME")
-	groupHeader := c.GetHeader("X-MAAS-GROUP")
-	sourceHeader := c.GetHeader("X-MAAS-SOURCE")
-	customHeader := c.GetHeader("X-MAAS-CUSTOM")
-
-	// Debug: log raw header values
-	log.Printf("DEBUG - Raw source header: %q (len=%d)", sourceHeader, len(sourceHeader))
-	if customHeader != "" {
-		log.Printf("DEBUG - X-MAAS-CUSTOM header received: %q (len=%d)", customHeader, len(customHeader))
-	}
-
-	// Parse groups from JSON array format
-	var groups []string
-	if groupHeader != "" {
-		if err := json.Unmarshal([]byte(groupHeader), &groups); err != nil {
-			// If not JSON, treat as comma-separated string
-			if strings.Contains(groupHeader, ",") {
-				groups = strings.Split(groupHeader, ",")
-				for i := range groups {
-					groups[i] = strings.TrimSpace(groups[i])
-				}
-			} else {
-				groups = []string{groupHeader}
-			}
-		}
-	}
-
-	// Parse source - handle JSON-encoded strings
-	source := sourceHeader
-	if sourceHeader != "" {
-		// Try to unmarshal as JSON string (handles "kubernetes-local")
-		var decodedSource string
-		if err := json.Unmarshal([]byte(sourceHeader), &decodedSource); err == nil {
-			source = decodedSource
-		} else {
-			// If not valid JSON, use as-is but trim quotes
-			source = strings.Trim(sourceHeader, "\"")
-		}
-	}
-
-	log.Printf("POST /v1/tokens - MAAS Identity Headers - Username: %s, Groups: %v, Source: %s",
-		username, groups, source)
-
-	// Log custom header separately if present
-	if customHeader != "" {
-		log.Printf("POST /v1/tokens - X-MAAS-CUSTOM header: %s", customHeader)
-	}
+	h.ExtractUserInfo()(c)
 
 	var req Request
 	// BindJSON will still parse the request body, but we'll ignore the name field.
@@ -143,6 +140,13 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	user, ok := userCtx.(*UserContext)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
+		return
+	}
+
+	// Safety check: ensure username is not empty
+	if strings.TrimSpace(user.Username) == "" {
+		log.Printf("User context has empty username")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User context is invalid: username is empty"})
 		return
 	}
 

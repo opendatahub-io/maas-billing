@@ -24,7 +24,7 @@ spec:
               selector: auth.identity.user.username
           X-MAAS-GROUP:
             plain:
-              selector: auth.identity.user.groups
+              selector: auth.identity.user.groups.@tostr
           X-MAAS-SOURCE:
             plain:
-              value: kubernetes-local
+              expression: "'kubernetes-local'"
