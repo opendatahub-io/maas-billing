@@ -235,3 +235,11 @@ EOF
 
 kubectl delete pod -l control-plane=controller-manager -n kuadrant-system
 ```
+
+!!!Warning "Modifying Tiers During Active Usage"
+    Modifying the tier definitions (ConfigMap) while users have active requests may cause side effects due to caching and eventual consistency. See [Tier Modification Known Issues](./tier-modification-known-issues.md) for details on:
+
+    - Propagation delays for group changes
+    - Rate limit policy mismatches
+    - Monitoring inconsistencies
+    - Service interruptions on tier deletion
