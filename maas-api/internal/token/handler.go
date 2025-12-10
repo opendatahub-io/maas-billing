@@ -115,7 +115,6 @@ func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 
 // IssueToken handles POST /v1/tokens for issuing ephemeral tokens.
 func (h *Handler) IssueToken(c *gin.Context) {
-	h.ExtractUserInfo()(c)
 
 	var req Request
 	// BindJSON will still parse the request body, but we'll ignore the name field.
@@ -140,13 +139,6 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	user, ok := userCtx.(*UserContext)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
-		return
-	}
-
-	// Safety check: ensure username is not empty
-	if strings.TrimSpace(user.Username) == "" {
-		log.Printf("User context has empty username")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User context is invalid: username is empty"})
 		return
 	}
 

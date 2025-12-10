@@ -14,7 +14,7 @@ spec:
       openshift-identities:
         kubernetesTokenReview:
           audiences:
-            - https://kubernetes.default.svc  
+            - https://kubernetes.default.svc
             - maas-default-gateway-sa
     response:
       success:

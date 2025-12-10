@@ -22,4 +22,4 @@ labels:
 images:
   - name: maas-api
     newName: quay.io/maas/maas-api
-    newTag: header-flow
+    newTag: latest
