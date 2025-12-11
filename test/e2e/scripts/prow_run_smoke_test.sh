@@ -16,8 +16,7 @@
 #      - Edit user (edit role) 
 #      - View user (view role)
 #   5. Run token metadata verification (as admin user)
-#   6. Run storage persistence verification (as admin user)
-#   7. Run smoke tests for each user
+#   6. Run smoke tests for each user
 # 
 # USAGE:
 #   ./test/e2e/scripts/prow_run_smoke_test.sh

@@ -204,49 +204,43 @@ func TestStoreValidation(t *testing.T) {
 	})
 }
 
-func TestConnectionStringParsing(t *testing.T) {
+func TestSQLiteStore(t *testing.T) {
 	ctx := context.Background()
 
-	testCases := []struct {
-		name        string
-		connStr     string
-		expectError bool
-	}{
-		{
-			name:        "SQLite memory",
-			connStr:     ":memory:",
-			expectError: false,
-		},
-		{
-			name:        "SQLite with prefix",
-			connStr:     "sqlite://:memory:",
-			expectError: false,
-		},
-		{
-			name:        "Invalid connection string",
-			connStr:     "invalid://connection-string",
-			expectError: true,
-		},
-		{
-			name:        "Unknown format",
-			connStr:     "some-random-string",
-			expectError: true,
-		},
-	}
+	t.Run("InMemory", func(t *testing.T) {
+		store, err := api_keys.NewSQLiteStore(ctx, ":memory:")
+		require.NoError(t, err)
+		defer store.Close()
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			store, err := api_keys.NewSQLStore(ctx, tc.connStr)
-			if tc.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				defer store.Close()
+		tokens, err := store.List(ctx, "test", "user")
+		require.NoError(t, err)
+		assert.Empty(t, tokens)
+	})
 
-				tokens, err := store.List(ctx, "test", "user")
-				require.NoError(t, err)
-				assert.Empty(t, tokens)
-			}
-		})
-	}
+	t.Run("EmptyPath", func(t *testing.T) {
+		// Empty path should default to in-memory
+		store, err := api_keys.NewSQLiteStore(ctx, "")
+		require.NoError(t, err)
+		defer store.Close()
+
+		tokens, err := store.List(ctx, "test", "user")
+		require.NoError(t, err)
+		assert.Empty(t, tokens)
+	})
+}
+
+func TestExternalStore(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("InvalidURL", func(t *testing.T) {
+		_, err := api_keys.NewExternalStore(ctx, "mysql://localhost:3306/db")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported external database URL")
+	})
+
+	t.Run("EmptyURL", func(t *testing.T) {
+		_, err := api_keys.NewExternalStore(ctx, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported external database URL")
+	})
 }

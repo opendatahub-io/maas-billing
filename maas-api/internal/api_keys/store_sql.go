@@ -22,34 +22,6 @@ type SQLStore struct {
 
 var _ MetadataStore = (*SQLStore)(nil)
 
-func NewSQLStore(ctx context.Context, databaseURL string) (*SQLStore, error) {
-	dbType, driverName, dsn, err := parseConnectionString(databaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid database URL: %w", err)
-	}
-
-	db, err := sql.Open(driverName, dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-
-	configureConnectionPool(db, dbType)
-
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
-
-	s := &SQLStore{db: db, dbType: dbType}
-	if err := s.initSchema(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-
-	log.Printf("Connected to %s database", dbType)
-	return s, nil
-}
-
 // NewSQLiteStore creates a SQLite store with a file path.
 // Use ":memory:" for an in-memory database (ephemeral, for testing).
 // Use a file path like "/data/maas-api.db" for persistent storage.

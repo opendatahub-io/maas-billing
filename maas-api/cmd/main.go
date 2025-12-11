@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -98,23 +99,40 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-// initStore creates the store based on configuration.
-// If DATABASE_URL is set (non-empty after trimming), connects to that database.
-// If DATABASE_URL is empty or not set, uses in-memory SQLite (ephemeral).
+// initStore creates the store based on the configured storage mode.
+//
+// Storage modes:
+//   - in-memory (default): Ephemeral storage, data lost on restart
+//   - disk: Persistent local storage using a file (single replica only)
+//   - external: External database (PostgreSQL), supports multiple replicas
 //
 //nolint:ireturn // Returns MetadataStore interface by design for pluggable storage backends.
 func initStore(ctx context.Context, cfg *config.Config) (api_keys.MetadataStore, error) {
-	// Trim whitespace - empty strings are treated as "not set"
-	dbURL := strings.TrimSpace(cfg.DatabaseURL)
-	if dbURL != "" {
-		log.Printf("Connecting to database...")
-		return api_keys.NewSQLStore(ctx, dbURL)
-	}
+	switch cfg.StorageMode {
+	case config.StorageModeInMemory, "":
+		log.Printf("Using in-memory storage (data will be lost on restart). " +
+			"For persistent storage, use --storage=disk or --storage=external")
+		return api_keys.NewSQLiteStore(ctx, ":memory:")
 
-	log.Printf("WARNING: DATABASE_URL not set. Using in-memory storage (data will be lost on restart). " +
-		"For persistent storage, set DATABASE_URL to a database connection string. " +
-		"Examples: postgresql://user:pass@host:5432/db or sqlite:///data/maas.db")
-	return api_keys.NewSQLiteStore(ctx, ":memory:")
+	case config.StorageModeDisk:
+		dataPath := strings.TrimSpace(cfg.DataPath)
+		if dataPath == "" {
+			dataPath = config.DefaultDataPath
+		}
+		log.Printf("Using persistent disk storage at %s", dataPath)
+		return api_keys.NewSQLiteStore(ctx, dataPath)
+
+	case config.StorageModeExternal:
+		dbURL := strings.TrimSpace(cfg.DBConnectionURL)
+		if dbURL == "" {
+			return nil, errors.New("--db-connection-url is required when using --storage=external")
+		}
+		log.Printf("Connecting to external database...")
+		return api_keys.NewExternalStore(ctx, dbURL)
+
+	default:
+		return nil, fmt.Errorf("unknown storage mode: %q (valid modes: in-memory, disk, external)", cfg.StorageMode)
+	}
 }
 
 func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store api_keys.MetadataStore) {

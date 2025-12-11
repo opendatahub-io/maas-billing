@@ -101,9 +101,9 @@ deploy_in_memory() {
 }
 
 deploy_sqlite_pvc() {
-    step "Deploying SQLite with PVC mode..."
+    step "Deploying Disk storage mode (persistent volume)..."
     kubectl delete deployment maas-api -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=60s >/dev/null 2>&1
-    kustomize build "${PROJECT_ROOT}/deployment/examples/sqlite-persistent" | kubectl apply -f - >/dev/null 2>&1
+    kustomize build "${PROJECT_ROOT}/deployment/overlays/sqlite-pvc" | kubectl apply -f - >/dev/null 2>&1
     kubectl rollout status deployment/maas-api -n "$NAMESPACE" --timeout=120s >/dev/null 2>&1
     wait_for_api
     ok "Deployed (persistent volume)"
@@ -180,11 +180,15 @@ EOF
     info "Configuring database credentials..."
     local pgpassword=$(kubectl get secret maas-postgres-app -n "$NAMESPACE" -o jsonpath='{.data.password}' | base64 -d)
     kubectl create secret generic database-config \
-        --from-literal=DATABASE_URL="postgresql://app:${pgpassword}@maas-postgres-rw:5432/app?sslmode=require" \
+        --from-literal=DB_CONNECTION_URL="postgresql://app:${pgpassword}@maas-postgres-rw:5432/app?sslmode=require" \
         -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null 2>&1
     
     kubectl delete deployment maas-api -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=60s >/dev/null 2>&1
-    kustomize build "${PROJECT_ROOT}/deployment/examples/postgresql" | kubectl apply -f - >/dev/null 2>&1
+    # Apply base deployment with external storage mode
+    kustomize build "${PROJECT_ROOT}/deployment/overlays/openshift" | kubectl apply -f - >/dev/null 2>&1
+    # Patch deployment to use external storage (must set command explicitly for args to work)
+    kubectl patch deployment maas-api -n "$NAMESPACE" --type='json' \
+        -p='[{"op":"add","path":"/spec/template/spec/containers/0/command","value":["./maas-api"]},{"op":"add","path":"/spec/template/spec/containers/0/args","value":["--storage=external"]},{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"DB_CONNECTION_URL","valueFrom":{"secretKeyRef":{"name":"database-config","key":"DB_CONNECTION_URL"}}}}]' >/dev/null 2>&1
     kubectl rollout status deployment/maas-api -n "$NAMESPACE" --timeout=120s >/dev/null 2>&1
     wait_for_api
     ok "Deployed (PostgreSQL via CloudNativePG)"
@@ -343,10 +347,10 @@ run_storage_test() {
 main() {
     banner "MaaS API Storage Modes Verification"
     
-    echo -e "\n${W}Testing 3 storage backends:${NC}"
-    echo -e "  ${B}1.${NC} In-Memory SQLite  ${Y}(ephemeral - data lost on restart)${NC}"
-    echo -e "  ${B}2.${NC} SQLite with PVC   ${G}(persistent - survives restart)${NC}"
-    echo -e "  ${B}3.${NC} PostgreSQL        ${G}(persistent - survives restart)${NC}"
+    echo -e "\n${W}Testing 3 storage modes:${NC}"
+    echo -e "  ${B}1.${NC} In-Memory (--storage=in-memory)  ${Y}(ephemeral - data lost on restart)${NC}"
+    echo -e "  ${B}2.${NC} Disk (--storage=disk)            ${G}(persistent - survives restart)${NC}"
+    echo -e "  ${B}3.${NC} External (--storage=external)    ${G}(persistent - survives restart)${NC}"
     
     discover_gateway
     info "Gateway: $GATEWAY_URL"
@@ -366,26 +370,26 @@ main() {
         echo -e "\n${R}═══ In-Memory SQLite: FAIL ═══${NC}"
     fi
     
-    banner "Mode 2: SQLite with PVC"
+    banner "Mode 2: Disk Storage"
     cleanup_all
     deploy_sqlite_pvc
-    if run_storage_test "sqlite" "true"; then
+    if run_storage_test "disk" "true"; then
         ((total_pass++))
-        echo -e "\n${G}═══ SQLite with PVC: PASS ═══${NC}"
+        echo -e "\n${G}═══ Disk Storage: PASS ═══${NC}"
     else
         ((total_fail++))
-        echo -e "\n${R}═══ SQLite with PVC: FAIL ═══${NC}"
+        echo -e "\n${R}═══ Disk Storage: FAIL ═══${NC}"
     fi
     
-    banner "Mode 3: PostgreSQL"
+    banner "Mode 3: External Database"
     cleanup_all
     deploy_postgresql
-    if run_storage_test "postgres" "true"; then
+    if run_storage_test "external" "true"; then
         ((total_pass++))
-        echo -e "\n${G}═══ PostgreSQL: PASS ═══${NC}"
+        echo -e "\n${G}═══ External Database: PASS ═══${NC}"
     else
         ((total_fail++))
-        echo -e "\n${R}═══ PostgreSQL: FAIL ═══${NC}"
+        echo -e "\n${R}═══ External Database: FAIL ═══${NC}"
     fi
     
     banner "Verification Complete"

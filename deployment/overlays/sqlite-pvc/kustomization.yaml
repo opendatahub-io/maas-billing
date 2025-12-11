@@ -1,16 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# SQLite Persistent Storage Example
+# SQLite with PVC Overlay
+# Uses local disk storage (survives pod restarts, single-replica only)
+#
 # Usage:
-#   kustomize build deployment/examples/sqlite-persistent | kubectl apply -f -
+#   kustomize build deployment/overlays/sqlite-pvc | kubectl apply -f -
 
 namespace: maas-api
 
 resources:
-- ../../base/maas-api
+- ../openshift
 - pvc.yaml
-- secret.yaml
 
 patches:
 - patch: |-
@@ -26,13 +27,14 @@ patches:
         - name: data
           mountPath: /data
     - op: add
-      path: /spec/template/spec/containers/0/env/-
+      path: /spec/template/spec/containers/0/command
       value:
-        name: DATABASE_URL
-        valueFrom:
-          secretKeyRef:
-            name: database-config
-            key: DATABASE_URL
+        - ./maas-api
+    - op: add
+      path: /spec/template/spec/containers/0/args
+      value:
+        - --storage=disk
   target:
     kind: Deployment
     name: maas-api
+

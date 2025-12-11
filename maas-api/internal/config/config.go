@@ -8,6 +8,18 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 )
 
+// StorageMode represents the storage backend type.
+type StorageMode string
+
+const (
+	StorageModeInMemory StorageMode = "in-memory"
+	StorageModeDisk StorageMode = "disk"
+	StorageModeExternal StorageMode = "external"
+)
+
+// For disk storage.
+const DefaultDataPath = "/data/maas-api.db"
+
 // Config holds application configuration.
 type Config struct {
 	// Name of the "MaaS Instance" maas-api handles keys for
@@ -25,15 +37,18 @@ type Config struct {
 	// Executable-specific configuration
 	DebugMode bool
 
-	// Database configuration
-	// DATABASE_URL specifies the database connection.
-	// Supported formats:
-	//   - postgresql://user:pass@host:5432/dbname  → PostgreSQL
-	//   - sqlite:///path/to/file.db               → SQLite file
-	//   - /path/to/file.db                        → SQLite file
-	//   - :memory:                                → SQLite in-memory
-	//   - (empty or whitespace)                   → defaults to :memory:
-	DatabaseURL string
+	// StorageMode specifies the storage backend type:
+	//   - "in-memory" (default): Ephemeral storage, data lost on restart
+	//   - "disk": Persistent local storage using a file (single replica only)
+	//   - "external": External database (PostgreSQL), supports multiple replicas
+	StorageMode StorageMode
+
+	// DBConnectionURL is the database connection URL for external mode.
+	DBConnectionURL string
+
+	// DataPath is the path to the database file for disk mode.
+	// Default: /data/maas-api.db
+	DataPath string
 }
 
 // Load loads configuration from environment variables.
@@ -48,7 +63,9 @@ func Load() *Config {
 		GatewayNamespace: env.GetString("GATEWAY_NAMESPACE", constant.DefaultGatewayNamespace),
 		Port:             env.GetString("PORT", "8080"),
 		DebugMode:        debugMode,
-		DatabaseURL:      env.GetString("DATABASE_URL", ""),
+		StorageMode:      StorageMode(env.GetString("STORAGE_MODE", string(StorageModeInMemory))),
+		DBConnectionURL:  env.GetString("DB_CONNECTION_URL", ""),
+		DataPath:         env.GetString("DATA_PATH", DefaultDataPath),
 	}
 	c.bindFlags(flag.CommandLine)
 
@@ -63,5 +80,19 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.GatewayNamespace, "gateway-namespace", c.GatewayNamespace, "Namespace where MaaS-enabled Gateway is deployed")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
-	fs.StringVar(&c.DatabaseURL, "database-url", c.DatabaseURL, "Database connection URL (postgresql://... or sqlite:///path or :memory:)")
+	fs.Var((*storageModeValue)(&c.StorageMode), "storage", "Storage mode: in-memory (default), disk, or external")
+	fs.StringVar(&c.DBConnectionURL, "db-connection-url", c.DBConnectionURL, "Database connection URL (required for --storage=external)")
+	fs.StringVar(&c.DataPath, "data-path", c.DataPath, "Path to database file (for --storage=disk)")
+}
+
+// storageModeValue implements flag.Value for StorageMode.
+type storageModeValue StorageMode
+
+func (s *storageModeValue) String() string {
+	return string(*s)
+}
+
+func (s *storageModeValue) Set(value string) error {
+	*s = storageModeValue(value)
+	return nil
 }

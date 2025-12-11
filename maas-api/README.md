@@ -214,22 +214,37 @@ curl -sSk \
 
 ### Storage Configuration
 
-By default, maas-api uses **in-memory SQLite** (data lost on restart). For persistent storage, use one of the [deployment examples](../deployment/examples/README.md):
+maas-api supports three storage modes, controlled by the `--storage` flag:
 
-| Mode | Use Case | Deploy Command |
-|------|----------|----------------|
-| **In-memory** (default) | Development/testing 
-| **SQLite persistent** | Single replica, demos | `kustomize build deployment/examples/sqlite-persistent \| kubectl apply -f -` |
-| **PostgreSQL** | Production, HA | `kustomize build deployment/examples/postgresql \| kubectl apply -f -` |
+| Mode | Flag | Use Case | HPA Support | Persistence |
+|------|------|----------|-------------|-------------|
+| **In-memory** (default) | `--storage=in-memory` | Development/testing | ❌ | ❌ Data lost on restart |
+| **Disk** | `--storage=disk` | Single replica, demos | ❌ | ✅ Survives restarts |
+| **External** | `--storage=external` | Production, HA | ✅ Multiple replicas | ✅ Full persistence |
 
-#### Environment Variables
+#### Quick Start
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | (empty = in-memory) | Database connection string. Formats: `postgresql://...`, `sqlite:///path`, `:memory:` |
-| `DB_MAX_OPEN_CONNS` | 25 | Max open connections (PostgreSQL only) |
-| `DB_MAX_IDLE_CONNS` | 5 | Max idle connections (PostgreSQL only) |
-| `DB_CONN_MAX_LIFETIME_SECONDS` | 300 | Connection max lifetime in seconds (PostgreSQL only) |
+```bash
+# In-memory (default - no configuration needed)
+
+# Disk storage (persistent, single replica)
+kustomize build deployment/overlays/sqlite-pvc | kubectl apply -f -
+
+# External database - see docs/samples/database/external for configuration
+```
+
+#### Configuration Flags and Environment Variables
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `--storage` | `STORAGE_MODE` | `in-memory` | Storage mode: `in-memory`, `disk`, or `external` |
+| `--db-connection-url` | `DB_CONNECTION_URL` | - | Database URL (required for `--storage=external`) |
+| `--data-path` | `DATA_PATH` | `/data/maas-api.db` | Path for disk storage |
+| - | `DB_MAX_OPEN_CONNS` | 25 | Max open connections (external mode only) |
+| - | `DB_MAX_IDLE_CONNS` | 5 | Max idle connections (external mode only) |
+| - | `DB_CONN_MAX_LIFETIME_SECONDS` | 300 | Connection max lifetime in seconds (external mode only) |
+
+For detailed external database setup instructions, see [docs/samples/database/external](../docs/samples/database/external/README.md).
 
 #### Calling the model and hitting the rate limit
 

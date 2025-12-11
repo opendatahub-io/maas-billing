@@ -1,8 +1,10 @@
 package api_keys
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -23,37 +25,36 @@ const (
 	sqliteMemory = ":memory:"
 )
 
-// parseConnectionString determines the database type and returns the appropriate driver and DSN.
-// Returns an error if the connection string format is unrecognized.
-func parseConnectionString(connStr string) (DBType, string, string, error) {
-	connStr = strings.TrimSpace(connStr)
+// Currently supports PostgreSQL only.
+func NewExternalStore(ctx context.Context, databaseURL string) (*SQLStore, error) {
+	databaseURL = strings.TrimSpace(databaseURL)
 
-	if strings.HasPrefix(connStr, "postgresql://") || strings.HasPrefix(connStr, "postgres://") {
-		return DBTypePostgres, driverPostgres, connStr, nil
+	if !strings.HasPrefix(databaseURL, "postgresql://") && !strings.HasPrefix(databaseURL, "postgres://") {
+		return nil, fmt.Errorf(
+			"unsupported external database URL: %q. Currently supported: postgresql://",
+			databaseURL)
 	}
 
-	if path, found := strings.CutPrefix(connStr, "sqlite://"); found {
-		if path == "" || path == sqliteMemory {
-			return DBTypeSQLite, driverSQLite, sqliteMemory, nil
-		}
-		return DBTypeSQLite, driverSQLite, path + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", nil
+	db, err := sql.Open(driverPostgres, databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open PostgreSQL database: %w", err)
 	}
 
-	if strings.HasPrefix(connStr, "file:") {
-		return DBTypeSQLite, driverSQLite, connStr, nil
+	configureConnectionPool(db, DBTypePostgres)
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to connect to PostgreSQL database: %w", err)
 	}
 
-	if connStr == sqliteMemory {
-		return DBTypeSQLite, driverSQLite, sqliteMemory, nil
+	s := &SQLStore{db: db, dbType: DBTypePostgres}
+	if err := s.initSchema(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	if strings.HasSuffix(connStr, ".db") || strings.HasSuffix(connStr, ".sqlite") || strings.HasSuffix(connStr, ".sqlite3") {
-		return DBTypeSQLite, driverSQLite, connStr + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", nil
-	}
-
-	return "", "", "", fmt.Errorf(
-		"unrecognized database URL format: %q. Supported formats: postgresql://..., sqlite:///path, file:path, :memory:, or .db/.sqlite/.sqlite3 file paths",
-		connStr)
+	log.Printf("Connected to external PostgreSQL database")
+	return s, nil
 }
 
 // placeholder returns the appropriate SQL placeholder for the database type.
@@ -88,4 +89,3 @@ func configureConnectionPool(db *sql.DB, dbType DBType) {
 		db.SetConnMaxLifetime(0)
 	}
 }
-
