@@ -62,9 +62,7 @@ func (h *Handler) ExtractUserInfo(reviewer *Reviewer) gin.HandlerFunc {
 		}
 
 		if !userContext.IsAuthenticated {
-			h.logger.WithContext(c.Request.Context()).Warn("Token is not authenticated",
-				"username", userContext.Username,
-			)
+			h.logger.WithContext(c.Request.Context()).Warn("Token is not authenticated")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 			c.Abort()
 			return
@@ -118,7 +116,6 @@ func (h *Handler) IssueToken(c *gin.Context) {
 	if err != nil {
 		h.logger.WithContext(c.Request.Context()).Error("Failed to generate token",
 			"error", err,
-			"username", user.Username,
 			"expiration", expiration.String(),
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})

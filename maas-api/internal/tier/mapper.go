@@ -40,9 +40,7 @@ func NewMapper(ctx context.Context, log *logger.Logger, clientset kubernetes.Int
 	informerFactory.Start(ctx.Done())
 
 	if !cache.WaitForCacheSync(ctx.Done(), configMapInformer.Informer().HasSynced) {
-		log.Fatal("Failed to wait for caches to sync",
-			"namespace", namespace,
-		)
+		log.Fatal("Failed to wait for caches to sync")
 	}
 
 	return &Mapper{
@@ -83,7 +81,6 @@ func (m *Mapper) GetTierForGroups(groups ...string) (*Tier, error) {
 		}
 		m.logger.Error("Failed to load tier configuration from ConfigMap",
 			"configmap", constant.TierMappingConfigMap,
-			"namespace", m.namespace,
 			"error", err,
 		)
 		return nil, fmt.Errorf("failed to load tier configuration: %w", err)
@@ -123,7 +120,6 @@ func (m *Mapper) loadTierConfig() ([]Tier, error) {
 	if !exists {
 		m.logger.Warn("Tiers key not found in ConfigMap",
 			"configmap", constant.TierMappingConfigMap,
-			"namespace", m.namespace,
 		)
 		return nil, errors.New("tier to group mapping configuration not found")
 	}

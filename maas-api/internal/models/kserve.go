@@ -59,10 +59,7 @@ func (m *Manager) inferenceServicesToModels(ctx context.Context, items []kservev
 	for _, item := range items {
 		url := m.findInferenceServiceURL(ctx, &item)
 		if url == nil {
-			log.Debug("Failed to find URL for InferenceService",
-				"namespace", item.Namespace,
-				"name", item.Name,
-			)
+			log.Debug("Failed to find URL for InferenceService")
 		}
 
 		modelID := item.Name
@@ -94,10 +91,7 @@ func (m *Manager) findInferenceServiceURL(ctx context.Context, is *kservev1beta1
 		return is.Status.Address.URL
 	}
 
-	m.logger.WithContext(ctx).Debug("No URL found for InferenceService",
-		"namespace", is.Namespace,
-		"name", is.Name,
-	)
+	m.logger.WithContext(ctx).Debug("No URL found for InferenceService")
 	return nil
 }
 
@@ -108,8 +102,6 @@ func (m *Manager) checkInferenceServiceReadiness(ctx context.Context, is *kserve
 
 	if is.Generation > 0 && is.Status.ObservedGeneration != is.Generation {
 		m.logger.WithContext(ctx).Debug("ObservedGeneration is stale, not ready yet",
-			"namespace", is.Namespace,
-			"name", is.Name,
 			"observed_generation", is.Status.ObservedGeneration,
 			"expected_generation", is.Generation,
 		)
@@ -117,10 +109,7 @@ func (m *Manager) checkInferenceServiceReadiness(ctx context.Context, is *kserve
 	}
 
 	if len(is.Status.Conditions) == 0 {
-		m.logger.WithContext(ctx).Debug("No conditions found for InferenceService",
-			"namespace", is.Namespace,
-			"name", is.Name,
-		)
+		m.logger.WithContext(ctx).Debug("No conditions found for InferenceService")
 		return false
 	}
 

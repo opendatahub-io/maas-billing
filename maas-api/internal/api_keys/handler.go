@@ -78,7 +78,6 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 	if err != nil {
 		h.logger.WithContext(c.Request.Context()).Error("Failed to generate API key",
 			"error", err,
-			"username", user.Username,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate api key"})
 		return
@@ -111,7 +110,6 @@ func (h *Handler) ListAPIKeys(c *gin.Context) {
 	if err != nil {
 		h.logger.WithContext(c.Request.Context()).Error("Failed to list API keys",
 			"error", err,
-			"username", user.Username,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list api keys"})
 		return
@@ -147,8 +145,6 @@ func (h *Handler) GetAPIKey(c *gin.Context) {
 		}
 		h.logger.WithContext(c.Request.Context()).Error("Failed to get API key",
 			"error", err,
-			"username", user.Username,
-			"token_id", tokenID,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API key"})
 		return
@@ -174,14 +170,11 @@ func (h *Handler) RevokeAllTokens(c *gin.Context) {
 	if err := h.service.RevokeAll(c.Request.Context(), user); err != nil {
 		h.logger.WithContext(c.Request.Context()).Error("Failed to revoke tokens",
 			"error", err,
-			"username", user.Username,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke tokens"})
 		return
 	}
 
-	h.logger.WithContext(c.Request.Context()).Debug("Successfully revoked tokens for user",
-		"username", user.Username,
-	)
+	h.logger.WithContext(c.Request.Context()).Debug("Successfully revoked tokens")
 	c.Status(http.StatusNoContent)
 }

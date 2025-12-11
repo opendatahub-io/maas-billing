@@ -54,7 +54,6 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	_ = name
 
 	log := m.logger.WithContext(ctx).WithFields(
-		"username", user.Username,
 		"expiration", expiration.String(),
 	)
 
@@ -71,13 +70,11 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("failed to ensure tier namespace for tier %s: %w", userTier.Name, errNs)
 	}
 
-	log = log.WithFields("namespace", namespace)
 	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, userTier.Name)
 	if errSA != nil {
 		return nil, fmt.Errorf("failed to ensure service account for user %s in namespace %s: %w", user.Username, namespace, errSA)
 	}
 
-	log = log.WithFields("service_account", saName)
 	token, errToken := m.createServiceAccountToken(ctx, namespace, saName, int(expiration.Seconds()))
 	if errToken != nil {
 		return nil, fmt.Errorf("failed to create token for service account %s in namespace %s: %w", saName, namespace, errToken)
@@ -130,7 +127,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 // RevokeTokens revokes all tokens for a user by recreating their Service Account.
 // Returns the namespace where the revocation happened.
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, error) {
-	log := m.logger.WithContext(ctx).WithFields("username", user.Username)
+	log := m.logger.WithContext(ctx)
 
 	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
@@ -143,13 +140,11 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, 
 		return "", fmt.Errorf("failed to determine namespace for tier %s: %w", userTier.Name, errNS)
 	}
 
-	log = log.WithFields("namespace", namespace)
 	saName, errName := m.sanitizeServiceAccountName(user.Username)
 	if errName != nil {
 		return namespace, fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
 	}
 
-	log = log.WithFields("service_account", saName)
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if errors.IsNotFound(err) {
 		log.Debug("Service account not found, nothing to revoke")
@@ -199,28 +194,20 @@ func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Rev
 	}
 
 	if !userCtx.IsAuthenticated {
-		log.Warn("TokenReview returned IsAuthenticated=false",
-			"username", userCtx.Username,
-		)
+		log.Warn("TokenReview returned IsAuthenticated=false")
 		return userCtx, nil
 	}
 
-	log.Debug("TokenReview successful",
-		"username", userCtx.Username,
-	)
+	log.Debug("TokenReview successful")
 
 	// 2. Check user type
 	// If it is a User token (not SA), we should allow it (Bootstrap/Admin access)
 	if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
-		log.Debug("Allowing non-SA token",
-			"username", userCtx.Username,
-		)
+		log.Debug("Allowing non-SA token")
 		return userCtx, nil
 	}
 
-	log.Debug("Token validation successful",
-		"username", userCtx.Username,
-	)
+	log.Debug("Token validation successful")
 	return userCtx, nil
 }
 
@@ -257,7 +244,6 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 	}
 
 	m.logger.WithContext(ctx).Info("Created tier namespace",
-		"namespace", namespace,
 		"tier", tier,
 	)
 	return namespace, nil
@@ -296,9 +282,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 		return "", fmt.Errorf("failed to create service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Info("Created service account",
-		"service_account", saName,
-		"namespace", namespace,
+	m.logger.WithContext(ctx).Debug("Created service account",
 		"tier", userTier,
 	)
 	return saName, nil
@@ -334,10 +318,7 @@ func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName st
 		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Info("Deleted service account",
-		"service_account", saName,
-		"namespace", namespace,
-	)
+	m.logger.WithContext(ctx).Debug("Deleted service account")
 	return nil
 }
 

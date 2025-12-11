@@ -156,8 +156,6 @@ func (s *Store) MarkTokensAsExpiredForUser(ctx context.Context, namespace, usern
 
 	rows, _ := result.RowsAffected()
 	s.logger.WithFields(
-		"username", username,
-		"namespace", namespace,
 		"affected_rows", rows,
 	).Debug("Marked tokens as expired")
 	return nil
@@ -197,9 +195,6 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 		expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
 		if err != nil {
 			s.logger.WithFields(
-				"token_id", t.ID,
-				"username", username,
-				"namespace", namespace,
 				"expiration_date", t.ExpirationDate,
 				"error", err,
 			).Warn("Failed to parse expiration date; marking as expired")
@@ -242,9 +237,6 @@ func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (
 	expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
 	if err != nil {
 		s.logger.WithFields(
-			"token_id", t.ID,
-			"username", username,
-			"namespace", namespace,
 			"expiration_date", t.ExpirationDate,
 			"error", err,
 		).Warn("Failed to parse expiration date; marking as expired")
