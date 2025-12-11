@@ -20,7 +20,7 @@ type SQLStore struct {
 	dbType DBType
 }
 
-var _ Store = (*SQLStore)(nil)
+var _ MetadataStore = (*SQLStore)(nil)
 
 func NewSQLStore(ctx context.Context, databaseURL string) (*SQLStore, error) {
 	dbType, driverName, dsn, err := parseConnectionString(databaseURL)
@@ -129,7 +129,7 @@ func (s *SQLStore) placeholder(index int) string {
 	return placeholder(s.dbType, index)
 }
 
-func (s *SQLStore) AddTokenMetadata(ctx context.Context, namespace, username string, apiKey *APIKey) error {
+func (s *SQLStore) Add(ctx context.Context, namespace, username string, apiKey *APIKey) error {
 	jti := strings.TrimSpace(apiKey.JTI)
 	if jti == "" {
 		return ErrEmptyJTI
@@ -166,7 +166,7 @@ func (s *SQLStore) AddTokenMetadata(ctx context.Context, namespace, username str
 	return nil
 }
 
-func (s *SQLStore) MarkTokensAsExpiredForUser(ctx context.Context, namespace, username string) error {
+func (s *SQLStore) InvalidateAll(ctx context.Context, namespace, username string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
@@ -186,7 +186,7 @@ func (s *SQLStore) MarkTokensAsExpiredForUser(ctx context.Context, namespace, us
 	return nil
 }
 
-func (s *SQLStore) GetTokensForUser(ctx context.Context, namespace, username string) ([]ApiKeyMetadata, error) {
+func (s *SQLStore) List(ctx context.Context, namespace, username string) ([]ApiKeyMetadata, error) {
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
 	SELECT id, name, COALESCE(description, ''), creation_date, expiration_date
@@ -225,7 +225,7 @@ func (s *SQLStore) GetTokensForUser(ctx context.Context, namespace, username str
 	return tokens, nil
 }
 
-func (s *SQLStore) GetToken(ctx context.Context, namespace, username, jti string) (*ApiKeyMetadata, error) {
+func (s *SQLStore) Get(ctx context.Context, namespace, username, jti string) (*ApiKeyMetadata, error) {
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
 	SELECT id, name, COALESCE(description, ''), creation_date, expiration_date

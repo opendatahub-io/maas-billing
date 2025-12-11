@@ -12,14 +12,15 @@ const (
 	TokenStatusExpired = "expired"
 )
 
-type Store interface {
-	AddTokenMetadata(ctx context.Context, namespace, username string, apiKey *APIKey) error
+type MetadataStore interface {
+	Add(ctx context.Context, namespace, username string, apiKey *APIKey) error
 
-	GetTokensForUser(ctx context.Context, namespace, username string) ([]ApiKeyMetadata, error)
+	List(ctx context.Context, namespace, username string) ([]ApiKeyMetadata, error)
 
-	GetToken(ctx context.Context, namespace, username, jti string) (*ApiKeyMetadata, error)
+	Get(ctx context.Context, namespace, username, jti string) (*ApiKeyMetadata, error)
 
-	MarkTokensAsExpiredForUser(ctx context.Context, namespace, username string) error
+	// InvalidateAll marks all active tokens for a user as expired.
+	InvalidateAll(ctx context.Context, namespace, username string) error
 
 	Close() error
 }

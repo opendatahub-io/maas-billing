@@ -210,7 +210,26 @@ curl -sSk \
 ```
 
 > [!NOTE]
-> API keys are stored in a SQLite database (`/data/maas.db` in the container) with metadata including creation date, expiration date, and status. They can be listed and inspected individually. To revoke tokens, use `DELETE /v1/tokens` which revokes all tokens (ephemeral and API keys) by recreating the Service Account and marking API key metadata as expired.
+> API keys are stored in the configured database (see [Storage Configuration](#storage-configuration)) with metadata including creation date, expiration date, and status. They can be listed and inspected individually. To revoke tokens, use `DELETE /v1/tokens` which revokes all tokens (ephemeral and API keys) by recreating the Service Account and marking API key metadata as expired.
+
+### Storage Configuration
+
+By default, maas-api uses **in-memory SQLite** (data lost on restart). For persistent storage, use one of the [deployment examples](../deployment/examples/README.md):
+
+| Mode | Use Case | Deploy Command |
+|------|----------|----------------|
+| **In-memory** (default) | Development/testing 
+| **SQLite persistent** | Single replica, demos | `kustomize build deployment/examples/sqlite-persistent \| kubectl apply -f -` |
+| **PostgreSQL** | Production, HA | `kustomize build deployment/examples/postgresql \| kubectl apply -f -` |
+
+#### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | (empty = in-memory) | Database connection string. Formats: `postgresql://...`, `sqlite:///path`, `:memory:` |
+| `DB_MAX_OPEN_CONNS` | 25 | Max open connections (PostgreSQL only) |
+| `DB_MAX_IDLE_CONNS` | 5 | Max idle connections (PostgreSQL only) |
+| `DB_CONN_MAX_LIFETIME_SECONDS` | 300 | Connection max lifetime in seconds (PostgreSQL only) |
 
 #### Calling the model and hitting the rate limit
 

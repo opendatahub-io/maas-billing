@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//nolint:ireturn // Returns Store interface for test flexibility.
-func createTestStore(t *testing.T) api_keys.Store {
+//nolint:ireturn // Returns MetadataStore interface for test flexibility.
+func createTestStore(t *testing.T) api_keys.MetadataStore {
 	t.Helper()
 	ctx := context.Background()
 	store, err := api_keys.NewSQLiteStore(ctx, ":memory:")
@@ -34,10 +34,10 @@ func TestStore(t *testing.T) {
 			},
 			Name: "token1",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "test-ns", "user1", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "test-ns", "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token1", tokens[0].Name)
@@ -52,10 +52,10 @@ func TestStore(t *testing.T) {
 			},
 			Name: "token2",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "test-ns", "user1", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "test-ns", "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 2)
 	})
@@ -68,20 +68,20 @@ func TestStore(t *testing.T) {
 			},
 			Name: "token3",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user2", apiKey)
+		err := store.Add(ctx, "test-ns", "user2", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user2")
+		tokens, err := store.List(ctx, "test-ns", "user2")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token3", tokens[0].Name)
 	})
 
 	t.Run("MarkTokensAsExpiredForUser", func(t *testing.T) {
-		err := store.MarkTokensAsExpiredForUser(ctx, "test-ns", "user1")
+		err := store.InvalidateAll(ctx, "test-ns", "user1")
 		require.NoError(t, err)
 
-		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "test-ns", "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 2)
 		for _, tok := range tokens {
@@ -89,13 +89,13 @@ func TestStore(t *testing.T) {
 		}
 
 		// User2 should still exist
-		tokens2, err := store.GetTokensForUser(ctx, "test-ns", "user2")
+		tokens2, err := store.List(ctx, "test-ns", "user2")
 		require.NoError(t, err)
 		assert.Len(t, tokens2, 1)
 	})
 
 	t.Run("GetToken", func(t *testing.T) {
-		gotToken, err := store.GetToken(ctx, "test-ns", "user2", "jti3")
+		gotToken, err := store.Get(ctx, "test-ns", "user2", "jti3")
 		require.NoError(t, err)
 		assert.NotNil(t, gotToken)
 		assert.Equal(t, "token3", gotToken.Name)
@@ -109,16 +109,16 @@ func TestStore(t *testing.T) {
 			},
 			Name: "expired-token",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user4", apiKey)
+		err := store.Add(ctx, "test-ns", "user4", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.GetTokensForUser(ctx, "test-ns", "user4")
+		tokens, err := store.List(ctx, "test-ns", "user4")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, api_keys.TokenStatusExpired, tokens[0].Status)
 
 		// Get single token check
-		gotToken, err := store.GetToken(ctx, "test-ns", "user4", "jti-expired")
+		gotToken, err := store.Get(ctx, "test-ns", "user4", "jti-expired")
 		require.NoError(t, err)
 		assert.Equal(t, api_keys.TokenStatusExpired, gotToken.Status)
 	})
@@ -131,7 +131,7 @@ func TestStore(t *testing.T) {
 			},
 			Name: "ns1-token",
 		}
-		err := store.AddTokenMetadata(ctx, "namespace-1", "shared-user", apiKey1)
+		err := store.Add(ctx, "namespace-1", "shared-user", apiKey1)
 		require.NoError(t, err)
 
 		apiKey2 := &api_keys.APIKey{
@@ -141,26 +141,26 @@ func TestStore(t *testing.T) {
 			},
 			Name: "ns2-token",
 		}
-		err = store.AddTokenMetadata(ctx, "namespace-2", "shared-user", apiKey2)
+		err = store.Add(ctx, "namespace-2", "shared-user", apiKey2)
 		require.NoError(t, err)
 
-		tokens1, err := store.GetTokensForUser(ctx, "namespace-1", "shared-user")
+		tokens1, err := store.List(ctx, "namespace-1", "shared-user")
 		require.NoError(t, err)
 		assert.Len(t, tokens1, 1)
 		assert.Equal(t, "ns1-token", tokens1[0].Name)
 		assert.Equal(t, "jti-ns1", tokens1[0].ID)
 
-		tokens2, err := store.GetTokensForUser(ctx, "namespace-2", "shared-user")
+		tokens2, err := store.List(ctx, "namespace-2", "shared-user")
 		require.NoError(t, err)
 		assert.Len(t, tokens2, 1)
 		assert.Equal(t, "ns2-token", tokens2[0].Name)
 		assert.Equal(t, "jti-ns2", tokens2[0].ID)
 
-		gotToken1, err := store.GetToken(ctx, "namespace-1", "shared-user", "jti-ns1")
+		gotToken1, err := store.Get(ctx, "namespace-1", "shared-user", "jti-ns1")
 		require.NoError(t, err)
 		assert.Equal(t, "ns1-token", gotToken1.Name)
 
-		_, err = store.GetToken(ctx, "namespace-1", "shared-user", "jti-ns2")
+		_, err = store.Get(ctx, "namespace-1", "shared-user", "jti-ns2")
 		require.Error(t, err)
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
@@ -179,7 +179,7 @@ func TestStoreValidation(t *testing.T) {
 			},
 			Name: "token-no-jti",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "test-ns", "user1", apiKey)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, api_keys.ErrEmptyJTI)
 	})
@@ -192,13 +192,13 @@ func TestStoreValidation(t *testing.T) {
 			},
 			Name: "",
 		}
-		err := store.AddTokenMetadata(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "test-ns", "user1", apiKey)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, api_keys.ErrEmptyName)
 	})
 
 	t.Run("TokenNotFound", func(t *testing.T) {
-		_, err := store.GetToken(ctx, "test-ns", "nonexistent-user", "nonexistent-jti")
+		_, err := store.Get(ctx, "test-ns", "nonexistent-user", "nonexistent-jti")
 		require.Error(t, err)
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
@@ -243,7 +243,7 @@ func TestConnectionStringParsing(t *testing.T) {
 				require.NoError(t, err)
 				defer store.Close()
 
-				tokens, err := store.GetTokensForUser(ctx, "test", "user")
+				tokens, err := store.List(ctx, "test", "user")
 				require.NoError(t, err)
 				assert.Empty(t, tokens)
 			}

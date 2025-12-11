@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 	_ "github.com/mattn/go-sqlite3"    // SQLite driver
+	"k8s.io/utils/env"
 )
 
 type DBType string
@@ -64,13 +65,24 @@ func placeholder(dbType DBType, index int) string {
 	return fmt.Sprintf("$%d", index)
 }
 
+const (
+	defaultMaxOpenConns        = 25
+	defaultMaxIdleConns        = 5
+	defaultConnMaxLifetimeSecs = 300
+)
+
 // configureConnectionPool sets optimal connection pool settings based on database type.
 func configureConnectionPool(db *sql.DB, dbType DBType) {
 	if dbType == DBTypePostgres {
-		db.SetMaxOpenConns(25)
-		db.SetMaxIdleConns(5)
-		db.SetConnMaxLifetime(5 * time.Minute)
+		maxOpenConns, _ := env.GetInt("DB_MAX_OPEN_CONNS", defaultMaxOpenConns)
+		maxIdleConns, _ := env.GetInt("DB_MAX_IDLE_CONNS", defaultMaxIdleConns)
+		connMaxLifetimeSecs, _ := env.GetInt("DB_CONN_MAX_LIFETIME_SECONDS", defaultConnMaxLifetimeSecs)
+
+		db.SetMaxOpenConns(maxOpenConns)
+		db.SetMaxIdleConns(maxIdleConns)
+		db.SetConnMaxLifetime(time.Duration(connMaxLifetimeSecs) * time.Second)
 	} else {
+		// SQLite: single connection to avoid database locking issues
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 		db.SetConnMaxLifetime(0)

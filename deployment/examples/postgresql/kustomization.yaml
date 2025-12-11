@@ -23,3 +23,6 @@ namespace: maas-api
 
 resources:
   - ../../base/maas-api
+
+patches:
+  - path: database-env-patch.yaml

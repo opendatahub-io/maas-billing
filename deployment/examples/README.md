@@ -6,7 +6,7 @@ These examples show how to configure maas-api with different storage backends.
 
 | Mode | Description | HPA Support | Persistence |
 |------|-------------|-------------|-------------|
-| **Default** | In-memory SQLite | ❌ | ❌ Data lost on restart |
+| **Default (base)** | In-memory SQLite | ❌ | ❌ Data lost on restart |
 | **sqlite-persistent** | SQLite with PVC | ❌ Single replica | ✅ Survives restarts |
 | **postgresql** | External PostgreSQL | ✅ Multiple replicas | ✅ Full persistence |
 
@@ -14,7 +14,7 @@ These examples show how to configure maas-api with different storage backends.
 
 Deploy with no configuration - uses in-memory storage
 
-⚠️ **Warning**: Data is lost when the pod restarts.
+⚠️ **Warning**: Data is lost when the pod restarts. Use one of the overlay examples for persistent storage.
 
 ## SQLite Persistent Storage
 
@@ -27,6 +27,7 @@ kustomize build deployment/examples/sqlite-persistent | kubectl apply -f -
 This creates:
 - A 1Gi PersistentVolumeClaim
 - A secret with `DATABASE_URL=sqlite:///data/maas-api.db`
+- Volume mounts for the database file
 
 ## PostgreSQL (Production/HA)
 
@@ -81,14 +82,37 @@ kubectl create secret generic database-config \
   -n maas-api
 ```
 
-## Custom Configuration
+### PostgreSQL Connection Pool Configuration
 
-To use a custom database URL without the examples:
+For high-availability scenarios with multiple replicas or connection poolers (like PgBouncer), you can tune the connection pool settings via environment variables:
 
-```bash
-# Create the secret directly
-kubectl create secret generic database-config \
-  --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/db" \
-  -n maas-api
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_MAX_OPEN_CONNS` | 25 | Maximum number of open connections to the database |
+| `DB_MAX_IDLE_CONNS` | 5 | Maximum number of idle connections in the pool |
+| `DB_CONN_MAX_LIFETIME_SECONDS` | 300 | Maximum time (seconds) a connection can be reused |
+
+Example patch to customize connection pool settings:
+
+```yaml
+# connection-pool-patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maas-api
+spec:
+  template:
+    spec:
+      containers:
+      - name: maas-api
+        env:
+        - name: DB_MAX_OPEN_CONNS
+          value: "50"
+        - name: DB_MAX_IDLE_CONNS
+          value: "10"
+        - name: DB_CONN_MAX_LIFETIME_SECONDS
+          value: "600"
 ```
+
+**Note**: These settings only apply to PostgreSQL. SQLite always uses a single connection to avoid database locking issues.
 

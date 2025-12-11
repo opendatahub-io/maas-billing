@@ -11,6 +11,7 @@ resources:
 - ../../base/maas-api
 - pvc.yaml
 - secret.yaml
+
 patches:
 - patch: |-
     - op: add
@@ -24,6 +25,14 @@ patches:
       value:
         - name: data
           mountPath: /data
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: DATABASE_URL
+        valueFrom:
+          secretKeyRef:
+            name: database-config
+            key: DATABASE_URL
   target:
     kind: Deployment
     name: maas-api

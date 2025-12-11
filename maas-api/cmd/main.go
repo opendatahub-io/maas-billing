@@ -102,8 +102,8 @@ func main() {
 // If DATABASE_URL is set (non-empty after trimming), connects to that database.
 // If DATABASE_URL is empty or not set, uses in-memory SQLite (ephemeral).
 //
-//nolint:ireturn // Returns Store interface by design for pluggable storage backends.
-func initStore(ctx context.Context, cfg *config.Config) (api_keys.Store, error) {
+//nolint:ireturn // Returns MetadataStore interface by design for pluggable storage backends.
+func initStore(ctx context.Context, cfg *config.Config) (api_keys.MetadataStore, error) {
 	// Trim whitespace - empty strings are treated as "not set"
 	dbURL := strings.TrimSpace(cfg.DatabaseURL)
 	if dbURL != "" {
@@ -117,7 +117,7 @@ func initStore(ctx context.Context, cfg *config.Config) (api_keys.Store, error) 
 	return api_keys.NewSQLiteStore(ctx, ":memory:")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store api_keys.Store) {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store api_keys.MetadataStore) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
