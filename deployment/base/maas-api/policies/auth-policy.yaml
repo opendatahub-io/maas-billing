@@ -2,7 +2,6 @@ apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
   name: maas-api-auth-policy
-  namespace: maas-api
 spec:
   targetRef:
     group: gateway.networking.k8s.io
