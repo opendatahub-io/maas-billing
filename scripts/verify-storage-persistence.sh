@@ -428,11 +428,137 @@ wait_for_api_healthy() {
     return 1
 }
 
+# Deploy PostgreSQL for testing (simple single-instance, not for production)
+deploy_test_postgres() {
+    echo -e "${BLUE}  Deploying test PostgreSQL instance...${NC}"
+    
+    # Deploy PostgreSQL using OpenShift-compatible image (works with random UIDs)
+    kubectl apply -n "$NAMESPACE" -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: $NAMESPACE
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        # Use Red Hat's PostgreSQL image which is OpenShift-compatible (works with arbitrary UIDs)
+        image: registry.redhat.io/rhel9/postgresql-15:latest
+        env:
+        - name: POSTGRESQL_USER
+          value: maas
+        - name: POSTGRESQL_PASSWORD
+          value: maas-test-password
+        - name: POSTGRESQL_DATABASE
+          value: maas_api
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          exec:
+            command: ["/usr/libexec/check-container"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["/usr/libexec/check-container", "--live"]
+          initialDelaySeconds: 120
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: $NAMESPACE
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+EOF
+
+    echo -n "  Waiting for PostgreSQL to be ready... "
+    if kubectl wait --for=condition=available deployment/postgres -n "$NAMESPACE" --timeout=180s >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Ready${NC}"
+    else
+        echo -e "${RED}✗ Timeout${NC}"
+        kubectl logs -n "$NAMESPACE" -l app=postgres --tail=10 2>/dev/null || true
+        return 1
+    fi
+    
+    # Create the database-config secret for maas-api
+    kubectl create secret generic database-config \
+        --from-literal=DATABASE_URL="postgresql://maas:maas-test-password@postgres:5432/maas_api?sslmode=disable" \
+        -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    
+    echo -e "${GREEN}  ✓ PostgreSQL deployed and secret created${NC}"
+    return 0
+}
+
+# Clean up PostgreSQL test deployment
+cleanup_test_postgres() {
+    kubectl delete deployment postgres -n "$NAMESPACE" --ignore-not-found=true --wait=false 2>/dev/null || true
+    kubectl delete service postgres -n "$NAMESPACE" --ignore-not-found=true 2>/dev/null || true
+}
+
+# Clean up storage mode resources before deploying a new mode
+cleanup_storage_mode() {
+    echo "  Cleaning up previous deployment..."
+    
+    # Delete the deployment first (this will terminate pods)
+    kubectl delete deployment maas-api -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=60s 2>/dev/null || true
+    
+    # Delete PVC if exists (sqlite-persistent mode creates this)
+    kubectl delete pvc maas-api-data -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=60s 2>/dev/null || true
+    
+    # Delete database-config secret if exists
+    kubectl delete secret database-config -n "$NAMESPACE" --ignore-not-found=true 2>/dev/null || true
+    
+    # Clean up test PostgreSQL if exists
+    cleanup_test_postgres
+    
+    # Wait for pods to terminate
+    local max_wait=30
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        local pod_count
+        pod_count=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=maas-api --no-headers 2>/dev/null | wc -l || echo "0")
+        if [ "$pod_count" -eq 0 ]; then
+            break
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    
+    echo "  ✓ Cleanup complete"
+}
+
 # Deploy a specific storage mode using kustomize
 deploy_storage_mode() {
     local mode="$1"
     
     echo -e "${BLUE}Deploying storage mode: $mode${NC}"
+    
+    # Clean up before deploying new mode
+    cleanup_storage_mode
     
     local kustomize_path
     case "$mode" in
@@ -443,9 +569,12 @@ deploy_storage_mode() {
             kustomize_path="${PROJECT_ROOT}/deployment/examples/sqlite-persistent"
             ;;
         postgres)
-            echo -e "${YELLOW}  ⚠ PostgreSQL requires external database setup${NC}"
-            echo -e "${YELLOW}  Skipping deployment - assuming PostgreSQL is already configured${NC}"
-            return 0
+            # Deploy test PostgreSQL instance first
+            if ! deploy_test_postgres; then
+                echo -e "${RED}  ✗ Failed to deploy test PostgreSQL${NC}"
+                return 1
+            fi
+            kustomize_path="${PROJECT_ROOT}/deployment/examples/postgresql"
             ;;
         *)
             echo -e "${RED}Unknown storage mode: $mode${NC}"
@@ -460,14 +589,28 @@ deploy_storage_mode() {
     fi
     
     echo -n "  Waiting for deployment rollout... "
-    if kubectl rollout status deployment/maas-api -n "$NAMESPACE" --timeout=120s >/dev/null 2>&1; then
+    local max_wait=30
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        if kubectl get deployment maas-api -n "$NAMESPACE" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    
+    if kubectl rollout status deployment/maas-api -n "$NAMESPACE" --timeout=180s >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Ready${NC}"
     else
         echo -e "${RED}✗ Timeout${NC}"
+        echo "  Debug: Pod status:"
+        kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=maas-api 2>/dev/null || true
+        kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=maas-api --tail=10 2>/dev/null || true
         return 1
     fi
     
-    sleep 3
+    wait_for_api_healthy || return 1
+    
     return 0
 }
 
@@ -563,6 +706,8 @@ test_all_storage_modes() {
     echo -e "${CYAN}  Testing All Storage Modes          ${NC}"
     echo -e "${CYAN}======================================${NC}"
     
+    # Test all 3 storage modes: memory, sqlite, postgres
+    # PostgreSQL is deployed as a test instance during the test
     local modes=("memory" "sqlite" "postgres")
     local results=()
     local failed=0
@@ -577,7 +722,8 @@ test_all_storage_modes() {
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         
         if ! deploy_storage_mode "$mode"; then
-            results+=("$mode: SKIP (deployment failed)")
+            results+=("$mode: ✗ FAIL (deployment failed)")
+            failed=$((failed + 1))
             continue
         fi
         
@@ -599,10 +745,8 @@ test_all_storage_modes() {
     for result in "${results[@]}"; do
         if [[ "$result" == *"PASS"* ]]; then
             echo -e "  ${GREEN}$result${NC}"
-        elif [[ "$result" == *"FAIL"* ]]; then
-            echo -e "  ${RED}$result${NC}"
         else
-            echo -e "  ${YELLOW}$result${NC}"
+            echo -e "  ${RED}$result${NC}"
         fi
     done
     

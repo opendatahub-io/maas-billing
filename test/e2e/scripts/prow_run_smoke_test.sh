@@ -91,8 +91,9 @@ check_prerequisites() {
 }
 
 deploy_maas_platform() {
-    # Set custom MaaS API image
+    # Set custom MaaS API image and export for child processes (storage test)
     : "${MAAS_API_IMAGE:=quay.io/opendatahub/maas-api:latest}"
+    export MAAS_API_IMAGE
     echo "Using custom MaaS API image: ${MAAS_API_IMAGE}"
     pushd "$PROJECT_ROOT/deployment/base/maas-api" > /dev/null
     kustomize edit set image maas-api="${MAAS_API_IMAGE}"
