@@ -26,9 +26,9 @@
 #   --namespace NS        Namespace where maas-api is deployed (default: maas-api)
 #
 # ENVIRONMENT VARIABLES:
-#   GATEWAY_URL   - Override gateway URL discovery
-#   NAMESPACE     - Override namespace (default: maas-api)
-#   PROJECT_ROOT  - Project root directory (auto-detected if not set)
+#   GATEWAY_URL        - Override gateway URL discovery
+#   MAAS_API_NAMESPACE - Override namespace (default: maas-api)
+#   PROJECT_ROOT       - Project root directory (auto-detected if not set)
 # =============================================================================
 
 set -euo pipefail
@@ -41,6 +41,8 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
+# Use MAAS_API_NAMESPACE instead of NAMESPACE to avoid inheriting from CI environment
+# (Prow CI sets NAMESPACE to the CI runner namespace, not the target namespace)
 NAMESPACE="${MAAS_API_NAMESPACE:-maas-api}"
 STORAGE_MODE=""
 SKIP_RESTART=false
@@ -428,6 +430,50 @@ wait_for_api_healthy() {
     return 1
 }
 
+# Wait for authentication to be ready after deployment
+# The AuthPolicy (Kuadrant/Authorino) needs time to be enforced after pod restart
+wait_for_auth_ready() {
+    echo -n "  Waiting for authentication to be ready... "
+    
+    local oc_token
+    oc_token=$(get_oc_token)
+    
+    if [ -z "$oc_token" ]; then
+        echo -e "${RED}✗ Failed to get OC token${NC}"
+        return 1
+    fi
+    
+    local max_attempts=30
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        local response http_status
+        response=$(curl -sSk \
+            -H "Authorization: Bearer $oc_token" \
+            -w "\n%{http_code}" \
+            "${GATEWAY_URL}/maas-api/v1/models" 2>/dev/null || echo -e "\n000")
+        
+        http_status=$(echo "$response" | tail -1)
+        
+        if [ "$http_status" == "200" ]; then
+            echo -e "${GREEN}✓ Ready${NC}"
+            return 0
+        fi
+        
+        # 401/403 means auth not ready yet, other errors might be different issues
+        if [ "$http_status" != "401" ] && [ "$http_status" != "403" ] && [ "$http_status" != "000" ] && [ "$http_status" != "503" ]; then
+            echo -e "${YELLOW}⚠ Unexpected status $http_status, but continuing${NC}"
+            return 0
+        fi
+        
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+    
+    echo -e "${RED}✗ Authentication not ready after $max_attempts attempts${NC}"
+    return 1
+}
+
 # Deploy PostgreSQL for testing (simple single-instance, not for production)
 deploy_test_postgres() {
     echo -e "${BLUE}  Deploying test PostgreSQL instance...${NC}"
@@ -611,6 +657,9 @@ deploy_storage_mode() {
     
     wait_for_api_healthy || return 1
     
+    # Wait for authentication to be ready (AuthPolicy needs time to be enforced)
+    wait_for_auth_ready || return 1
+    
     return 0
 }
 
@@ -661,6 +710,9 @@ run_single_mode_test() {
     
     restart_maas_api_pod || return 1
     wait_for_api_healthy || return 1
+    
+    # Wait for authentication to be ready after restart
+    wait_for_auth_ready || return 1
     
     oc_token=$(get_oc_token)
     
@@ -812,6 +864,9 @@ main() {
         restart_maas_api_pod
         
         wait_for_api_healthy
+        
+        # Wait for authentication to be ready after restart
+        wait_for_auth_ready
         
         echo ""
         echo -e "${MAGENTA}4. Verifying persistence after restart...${NC}"
