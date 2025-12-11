@@ -9,23 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	authv1 "k8s.io/api/authentication/v1"
-
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
 func TestIssueToken_ExpirationFormats(t *testing.T) {
-	tokenScenarios := map[string]fixtures.TokenReviewScenario{
-		"duration-test-token": {
-			Authenticated: true,
-			UserInfo: authv1.UserInfo{
-				Username: "duration-test@example.com",
-				UID:      "duration-uid",
-				Groups:   []string{"system:authenticated"},
-			},
-		},
-	}
-
 	tests := []struct {
 		name                   string
 		expiration             string
@@ -156,9 +143,9 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager, reviewer, _, cleanup := fixtures.StubTokenProviderAPIs(t, true, tokenScenarios)
+			manager, _, cleanup := fixtures.StubTokenProviderAPIs(t, true)
 			defer cleanup()
-			router, cleanupRouter := fixtures.SetupTestRouter(manager, reviewer)
+			router, cleanupRouter := fixtures.SetupTestRouter(manager)
 			defer func() {
 				if err := cleanupRouter(); err != nil {
 					t.Logf("Router cleanup error: %v", err)

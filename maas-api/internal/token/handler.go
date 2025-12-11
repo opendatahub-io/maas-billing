@@ -16,7 +16,6 @@ import (
 
 type TokenManager interface {
 	GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error)
-	ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error)
 }
 
 type Handler struct {
@@ -98,10 +97,8 @@ func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 
 		// Create UserContext from headers
 		userContext := &UserContext{
-			Username:        username,
-			Groups:          groups,
-			IsAuthenticated: true, // Headers are set by auth policy, so user is authenticated
-			// UID and JTI are not available from headers, leave empty
+			Username: username,
+			Groups:   groups,
 		}
 
 		log.Printf("DEBUG - Extracted user info from headers - Username: %s, Groups: %v, Source: %s",
