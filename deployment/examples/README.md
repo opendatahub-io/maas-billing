@@ -47,14 +47,46 @@ For production with high availability (HPA support):
 
 ### Setting Up PostgreSQL with CloudNativePG
 
-CloudNativePG is a CNCF project that simplifies PostgreSQL deployment on Kubernetes:
+CloudNativePG is a CNCF project that simplifies PostgreSQL deployment on Kubernetes.
+
+#### OpenShift (Recommended)
+
+Install the **Red Hat certified operator** from OperatorHub:
+
+1. In the OpenShift Console, go to **Operators → OperatorHub**
+2. Search for **CloudNativePG**
+3. Install the operator (select the `openshift-operators` namespace)
+
+Or via CLI:
+```bash
+oc apply -f - <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: cloudnative-pg
+  namespace: openshift-operators
+spec:
+  channel: stable-v1
+  name: cloudnative-pg
+  source: certified-operators
+  sourceNamespace: openshift-marketplace
+EOF
+
+# If install plan requires approval:
+oc get installplan -n openshift-operators | grep cloudnative
+oc patch installplan <plan-name> -n openshift-operators --type merge -p '{"spec":{"approved":true}}'
+```
+
+#### Vanilla Kubernetes
 
 ```bash
-# Install the operator
 kubectl apply --server-side -f \
   https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.1.yaml
+```
 
-# Create a PostgreSQL cluster
+#### Create PostgreSQL Cluster
+
+```bash
 kubectl apply -f - <<EOF
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -73,10 +105,8 @@ kubectl wait --for=condition=Ready cluster/maas-postgres -n maas-api --timeout=3
 
 Then create the database secret using the auto-generated credentials:
 ```bash
-# Get the generated password
 PGPASSWORD=$(kubectl get secret maas-postgres-app -n maas-api -o jsonpath='{.data.password}' | base64 -d)
 
-# Create the database-config secret for maas-api
 kubectl create secret generic database-config \
   --from-literal=DATABASE_URL="postgresql://app:${PGPASSWORD}@maas-postgres-rw:5432/app?sslmode=require" \
   -n maas-api

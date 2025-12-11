@@ -7,9 +7,10 @@ kind: Kustomization
 # This mode supports HPA (multiple replicas) for high availability.
 #
 # Prerequisites:
-#   1. Deploy PostgreSQL using an operator (recommended: CloudNativePG)
-#      See: https://cloudnative-pg.io/documentation/current/quickstart/
-#      Or use a managed service (RDS, Cloud SQL, etc.)
+#   1. Deploy PostgreSQL using an operator or managed service:
+#      - OpenShift: Install CloudNativePG from OperatorHub (certified-operators)
+#      - Kubernetes: See https://cloudnative-pg.io/documentation/current/quickstart/
+#      - Or use a managed service (RDS, Cloud SQL, etc.)
 #
 #   2. Create the database secret (use secret_example.yaml as a template):
 #      cp deployment/examples/postgresql/secret_example.yaml my-secret.yaml

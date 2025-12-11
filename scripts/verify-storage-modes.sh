@@ -73,8 +73,13 @@ cleanup_all() {
     kubectl delete deployment maas-api -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=60s 2>/dev/null || true
     kubectl delete pvc maas-api-data -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=30s 2>/dev/null || true
     kubectl delete secret database-config -n "$NAMESPACE" --ignore-not-found=true 2>/dev/null || true
-    kubectl delete deployment postgres -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=60s 2>/dev/null || true
-    kubectl delete service postgres -n "$NAMESPACE" --ignore-not-found=true 2>/dev/null || true
+    
+    # Clean up CloudNativePG cluster
+    kubectl delete cluster maas-postgres -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=120s 2>/dev/null || true
+    
+    # Clean up old community CNPG webhooks (if they exist from previous installs, not for everyone but it was an issue in my case)
+    kubectl delete mutatingwebhookconfiguration cnpg-mutating-webhook-configuration --ignore-not-found=true 2>/dev/null || true
+    kubectl delete validatingwebhookconfiguration cnpg-validating-webhook-configuration --ignore-not-found=true 2>/dev/null || true
     
     local waited=0
     while [ $waited -lt 30 ]; do
@@ -105,64 +110,84 @@ deploy_sqlite_pvc() {
 }
 
 deploy_postgresql() {
-    step "Deploying PostgreSQL mode..."
-    info "Starting PostgreSQL..."
+    step "Deploying PostgreSQL mode (CloudNativePG)..."
+    
+    # Install CloudNativePG operator from OperatorHub if not present
+    if ! kubectl get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
+        info "Installing CloudNativePG operator from OperatorHub..."
+        kubectl apply -f - >/dev/null 2>&1 <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: cloudnative-pg
+  namespace: openshift-operators
+spec:
+  channel: stable-v1
+  name: cloudnative-pg
+  source: certified-operators
+  sourceNamespace: openshift-marketplace
+EOF
+        
+        local waited=0
+        while [ $waited -lt 180 ]; do
+            local phase=$(kubectl get csv -n openshift-operators -l operators.coreos.com/cloudnative-pg.openshift-operators -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
+            [ "$phase" == "Succeeded" ] && break
+            
+            # Auto-approve install plan if needed
+            local plan=$(kubectl get subscription cloudnative-pg -n openshift-operators -o jsonpath='{.status.installPlanRef.name}' 2>/dev/null || echo "")
+            if [ -n "$plan" ]; then
+                kubectl patch installplan "$plan" -n openshift-operators --type merge -p '{"spec":{"approved":true}}' >/dev/null 2>&1 || true
+            fi
+            
+            sleep 10
+            waited=$((waited + 10))
+        done
+        
+        # Verify CRD exists now
+        if ! kubectl get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
+            fail "CloudNativePG operator installation failed"
+            return 1
+        fi
+    fi
+    ok "CloudNativePG operator ready"
+    
+    info "Creating PostgreSQL cluster..."
     kubectl apply -n "$NAMESPACE" -f - >/dev/null 2>&1 <<EOF
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
 metadata:
-  name: postgres
+  name: maas-postgres
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres
-  template:
-    metadata:
-      labels:
-        app: postgres
-    spec:
-      containers:
-      - name: postgres
-        image: registry.redhat.io/rhel9/postgresql-15:latest
-        env:
-        - name: POSTGRESQL_USER
-          value: maas
-        - name: POSTGRESQL_PASSWORD
-          value: maas-test
-        - name: POSTGRESQL_DATABASE
-          value: maas_api
-        ports:
-        - containerPort: 5432
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-spec:
-  selector:
-    app: postgres
-  ports:
-  - port: 5432
-    targetPort: 5432
+  instances: 1
+  storage:
+    size: 1Gi
 EOF
 
-    kubectl wait --for=condition=available deployment/postgres -n "$NAMESPACE" --timeout=180s >/dev/null 2>&1
-    ok "PostgreSQL ready"
+    local waited=0
+    while [ $waited -lt 300 ]; do
+        local ready=$(kubectl get cluster maas-postgres -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        [ "$ready" == "Cluster in healthy state" ] && break
+        sleep 5
+        waited=$((waited + 5))
+    done
     
+    if [ "$ready" != "Cluster in healthy state" ]; then
+        fail "PostgreSQL cluster not ready after 5 minutes"
+        return 1
+    fi
+    ok "PostgreSQL cluster ready"
+    
+    info "Configuring database credentials..."
+    local pgpassword=$(kubectl get secret maas-postgres-app -n "$NAMESPACE" -o jsonpath='{.data.password}' | base64 -d)
     kubectl create secret generic database-config \
-        --from-literal=DATABASE_URL="postgresql://maas:maas-test@postgres:5432/maas_api?sslmode=disable" \
+        --from-literal=DATABASE_URL="postgresql://app:${pgpassword}@maas-postgres-rw:5432/app?sslmode=require" \
         -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null 2>&1
     
     kubectl delete deployment maas-api -n "$NAMESPACE" --ignore-not-found=true --wait=true --timeout=60s >/dev/null 2>&1
     kustomize build "${PROJECT_ROOT}/deployment/examples/postgresql" | kubectl apply -f - >/dev/null 2>&1
     kubectl rollout status deployment/maas-api -n "$NAMESPACE" --timeout=120s >/dev/null 2>&1
     wait_for_api
-    ok "Deployed (PostgreSQL backend)"
+    ok "Deployed (PostgreSQL via CloudNativePG)"
 }
 
 create_api_key() {
