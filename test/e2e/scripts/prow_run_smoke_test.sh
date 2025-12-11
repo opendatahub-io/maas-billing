@@ -197,20 +197,6 @@ run_storage_verification() {
     fi
 }
 
-# Main execution
-print_header "Deploying Maas on OpenShift"
-check_prerequisites
-deploy_maas_platform
-
-print_header "Deploying Models"  
-deploy_models
-
-print_header "Setting up variables for tests"
-setup_vars_for_tests
-
-print_header "Validating Deployment"
-validate_deployment
-
 setup_test_user() {
     local username="$1"
     local cluster_role="$2"
