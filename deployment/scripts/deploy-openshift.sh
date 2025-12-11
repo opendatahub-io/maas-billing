@@ -341,11 +341,12 @@ if [[ "$ENABLE_TLS_BACKEND" -eq 1 ]]; then
   echo "   Applying MaaS API TLS overlay..."
   # Process kustomization.yaml to replace hardcoded namespace, then build with TLS overlay
   TMP_DIR=$(mktemp -d)
-  cp -r "$PROJECT_ROOT/deployment/overlays/tls-backend"/* "$TMP_DIR/"
+  # Copy the entire deployment structure to preserve relative paths
+  cp -r "$PROJECT_ROOT/deployment" "$TMP_DIR/"
   # Replace hardcoded "namespace: maas-api" with the configured namespace
-  sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/kustomization.yaml" 2>/dev/null || true
+  sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/deployment/overlays/tls-backend/kustomization.yaml" 2>/dev/null || true
   # Build and replace any remaining hardcoded namespace references in the output
-  kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | envsubst '$MAAS_API_NAMESPACE' | kubectl apply -f -
+  kustomize build "$TMP_DIR/deployment/overlays/tls-backend" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | envsubst '$MAAS_API_NAMESPACE' | kubectl apply -f -
   rm -rf "$TMP_DIR"
 
   echo "   Restarting MaaS API to pick up TLS configuration..."
@@ -357,9 +358,10 @@ else
   echo "   ⚠️  TLS backend disabled via flag; applying base (HTTP) MaaS API instead."
   # Process kustomization.yaml to replace hardcoded namespace for base deployment
   TMP_DIR=$(mktemp -d)
-  cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
-  sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/kustomization.yaml" 2>/dev/null || true
-  kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
+  # Copy the entire deployment structure to preserve relative paths
+  cp -r "$PROJECT_ROOT/deployment" "$TMP_DIR/"
+  sed -i "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" "$TMP_DIR/deployment/base/maas-api/kustomization.yaml" 2>/dev/null || true
+  kustomize build "$TMP_DIR/deployment/base/maas-api" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
   rm -rf "$TMP_DIR"
 fi
 
