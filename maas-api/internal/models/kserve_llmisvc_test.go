@@ -290,13 +290,13 @@ func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is compla
 				return true, list, nil
 			})
 
-			testLogger := logger.New(false) // Use production logger for tests
+			testLogger := logger.Production()
 			manager := models.NewManager(
+				testLogger,
 				&kservefakev1beta1.FakeServingV1beta1{Fake: fakeKServe},
 				&kservefakev1alpha1.FakeServingV1alpha1{Fake: fakeKServe},
 				&gatewayfake.FakeGatewayV1{Fake: fakeGateway},
 				gateway,
-				testLogger,
 			)
 
 			availableModels, err := manager.ListAvailableLLMs(t.Context())

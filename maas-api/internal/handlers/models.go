@@ -17,7 +17,7 @@ type ModelsHandler struct {
 }
 
 // NewModelsHandler creates a new models handler.
-func NewModelsHandler(modelMgr *models.Manager, log *logger.Logger) *ModelsHandler {
+func NewModelsHandler(log *logger.Logger, modelMgr *models.Manager) *ModelsHandler {
 	return &ModelsHandler{
 		modelMgr: modelMgr,
 		logger:   log,

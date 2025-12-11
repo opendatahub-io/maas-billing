@@ -59,7 +59,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Initialize store in main for proper cleanup
-	store, err := api_keys.NewStore(ctx, cfg.DBPath, appLogger)
+	store, err := api_keys.NewStore(ctx, appLogger, cfg.DBPath)
 	if err != nil {
 		appLogger.Fatal("Failed to initialize token store",
 			"error", err,
@@ -129,13 +129,13 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 		Name:      cfg.GatewayName,
 		Namespace: cfg.GatewayNamespace,
 	}
-	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef, appLogger)
-	modelsHandler := handlers.NewModelsHandler(modelMgr, appLogger)
+	modelMgr := models.NewManager(appLogger, clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef)
+	modelsHandler := handlers.NewModelsHandler(appLogger, modelMgr)
 
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
-	tierMapper := tier.NewMapper(ctx, clusterConfig.ClientSet, cfg.Name, cfg.Namespace, appLogger)
+	tierMapper := tier.NewMapper(ctx, appLogger, clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
 	tierHandler := tier.NewHandler(tierMapper)
 	v1Routes.POST("/tiers/lookup", tierHandler.TierLookup)
 
@@ -156,18 +156,18 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 
 	// Create token manager (ephemeral, K8s logic)
 	tokenManager := token.NewManager(
+		appLogger,
 		cfg.Name,
 		tierMapper,
 		clusterConfig.ClientSet,
 		namespaceInformer.Lister(),
 		serviceAccountInformer.Lister(),
-		appLogger,
 	)
-	tokenHandler := token.NewHandler(cfg.Name, tokenManager, appLogger)
+	tokenHandler := token.NewHandler(appLogger, cfg.Name, tokenManager)
 
 	// Create api key service (persistent, SQLite logic)
 	apiKeyService := api_keys.NewService(tokenManager, store)
-	apiKeyHandler := api_keys.NewHandler(apiKeyService, appLogger)
+	apiKeyHandler := api_keys.NewHandler(appLogger, apiKeyService)
 
 	// Create reviewer with audience to properly validate Service Account tokens
 	reviewer := token.NewReviewer(clusterConfig.ClientSet, cfg.Name+"-sa")

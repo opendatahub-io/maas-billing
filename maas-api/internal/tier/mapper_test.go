@@ -25,8 +25,8 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 	configMap := fixtures.CreateTierConfigMap(testNamespace)
 
 	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	testLogger := logger.New(false) // Use production logger for tests
-	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace, testLogger)
+	testLogger := logger.Production()
+	mapper := tier.NewMapper(t.Context(), testLogger, clientset, testTenant, testNamespace)
 
 	tests := []struct {
 		name          string
@@ -156,8 +156,8 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 
 func TestMapper_GetTierForGroups_MissingConfigMap(t *testing.T) {
 	clientset := fake.NewClientset()
-	testLogger := logger.New(false) // Use production logger for tests
-	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace, testLogger)
+	testLogger := logger.Production()
+	mapper := tier.NewMapper(t.Context(), testLogger, clientset, testTenant, testNamespace)
 
 	_, err := mapper.GetTierForGroups("any-group", "another-group")
 	if err == nil {
@@ -189,8 +189,8 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 	}
 
 	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	testLogger := logger.New(false) // Use production logger for tests
-	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace, testLogger)
+	testLogger := logger.Production()
+	mapper := tier.NewMapper(t.Context(), testLogger, clientset, testTenant, testNamespace)
 
 	// When levels are equal, first tier found should win
 	mappedTier, err := mapper.GetTierForGroups("group-a", "group-b")
@@ -260,8 +260,8 @@ func TestMapper_GetTierForGroups_InvalidConfig(t *testing.T) {
 			}
 
 			clientset := fake.NewClientset([]runtime.Object{configMap}...)
-			testLogger := logger.New(false) // Use production logger for tests
-			mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace, testLogger)
+			testLogger := logger.Production()
+			mapper := tier.NewMapper(t.Context(), testLogger, clientset, testTenant, testNamespace)
 
 			_, err := mapper.GetTierForGroups("group-a")
 			if err == nil {

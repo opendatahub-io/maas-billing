@@ -15,9 +15,9 @@ type Handler struct {
 	logger  *logger.Logger
 }
 
-func NewHandler(service *Service, log *logger.Logger) *Handler {
+func NewHandler(log *logger.Logger, service *Service) *Handler {
 	if log == nil {
-		log = logger.New(false)
+		log = logger.Production()
 	}
 	return &Handler{
 		service: service,
@@ -180,7 +180,7 @@ func (h *Handler) RevokeAllTokens(c *gin.Context) {
 		return
 	}
 
-	h.logger.WithContext(c.Request.Context()).Info("Successfully revoked tokens for user",
+	h.logger.WithContext(c.Request.Context()).Debug("Successfully revoked tokens for user",
 		"username", user.Username,
 	)
 	c.Status(http.StatusNoContent)

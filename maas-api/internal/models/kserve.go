@@ -27,11 +27,11 @@ type Manager struct {
 
 // NewManager creates a new model manager.
 func NewManager(
+	log *logger.Logger,
 	v1beta1Client kserveclientv1beta1.ServingV1beta1Interface,
 	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface,
 	gatewayClient gatewayclient.GatewayV1Interface,
 	gatewayRef GatewayRef,
-	log *logger.Logger,
 ) *Manager {
 	return &Manager{
 		v1beta1Client:  v1beta1Client,

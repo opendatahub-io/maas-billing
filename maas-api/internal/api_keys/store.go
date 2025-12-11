@@ -30,7 +30,7 @@ type Store struct {
 }
 
 // NewStore creates a new TokenStore backed by SQLite.
-func NewStore(ctx context.Context, dbPath string, log *logger.Logger) (*Store, error) {
+func NewStore(ctx context.Context, log *logger.Logger, dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -42,7 +42,7 @@ func NewStore(ctx context.Context, dbPath string, log *logger.Logger) (*Store, e
 	}
 
 	if log == nil {
-		log = logger.New(false)
+		log = logger.Production()
 	}
 
 	s := &Store{
@@ -159,7 +159,7 @@ func (s *Store) MarkTokensAsExpiredForUser(ctx context.Context, namespace, usern
 		"username", username,
 		"namespace", namespace,
 		"affected_rows", rows,
-	).Info("Marked tokens as expired")
+	).Debug("Marked tokens as expired")
 	return nil
 }
 

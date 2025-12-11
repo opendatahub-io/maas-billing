@@ -27,7 +27,7 @@ type Mapper struct {
 	logger          *logger.Logger
 }
 
-func NewMapper(ctx context.Context, clientset kubernetes.Interface, tenantName, namespace string, log *logger.Logger) *Mapper {
+func NewMapper(ctx context.Context, log *logger.Logger, clientset kubernetes.Interface, tenantName, namespace string) *Mapper {
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(
 		clientset,
 		constant.DefaultResyncPeriod,

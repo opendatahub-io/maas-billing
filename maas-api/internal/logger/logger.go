@@ -8,6 +8,8 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// Note: context import kept for WithContext signature compatibility
+
 // Logger wraps zap.Logger to provide a structured logging interface
 // aligned with KServe conventions.
 type Logger struct {
@@ -16,8 +18,21 @@ type Logger struct {
 	level zapcore.Level
 }
 
+// Production returns a production-ready logger with INFO level.
+// Use this for deployed environments.
+func Production() *Logger {
+	return New(false)
+}
+
+// Development returns a development logger with DEBUG level and colored output.
+// Use this for local development and debugging.
+func Development() *Logger {
+	return New(true)
+}
+
 // New creates a new logger instance with KServe-compatible configuration.
 // It supports different log levels (DEBUG, INFO, WARN, ERROR) and structured output.
+// Prefer using Production() or Development() for better readability.
 func New(debug bool) *Logger {
 	var config zap.Config
 	if debug {
@@ -69,29 +84,10 @@ func NewFromEnv() *Logger {
 	return New(debug)
 }
 
-// WithContext returns a logger with context fields attached.
-// This is useful for request-scoped logging with trace IDs, user info, etc.
-func (l *Logger) WithContext(ctx context.Context) *Logger {
-	// Extract common context values that might be useful for logging
-	fields := []any{}
-
-	// Add request ID if available
-	if requestID := ctx.Value("request_id"); requestID != nil {
-		fields = append(fields, "request_id", requestID)
-	}
-
-	// Add user info if available
-	if user := ctx.Value("user"); user != nil {
-		fields = append(fields, "user", user)
-	}
-
-	if len(fields) > 0 {
-		return &Logger{
-			SugaredLogger: l.With(fields...),
-			level:         l.level,
-		}
-	}
-
+// WithContext returns the logger as-is.
+// Callers should use WithFields() to add context-specific fields explicitly.
+// This approach is more explicit and avoids magic context key lookups.
+func (l *Logger) WithContext(_ context.Context) *Logger {
 	return l
 }
 

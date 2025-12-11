@@ -24,7 +24,7 @@ type Handler struct {
 	logger  *logger.Logger
 }
 
-func NewHandler(name string, manager TokenManager, log *logger.Logger) *Handler {
+func NewHandler(log *logger.Logger, name string, manager TokenManager) *Handler {
 	return &Handler{
 		name:    name,
 		manager: manager,

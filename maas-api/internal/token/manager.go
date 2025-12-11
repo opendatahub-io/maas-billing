@@ -31,12 +31,12 @@ type Manager struct {
 }
 
 func NewManager(
+	log *logger.Logger,
 	tenantName string,
 	tierMapper *tier.Mapper,
 	clientset kubernetes.Interface,
 	namespaceLister corelistersv1.NamespaceLister,
 	serviceAccountLister corelistersv1.ServiceAccountLister,
-	logger *logger.Logger,
 ) *Manager {
 	return &Manager{
 		tenantName:           tenantName,
@@ -44,7 +44,7 @@ func NewManager(
 		clientset:            clientset,
 		namespaceLister:      namespaceLister,
 		serviceAccountLister: serviceAccountLister,
-		logger:               logger,
+		logger:               log,
 	}
 }
 
@@ -60,11 +60,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
-		log.Error("Failed to determine user tier",
-			"error", err,
-			"groups", user.Groups,
-		)
-		return nil, fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
+		return nil, fmt.Errorf("failed to determine user tier for %s (groups: %v): %w", user.Username, user.Groups, err)
 	}
 
 	log = log.WithFields("tier", userTier.Name)
@@ -72,29 +68,18 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 	namespace, errNs := m.ensureTierNamespace(ctx, userTier.Name)
 	if errNs != nil {
-		log.Error("Failed to ensure tier namespace",
-			"error", errNs,
-			"namespace", namespace,
-		)
-		return nil, fmt.Errorf("failed to ensure tier namespace for user %s: %w", userTier.Name, errNs)
+		return nil, fmt.Errorf("failed to ensure tier namespace for tier %s: %w", userTier.Name, errNs)
 	}
 
 	log = log.WithFields("namespace", namespace)
 	saName, errSA := m.ensureServiceAccount(ctx, namespace, user.Username, userTier.Name)
 	if errSA != nil {
-		log.Error("Failed to ensure service account",
-			"error", errSA,
-			"service_account", saName,
-		)
 		return nil, fmt.Errorf("failed to ensure service account for user %s in namespace %s: %w", user.Username, namespace, errSA)
 	}
 
 	log = log.WithFields("service_account", saName)
 	token, errToken := m.createServiceAccountToken(ctx, namespace, saName, int(expiration.Seconds()))
 	if errToken != nil {
-		log.Error("Failed to create service account token",
-			"error", errToken,
-		)
 		return nil, fmt.Errorf("failed to create token for service account %s in namespace %s: %w", saName, namespace, errToken)
 	}
 
@@ -126,7 +111,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		}
 	}
 
-	log.Info("Successfully generated token",
+	log.Debug("Successfully generated token",
 		"expires_at", token.Status.ExpirationTimestamp.Unix(),
 		"jti", jti,
 	)
@@ -149,62 +134,43 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, 
 
 	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
-		log.Error("Failed to determine user tier",
-			"error", err,
-			"groups", user.Groups,
-		)
-		return "", fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
+		return "", fmt.Errorf("failed to determine user tier for %s (groups: %v): %w", user.Username, user.Groups, err)
 	}
 
 	log = log.WithFields("tier", userTier.Name)
 	namespace, errNS := m.tierMapper.Namespace(userTier.Name)
 	if errNS != nil {
-		log.Error("Failed to determine namespace",
-			"error", errNS,
-		)
-		return "", fmt.Errorf("failed to determine namespace for user %s: %w", user.Username, errNS)
+		return "", fmt.Errorf("failed to determine namespace for tier %s: %w", userTier.Name, errNS)
 	}
 
 	log = log.WithFields("namespace", namespace)
 	saName, errName := m.sanitizeServiceAccountName(user.Username)
 	if errName != nil {
-		log.Error("Failed to sanitize service account name",
-			"error", errName,
-		)
 		return namespace, fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
 	}
 
 	log = log.WithFields("service_account", saName)
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if errors.IsNotFound(err) {
-		log.Info("Service account not found, nothing to revoke")
+		log.Debug("Service account not found, nothing to revoke")
 		return namespace, nil
 	}
 
 	if err != nil {
-		log.Error("Failed to check service account",
-			"error", err,
-		)
 		return namespace, fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	err = m.deleteServiceAccount(ctx, namespace, saName)
 	if err != nil {
-		log.Error("Failed to delete service account",
-			"error", err,
-		)
 		return namespace, fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	_, err = m.ensureServiceAccount(ctx, namespace, user.Username, userTier.Name)
 	if err != nil {
-		log.Error("Failed to recreate service account",
-			"error", err,
-		)
 		return namespace, fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
 	}
 
-	log.Info("Successfully revoked all tokens for user")
+	log.Debug("Successfully revoked all tokens for user")
 	return namespace, nil
 }
 

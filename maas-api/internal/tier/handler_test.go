@@ -232,8 +232,8 @@ func TestHandler_PostTierLookup_DisplayNameFallback(t *testing.T) {
 	}
 
 	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	testLogger := logger.New(false) // Use production logger for tests
-	mapper := tier.NewMapper(t.Context(), clientset, fixtures.TestTenant, fixtures.TestNamespace, testLogger)
+	testLogger := logger.Production()
+	mapper := tier.NewMapper(t.Context(), testLogger, clientset, fixtures.TestTenant, fixtures.TestNamespace)
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"basic-users"}}

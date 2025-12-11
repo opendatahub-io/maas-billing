@@ -20,8 +20,8 @@ func TestStore(t *testing.T) {
 	ctx := t.Context()
 
 	// Test NewStore
-	testLogger := logger.New(false)
-	store, err := api_keys.NewStore(ctx, dbPath, testLogger)
+	testLogger := logger.Production()
+	store, err := api_keys.NewStore(ctx, testLogger, dbPath)
 	if err == nil && store != nil {
 		defer store.Close()
 	}

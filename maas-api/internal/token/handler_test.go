@@ -55,8 +55,8 @@ func TestAPIEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mockManager := new(MockManager)
-	testLogger := logger.New(false) // Use production logger for tests
-	handler := token.NewHandler("test", mockManager, testLogger)
+	testLogger := logger.Production()
+	handler := token.NewHandler(testLogger, "test", mockManager)
 
 	// Middleware to inject user context
 	injectUser := func(c *gin.Context) {
