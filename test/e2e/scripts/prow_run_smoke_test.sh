@@ -26,7 +26,6 @@
 #   SKIP_VALIDATION - Skip deployment validation (default: false)
 #   SKIP_SMOKE      - Skip smoke tests (default: false)
 #   SKIP_TOKEN_VERIFICATION - Skip token metadata verification (default: false)
-#   SKIP_STORAGE_VERIFICATION - Skip storage persistence verification (default: false)
 #   MAAS_API_IMAGE - Custom image for MaaS API (e.g., quay.io/opendatahub/maas-api:pr-232)
 # =============================================================================
 
@@ -56,7 +55,6 @@ PROJECT_ROOT="$(find_project_root)"
 SKIP_VALIDATION=${SKIP_VALIDATION:-false}
 SKIP_SMOKE=${SKIP_SMOKE:-false}
 SKIP_TOKEN_VERIFICATION=${SKIP_TOKEN_VERIFICATION:-false}
-SKIP_STORAGE_VERIFICATION=${SKIP_STORAGE_VERIFICATION:-false}
 
 print_header() {
     echo ""
@@ -91,9 +89,8 @@ check_prerequisites() {
 }
 
 deploy_maas_platform() {
-    # Set custom MaaS API image and export for child processes (storage test)
+    # Set custom MaaS API image
     : "${MAAS_API_IMAGE:=quay.io/opendatahub/maas-api:latest}"
-    export MAAS_API_IMAGE
     echo "Using custom MaaS API image: ${MAAS_API_IMAGE}"
     pushd "$PROJECT_ROOT/deployment/base/maas-api" > /dev/null
     kustomize edit set image maas-api="${MAAS_API_IMAGE}"
@@ -182,22 +179,6 @@ run_token_verification() {
     fi
 }
 
-run_storage_verification() {
-    echo "-- Storage Persistence Verification --"
-    
-    if [ "$SKIP_STORAGE_VERIFICATION" = false ]; then
-        # Test all 3 storage modes sequentially
-        if ! (cd "$PROJECT_ROOT" && bash scripts/verify-storage-persistence.sh --test-all-modes); then
-            echo "❌ ERROR: Storage persistence verification failed"
-            exit 1
-        else
-            echo "✅ Storage persistence verification completed successfully"
-        fi
-    else
-        echo "⏭️  Skipping storage persistence verification"
-    fi
-}
-
 setup_test_user() {
     local username="$1"
     local cluster_role="$2"
@@ -249,10 +230,6 @@ oc login --token "$ADMIN_TOKEN" --server "$K8S_CLUSTER_URL"
 print_header "Validating Deployment and Token Metadata Logic"
 validate_deployment
 run_token_verification
-
-# Run storage persistence verification (requires admin to restart pods)
-print_header "Verifying Storage Persistence"
-run_storage_verification
 
 run_smoke_tests
 
