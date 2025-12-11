@@ -239,7 +239,7 @@ postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=MODE
 | Environment | Example URL |
 |-------------|-------------|
 | CloudNativePG (in-cluster) | `postgresql://app:secret@maas-postgres-rw:5432/app?sslmode=require` |
-| AWS RDS | `postgresql://admin:pass@mydb.123456.us-east-1.rds.amazonaws.com:5432/maas?sslmode=require` |
+| AWS RDS | `postgresql://username:password@mydb.123456.us-east-1.rds.amazonaws.com:5432/maas?sslmode=require` |
 | Local development | `postgresql://postgres:postgres@localhost:5432/maas_dev?sslmode=disable` |
 
 ### SSL Modes

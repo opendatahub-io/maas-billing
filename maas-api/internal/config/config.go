@@ -13,7 +13,7 @@ type StorageMode string
 
 const (
 	StorageModeInMemory StorageMode = "in-memory"
-	StorageModeDisk StorageMode = "disk"
+	StorageModeDisk     StorageMode = "disk"
 	StorageModeExternal StorageMode = "external"
 )
 
