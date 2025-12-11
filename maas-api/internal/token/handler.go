@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 )
 
 type TokenManager interface {
@@ -30,7 +32,7 @@ func NewHandler(name string, manager TokenManager) *Handler {
 	}
 }
 
-// parseGroupsHeader parses the X-MAAS-GROUP header which comes as a JSON array.
+// parseGroupsHeader parses the group header which comes as a JSON array.
 // Format: "[\"group1\",\"group2\",\"group3\"]" (JSON-encoded array string).
 func parseGroupsHeader(header string) ([]string, error) {
 	if header == "" {
@@ -55,41 +57,42 @@ func parseGroupsHeader(header string) ([]string, error) {
 	return groups, nil
 }
 
-// ExtractUserInfo extracts user information from X-MAAS-* headers set by the auth policy.
+// ExtractUserInfo extracts user information from headers set by the auth policy.
 func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		username := strings.TrimSpace(c.GetHeader("X-MAAS-USERNAME"))
-		groupHeader := c.GetHeader("X-MAAS-GROUP")
-		source := strings.TrimSpace(c.GetHeader("X-MAAS-SOURCE"))
+		username := strings.TrimSpace(c.GetHeader(constant.HeaderUsername))
+		groupHeader := c.GetHeader(constant.HeaderGroup)
 
 		// Validate required headers exist and are not empty
+		// Missing headers indicate a configuration issue with the auth policy (internal error)
 		if username == "" {
-			log.Printf("Missing or empty X-MAAS-USERNAME header")
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "X-MAAS-USERNAME header required and must not be empty"})
+			log.Printf("ERROR: Missing or empty %s header - auth policy configuration issue", constant.HeaderUsername)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":         "Exception thrown while generating token",
+				"exceptionCode": "ERR_7F3A",
+			})
 			c.Abort()
 			return
 		}
 
 		if groupHeader == "" {
-			log.Printf("Missing X-MAAS-GROUP header for user: %s", username)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "X-MAAS-GROUP header required"})
-			c.Abort()
-			return
-		}
-
-		if source == "" {
-			log.Printf("Missing X-MAAS-SOURCE header for user: %s", username)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "X-MAAS-SOURCE header required"})
+			log.Printf("ERROR: Missing %s header for user: %s - auth policy configuration issue", constant.HeaderGroup, username)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":         "Exception thrown while generating token",
+				"exceptionCode": "ERR_B2C9",
+			})
 			c.Abort()
 			return
 		}
 
 		// Parse groups from header - format: "[group1 group2 group3]"
+		// Parsing errors also indicate configuration issues
 		groups, err := parseGroupsHeader(groupHeader)
 		if err != nil {
-			log.Printf("ERROR: Failed to parse X-MAAS-GROUP header. Header value: %q, Error: %v", groupHeader, err)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": fmt.Sprintf("Invalid X-MAAS-GROUP header format: %v. Check auth policy configuration.", err),
+			log.Printf("ERROR: Failed to parse %s header. Header value: %q, Error: %v - auth policy configuration issue", constant.HeaderGroup, groupHeader, err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":         "Exception thrown while generating token",
+				"exceptionCode": "ERR_C4D1",
 			})
 			c.Abort()
 			return
@@ -101,8 +104,8 @@ func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 			Groups:   groups,
 		}
 
-		log.Printf("DEBUG - Extracted user info from headers - Username: %s, Groups: %v, Source: %s",
-			username, groups, source)
+		log.Printf("DEBUG - Extracted user info from headers - Username: %s, Groups: %v",
+			username, groups)
 
 		c.Set("user", userContext)
 		c.Next()

@@ -10,7 +10,6 @@ import (
 // UserContext holds user information extracted from the token.
 type UserContext struct {
 	Username string   `json:"username"`
-	UID      string   `json:"uid"`
 	Groups   []string `json:"groups"`
 }
 
