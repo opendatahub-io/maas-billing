@@ -1,17 +1,23 @@
-FROM registry.access.redhat.com/ubi9/go-toolset:1.24 AS builder
+ARG GOLANG_VERSION=1.24
+
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:$GOLANG_VERSION AS builder
+ARG CGO_ENABLED=1
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
-
 COPY go.mod go.sum ./
-
 RUN go mod download
-
 COPY . .
 
 USER root
-RUN CGO_ENABLED=1 GOEXPERIMENT=strictfipsruntime GOOS=linux go build -a -trimpath -ldflags="-s -w" -o maas-api ./cmd/
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+RUN CGO_ENABLED=${CGO_ENABLED} GOEXPERIMENT=strictfipsruntime GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -a -trimpath -ldflags="-s -w" -o maas-api ./cmd/
+
+FROM --platform=$TARGETPLATFORM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 WORKDIR /app
 

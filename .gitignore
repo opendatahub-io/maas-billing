@@ -17,13 +17,11 @@ apps/backend/package-lock.json
 # Go test coverage files
 coverage.out
 coverage.html
-bin/
 
 # Go binaries
+bin/
+*.test
 maas-api/main
-maas-api/*/main
-*.exe
-*.exe~
 
 # Python
 __pycache__/

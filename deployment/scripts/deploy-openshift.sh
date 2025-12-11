@@ -195,15 +195,20 @@ fi
 echo ""
 echo "2️⃣ Creating namespaces..."
 echo "   ℹ️  Note: If ODH/RHOAI is already installed, some namespaces may already exist"
-for ns in opendatahub kserve kuadrant-system llm maas-api; do
+
+# Determine MaaS API namespace: use MAAS_API_NAMESPACE env var if set, otherwise default to maas-api
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
+export MAAS_API_NAMESPACE
+echo "   MaaS API namespace: $MAAS_API_NAMESPACE (set MAAS_API_NAMESPACE env var to override)"
+
+for ns in opendatahub kserve kuadrant-system llm "$MAAS_API_NAMESPACE"; do
     kubectl create namespace $ns 2>/dev/null || echo "   Namespace $ns already exists"
 done
 
 echo ""
 echo "3️⃣ Installing dependencies..."
-
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
@@ -246,6 +251,41 @@ else
     "$SCRIPT_DIR/install-dependencies.sh" --ocp --odh
 fi
 
+# Patch odh-model-controller deployment to set MAAS_NAMESPACE
+# This should be done whether ODH was just installed or was already present
+echo ""
+echo "   Setting MAAS_NAMESPACE for odh-model-controller deployment..."
+if kubectl get deployment odh-model-controller -n opendatahub &>/dev/null; then
+    # Wait for deployment to be available before patching
+    echo "   Waiting for odh-model-controller deployment to be ready..."
+    kubectl wait deployment/odh-model-controller -n opendatahub --for=condition=Available=True --timeout=60s 2>/dev/null || \
+        echo "   ⚠️  Deployment may still be starting, proceeding with patch..."
+    
+    # Check if the environment variable already exists
+    EXISTING_ENV=$(kubectl get deployment odh-model-controller -n opendatahub -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="MAAS_NAMESPACE")].value}' 2>/dev/null || echo "")
+    
+    if [ -n "$EXISTING_ENV" ]; then
+        if [ "$EXISTING_ENV" = "$MAAS_API_NAMESPACE" ]; then
+            echo "   ✅ MAAS_NAMESPACE already set to $MAAS_API_NAMESPACE"
+        else
+            echo "   Updating MAAS_NAMESPACE from '$EXISTING_ENV' to '$MAAS_API_NAMESPACE'..."
+            kubectl set env deployment/odh-model-controller -n opendatahub MAAS_NAMESPACE="$MAAS_API_NAMESPACE"
+        fi
+    else
+        echo "   Adding MAAS_NAMESPACE=$MAAS_API_NAMESPACE..."
+        kubectl set env deployment/odh-model-controller -n opendatahub MAAS_NAMESPACE="$MAAS_API_NAMESPACE"
+    fi
+    
+    # Wait for deployment to roll out
+    echo "   Waiting for deployment to update..."
+    kubectl rollout status deployment/odh-model-controller -n opendatahub --timeout=120s 2>/dev/null || \
+        echo "   ⚠️  Deployment update taking longer than expected, continuing..."
+    echo "   ✅ odh-model-controller deployment patched"
+else
+    echo "   ⚠️  odh-model-controller deployment not found in opendatahub namespace, skipping patch"
+    echo "      (The deployment may be created later by the ODH operator)"
+fi
+
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
 # Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
@@ -276,7 +316,17 @@ kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 echo ""
 echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
-kustomize build deployment/base/maas-api | envsubst | kubectl apply -f -
+# Process kustomization.yaml to replace hardcoded namespace, then build
+TMP_DIR=$(mktemp -d)
+cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
+# Replace hardcoded "namespace: maas-api" with "namespace: ${MAAS_API_NAMESPACE}" in kustomization.yaml
+sed -i "s|namespace: maas-api|namespace: \${MAAS_API_NAMESPACE}|g" "$TMP_DIR/kustomization.yaml"
+# Replace ${MAAS_API_NAMESPACE} placeholder with actual value
+envsubst '$MAAS_API_NAMESPACE' < "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
+mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
+# Build and replace any remaining hardcoded namespace references in the output
+kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
+rm -rf "$TMP_DIR"
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
@@ -309,7 +359,7 @@ kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshif
 echo ""
 echo "1️⃣1️⃣ Applying Gateway Policies..."
 cd "$PROJECT_ROOT"
-kustomize build deployment/base/policies | kubectl apply --server-side=true --force-conflicts -f -
+kustomize build deployment/base/policies | envsubst '$MAAS_API_NAMESPACE' | kubectl apply --server-side=true --force-conflicts -f -
 
 echo ""
 echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
@@ -346,7 +396,7 @@ fi
 if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
     echo "   Detected audience: $AUD"
     PATCH_JSON="[{\"op\":\"replace\",\"path\":\"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0\",\"value\":\"$AUD\"}]"
-    kubectl patch authpolicy maas-api-auth-policy -n maas-api \
+    kubectl patch authpolicy maas-api-auth-policy -n "$MAAS_API_NAMESPACE"  \
       --type='json' \
       -p "$PATCH_JSON" 2>/dev/null && echo "   ✅ AuthPolicy patched" || echo "   ⚠️  Failed to patch AuthPolicy (may need manual configuration)"
 else
@@ -407,7 +457,7 @@ echo ""
 
 # Check component status
 echo "Component Status:"
-kubectl get pods -n maas-api --no-headers | grep Running | wc -l | xargs echo "  MaaS API pods running:"
+kubectl get pods -n "$MAAS_API_NAMESPACE" --no-headers | grep Running | wc -l | xargs echo "  MaaS API pods running:"
 kubectl get pods -n kuadrant-system --no-headers | grep Running | wc -l | xargs echo "  Kuadrant pods running:"
 kubectl get pods -n opendatahub --no-headers | grep Running | wc -l | xargs echo "  KServe pods running:"
 
