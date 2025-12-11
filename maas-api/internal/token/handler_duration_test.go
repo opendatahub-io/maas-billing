@@ -178,7 +178,10 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 
 			request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/tokens", bytes.NewBufferString(jsonPayload))
 			request.Header.Set("Content-Type", "application/json")
-			request.Header.Set("Authorization", "Bearer duration-test-token")
+			// Set required X-MAAS-* headers for header-based authentication
+			request.Header.Set("X-Maas-Username", "duration-test@example.com")
+			request.Header.Set("X-Maas-Group", `["system:authenticated"]`)
+			request.Header.Set("X-Maas-Source", "kubernetes-local")
 			router.ServeHTTP(w, request)
 
 			if w.Code != tt.expectedStatus {
