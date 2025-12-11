@@ -198,7 +198,7 @@ echo "   ℹ️  Note: If ODH/RHOAI is already installed, some namespaces may al
 
 # Determine MaaS API namespace: use MAAS_API_NAMESPACE env var if set, otherwise default to maas-api
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
 export MAAS_API_NAMESPACE
 echo "   MaaS API namespace: $MAAS_API_NAMESPACE (set MAAS_API_NAMESPACE env var to override)"
