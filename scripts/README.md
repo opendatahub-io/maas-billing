@@ -9,7 +9,7 @@ Complete automated deployment script for OpenShift clusters.
 
 **Usage:**
 ```bash
-./deployment/scripts/deploy-openshift.sh
+./scripts/deploy-openshift.sh
 ```
 
 **What it does:**
@@ -37,7 +37,7 @@ Comprehensive validation script to verify the MaaS deployment is working correct
 
 **Usage:**
 ```bash
-./deployment/scripts/validate-deployment.sh
+./scripts/validate-deployment.sh
 ```
 
 **What it checks:**
@@ -112,10 +112,10 @@ Installs individual dependencies (Kuadrant, ODH, etc.).
 **Usage:**
 ```bash
 # Install all dependencies
-./deployment/scripts/install-dependencies.sh
+./scripts/install-dependencies.sh
 
 # Install specific dependency
-./deployment/scripts/install-dependencies.sh --kuadrant
+./scripts/install-dependencies.sh --kuadrant
 ```
 
 **Options:**
@@ -131,16 +131,16 @@ Installs individual dependencies (Kuadrant, ODH, etc.).
 ### Initial Deployment
 ```bash
 # 1. Deploy the platform
-./deployment/scripts/deploy-openshift.sh
+./scripts/deploy-openshift.sh
 
 # 2. Validate the deployment
-./deployment/scripts/validate-deployment.sh
+./scripts/validate-deployment.sh
 
 # 3. Deploy a sample model
 kustomize build docs/samples/models/simulator | kubectl apply -f -
 
 # 4. Re-run validation to verify model
-./deployment/scripts/validate-deployment.sh
+./scripts/validate-deployment.sh
 ```
 
 ### Troubleshooting Failed Validation
@@ -195,7 +195,7 @@ The validation script is designed to be run repeatedly during troubleshooting:
 kubectl apply -f ...
 
 # Re-run validation
-./deployment/scripts/validate-deployment.sh
+./scripts/validate-deployment.sh
 
 # Check specific component logs
 kubectl logs -n maas-api deployment/maas-api
@@ -222,7 +222,7 @@ Scripts will automatically detect:
 You can override these by exporting before running:
 ```bash
 export CLUSTER_DOMAIN="apps.my-cluster.example.com"
-./deployment/scripts/deploy-openshift.sh
+./scripts/deploy-openshift.sh
 ```
 
 ---
@@ -231,8 +231,8 @@ export CLUSTER_DOMAIN="apps.my-cluster.example.com"
 
 For issues or questions:
 1. Run the validation script to identify specific problems
-2. Check the main project [README](../../README.md)
-3. Review [deployment documentation](../../docs/content/quickstart.md)
-4. Check sample model configurations in [docs/samples/models/](../../docs/samples/models/)
+2. Check the main project [README](../README.md)
+3. Review [deployment documentation](../docs/content/quickstart.md)
+4. Check sample model configurations in [docs/samples/models/](../docs/samples/models/)
 
 

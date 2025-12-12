@@ -111,14 +111,14 @@ kubectl get tokenratelimitpolicy -A && \
 kubectl get llminferenceservices -n llm
 ```
 
-See the deployment scripts documentation at `deployment/scripts/README.md` for more information about validation and troubleshooting.
+See the deployment scripts documentation at `scripts/README.md` for more information about validation and troubleshooting.
 
 ## Automated Validation
 
 For faster validation, you can use the automated validation script to run the manual validation steps more quickly:
 
 ```bash
-./deployment/scripts/validate-deployment.sh
+./scripts/validate-deployment.sh
 ```
 
 The script automates the manual validation steps above and provides detailed feedback with specific suggestions for fixing any issues found. This is useful when you need to quickly verify deployment status, but understanding the manual steps above helps with troubleshooting.
