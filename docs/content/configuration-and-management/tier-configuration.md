@@ -235,3 +235,11 @@ EOF
 
 kubectl delete pod -l control-plane=controller-manager -n kuadrant-system
 ```
+
+!!!Warning "Removing Group Membership During Active Usage"
+    Removing a user from a group while they have active tokens may not immediately revoke access. See [Group Membership Known Issues](./group-membership-known-issues.md) for details on:
+
+    - Existing tokens remaining valid until expiration
+    - Rate limiting continuing at the old tier
+    - Service Account persistence after group removal
+    - Recommended practices for group membership changes
