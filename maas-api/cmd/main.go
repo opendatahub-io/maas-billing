@@ -110,7 +110,7 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 		Name:      cfg.GatewayName,
 		Namespace: cfg.GatewayNamespace,
 	}
-	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef)
+	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, clusterConfig.ClientSet, gatewayRef)
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 
 	// V1 API routes

@@ -1,10 +1,15 @@
 package models_test
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
+	kservev1beta1 "github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	kservefakev1alpha1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1alpha1/fake"
 	kservefakev1beta1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1beta1/fake"
 	"github.com/stretchr/testify/assert"
@@ -12,15 +17,23 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	k8stesting "k8s.io/client-go/testing"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+)
+
+const (
+	testGatewayName      = "maas-gateway"
+	testGatewayNamespace = "gateway-ns"
 )
 
 func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is complaining about the test cases being in a different order than the expected match
-	gateway := models.GatewayRef{Name: "maas-gateway", Namespace: "gateway-ns"}
+	gateway := models.GatewayRef{Name: testGatewayName, Namespace: testGatewayNamespace}
 
 	tests := []struct {
 		name        string
@@ -293,6 +306,7 @@ func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is compla
 				&kservefakev1beta1.FakeServingV1beta1{Fake: fakeKServe},
 				&kservefakev1alpha1.FakeServingV1alpha1{Fake: fakeKServe},
 				&gatewayfake.FakeGatewayV1{Fake: fakeGateway},
+				nil, // k8sClient not needed for this test
 				gateway,
 			)
 
@@ -309,6 +323,172 @@ func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is compla
 	}
 }
 
+func TestListAvailableLLMsForUser(t *testing.T) {
+	// Test scenarios for gateway delegation authorization
+	tests := []struct {
+		name          string
+		user          *token.UserContext
+		httpResponses map[string]int // model URL path -> HTTP status code
+		expectModels  []string       // expected model IDs
+		expectError   bool
+	}{
+		{
+			name: "user with full access",
+			user: &token.UserContext{
+				Username: "test-user",
+				Groups:   []string{"test-group"},
+			},
+			httpResponses: map[string]int{
+				"/llama-7b/health": http.StatusOK,
+				"/gpt-3/health":    http.StatusOK,
+			},
+			expectModels: []string{"llama-7b", "gpt-3"},
+		},
+		{
+			name: "user with no access",
+			user: &token.UserContext{
+				Username: "restricted-user",
+				Groups:   []string{"restricted-group"},
+			},
+			httpResponses: map[string]int{
+				"/llama-7b/health": http.StatusForbidden,
+				"/gpt-3/health":    http.StatusUnauthorized,
+			},
+			expectModels: []string{}, // no models should be returned
+		},
+		{
+			name: "user with partial access",
+			user: &token.UserContext{
+				Username: "partial-user",
+				Groups:   []string{"partial-group"},
+			},
+			httpResponses: map[string]int{
+				"/llama-7b/health": http.StatusOK,
+				"/gpt-3/health":    http.StatusForbidden,
+			},
+			expectModels: []string{"llama-7b"}, // only allowed model
+		},
+		{
+			name: "gateway server error",
+			user: &token.UserContext{
+				Username: "error-user",
+				Groups:   []string{"error-group"},
+			},
+			httpResponses: map[string]int{
+				"/llama-7b/health": http.StatusInternalServerError,
+				"/gpt-3/health":    http.StatusServiceUnavailable,
+			},
+			expectModels: []string{}, // no models on error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock HTTP server to simulate gateway responses
+			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Check for Authorization header
+				auth := r.Header.Get("Authorization")
+				if !strings.HasPrefix(auth, "Bearer test-token") {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+
+				// Return configured response for this path
+				if statusCode, exists := tt.httpResponses[r.URL.Path]; exists {
+					w.WriteHeader(statusCode)
+					return
+				}
+
+				// Default to 404 for unknown paths
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer mockServer.Close()
+
+			// Create test LLM services with URLs pointing to our mock server
+			llmTestScenarios := []fixtures.LLMTestScenario{
+				{
+					Name:             "llm1",
+					Namespace:        "test-ns",
+					SpecModelName:    strPtr("llama-7b"),
+					URL:              mustParseURL(mockServer.URL + "/llama-7b"),
+					GatewayName:      testGatewayName,
+					GatewayNamespace: testGatewayNamespace,
+					Ready:            true,
+				},
+				{
+					Name:             "llm2",
+					Namespace:        "test-ns",
+					SpecModelName:    strPtr("gpt-3"),
+					URL:              mustParseURL(mockServer.URL + "/gpt-3"),
+					GatewayName:      testGatewayName,
+					GatewayNamespace: testGatewayNamespace,
+					Ready:            true,
+				},
+			}
+			llmInferenceServices := fixtures.CreateLLMInferenceServices(llmTestScenarios...)
+
+			// Create test objects
+			var objects []runtime.Object
+			objects = append(objects, llmInferenceServices...)
+
+			// Setup clients
+			scheme := runtime.NewScheme()
+			_ = kservev1beta1.AddToScheme(scheme)
+			_ = kservev1alpha1.AddToScheme(scheme)
+
+			// Create fake KServe clients
+			fakeKServe := k8stesting.Fake{}
+			codecFactory := serializer.NewCodecFactory(scheme)
+			tracker := k8stesting.NewObjectTracker(scheme, codecFactory.UniversalDecoder())
+			for _, obj := range objects {
+				_ = tracker.Add(obj)
+			}
+			fakeKServe.AddReactor("*", "*", k8stesting.ObjectReaction(tracker))
+
+			// Create manager (k8sClient not needed for gateway delegation)
+			gateway := models.GatewayRef{
+				Name:      testGatewayName,
+				Namespace: testGatewayNamespace,
+			}
+
+			manager := models.NewManager(
+				&kservefakev1beta1.FakeServingV1beta1{Fake: &fakeKServe},
+				&kservefakev1alpha1.FakeServingV1alpha1{Fake: &fakeKServe},
+				&gatewayfake.FakeGatewayV1{Fake: &k8stesting.Fake{}},
+				nil, // k8sClient not used anymore
+				gateway,
+			)
+
+			// Test the user-aware filtering with SA token
+			availableModels, err := manager.ListAvailableLLMsForUser(context.Background(), tt.user, "test-token")
+
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Extract model IDs
+			var actualModelIDs []string
+			for _, model := range availableModels {
+				actualModelIDs = append(actualModelIDs, model.ID)
+			}
+
+			assert.ElementsMatch(t, tt.expectModels, actualModelIDs)
+		})
+	}
+}
+
+// Helper function for test.
+func mustParseURL(rawURL string) fixtures.PublicURL {
+	return fixtures.PublicURL(rawURL)
+}
+
 func ptrTo[T any](v T) *T {
 	return &v
+}
+
+func strPtr(s string) *string {
+	return &s
 }
