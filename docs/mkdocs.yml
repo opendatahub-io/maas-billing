@@ -1,7 +1,7 @@
 site_name: ODH Model-as-a-Service Documentation
-site_url: https://opendatahub-io.github.io/maas-billing
-repo_url: https://github.com/opendatahub-io/maas-billing
-repo_name: opendatahub-io/maas-billing
+site_url: https://opendatahub-io.github.io/models-as-a-service
+repo_url: https://github.com/opendatahub-io/models-as-a-service
+repo_name: opendatahub-io/models-as-a-service
 
 # Set the docs directory to the content subdirectory
 docs_dir: content
