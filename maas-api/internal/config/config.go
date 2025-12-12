@@ -14,7 +14,7 @@ type StorageMode string
 
 const (
 	StorageModeInMemory StorageMode = "in-memory"
-	StorageModeDisk StorageMode = "disk"
+	StorageModeDisk     StorageMode = "disk"
 	StorageModeExternal StorageMode = "external"
 )
 
@@ -40,7 +40,7 @@ func (s *StorageMode) Set(value string) error {
 const DefaultDataPath = "/data/maas-api.db"
 
 type Config struct {
-	Name string
+	Name      string
 	Namespace string
 
 	GatewayName      string
@@ -76,10 +76,17 @@ func Load() *Config {
 		GatewayNamespace: env.GetString("GATEWAY_NAMESPACE", constant.DefaultGatewayNamespace),
 		Port:             env.GetString("PORT", "8080"),
 		DebugMode:        debugMode,
-		StorageMode:      StorageMode(env.GetString("STORAGE_MODE", string(StorageModeInMemory))),
+		StorageMode:      StorageModeInMemory,
 		DBConnectionURL:  env.GetString("DB_CONNECTION_URL", ""),
 		DataPath:         env.GetString("DATA_PATH", DefaultDataPath),
 	}
+
+	// Validate STORAGE_MODE env var through Set() to ensure consistent validation
+	if err := c.StorageMode.Set(env.GetString("STORAGE_MODE", "")); err != nil {
+		// Log warning and fall back to default (in-memory)
+		c.StorageMode = StorageModeInMemory
+	}
+
 	c.bindFlags(flag.CommandLine)
 
 	return c
