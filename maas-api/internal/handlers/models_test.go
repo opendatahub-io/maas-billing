@@ -120,7 +120,7 @@ func TestListingModels(t *testing.T) {
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/models", nil)
 	require.NoError(t, err, "Failed to create request")
 
-	req.Header.Set("Authorization", "Bearer valid-token")
+	req.Header.Set("Authorization", "Bearer valid-sa-token")
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code, "Expected status OK")
@@ -130,7 +130,9 @@ func TestListingModels(t *testing.T) {
 	require.NoError(t, err, "Failed to unmarshal response body")
 
 	assert.Equal(t, "list", response.Object, "Expected object type to be 'list'")
-	require.Len(t, response.Data, len(llmInferenceServices), "Mismatched number of models returned")
+	// Expect all models except the one without URL (which is filtered out during authorization)
+	expectedModels := len(llmInferenceServices) - 1
+	require.Len(t, response.Data, expectedModels, "Mismatched number of models returned")
 
 	modelsByName := make(map[string]models.Model)
 	for _, model := range response.Data {
@@ -144,6 +146,11 @@ func TestListingModels(t *testing.T) {
 	testCases := make([]expectedModel, 0, len(llmTestScenarios))
 
 	for _, llmTestScenario := range llmTestScenarios {
+		// Skip models without URLs - they are filtered out during authorization
+		if llmTestScenario.URL.String() == "" {
+			continue
+		}
+
 		// expected ID mirrors toModels(): fallback to metadata.name unless spec.model.name is non-empty
 		expectedModelID := llmTestScenario.Name
 		if llmTestScenario.SpecModelName != nil && *llmTestScenario.SpecModelName != "" {

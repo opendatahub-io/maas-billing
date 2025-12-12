@@ -61,7 +61,14 @@ func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 		return
 	}
 
-	modelList, err := h.modelMgr.ListAvailableLLMsForUser(c.Request.Context(), user)
+	// Extract the SA token from the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	saToken := ""
+	if authHeader != "" && len(authHeader) > 7 { // "Bearer " = 7 chars
+		saToken = authHeader[7:] // Remove "Bearer " prefix
+	}
+
+	modelList, err := h.modelMgr.ListAvailableLLMsForUser(c.Request.Context(), user, saToken)
 	if err != nil {
 		log.Printf("Failed to get available LLM models for user %s: %v", user.Username, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
