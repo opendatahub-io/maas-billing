@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -52,8 +54,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Initialize store in main for proper cleanup
-	store, err := api_keys.NewStore(ctx, cfg.DBPath)
+	store, err := initStore(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize token store: %v", err)
 	}
@@ -98,7 +99,43 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store) {
+// initStore creates the store based on the configured storage mode.
+//
+// Storage modes:
+//   - in-memory (default): Ephemeral storage, data lost on restart
+//   - disk: Persistent local storage using a file (single replica only)
+//   - external: External database (PostgreSQL), supports multiple replicas
+//
+//nolint:ireturn // Returns MetadataStore interface by design for pluggable storage backends.
+func initStore(ctx context.Context, cfg *config.Config) (api_keys.MetadataStore, error) {
+	switch cfg.StorageMode {
+	case config.StorageModeInMemory, "":
+		log.Printf("Using in-memory storage (data will be lost on restart). " +
+			"For persistent storage, use --storage=disk or --storage=external")
+		return api_keys.NewSQLiteStore(ctx, ":memory:")
+
+	case config.StorageModeDisk:
+		dataPath := strings.TrimSpace(cfg.DataPath)
+		if dataPath == "" {
+			dataPath = config.DefaultDataPath
+		}
+		log.Printf("Using persistent disk storage at %s", dataPath)
+		return api_keys.NewSQLiteStore(ctx, dataPath)
+
+	case config.StorageModeExternal:
+		dbURL := strings.TrimSpace(cfg.DBConnectionURL)
+		if dbURL == "" {
+			return nil, errors.New("--db-connection-url is required when using --storage=external")
+		}
+		log.Printf("Connecting to external database...")
+		return api_keys.NewExternalStore(ctx, dbURL)
+
+	default:
+		return nil, fmt.Errorf("unknown storage mode: %q (valid modes: in-memory, disk, external)", cfg.StorageMode)
+	}
+}
+
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store api_keys.MetadataStore) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
@@ -145,7 +182,6 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	)
 	tokenHandler := token.NewHandler(cfg.Name, tokenManager)
 
-	// Create api key service (persistent, SQLite logic)
 	apiKeyService := api_keys.NewService(tokenManager, store)
 	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 

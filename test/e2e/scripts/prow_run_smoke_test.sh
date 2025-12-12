@@ -26,7 +26,6 @@
 #   SKIP_SMOKE      - Skip smoke tests (default: false)
 #   SKIP_TOKEN_VERIFICATION - Skip token metadata verification (default: false)
 #   MAAS_API_IMAGE - Custom image for MaaS API (e.g., quay.io/opendatahub/maas-api:pr-232)
-#
 # =============================================================================
 
 set -euo pipefail
@@ -230,6 +229,7 @@ oc login --token "$ADMIN_TOKEN" --server "$K8S_CLUSTER_URL"
 print_header "Validating Deployment and Token Metadata Logic"
 validate_deployment
 run_token_verification
+
 run_smoke_tests
 
 # Test edit user  
