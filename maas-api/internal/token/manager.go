@@ -164,33 +164,6 @@ func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (s
 	return namespace, nil
 }
 
-// ValidateToken verifies the token with K8s.
-func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error) {
-	// 1. Check K8s validity
-	userCtx, err := reviewer.ExtractUserInfo(ctx, token)
-	if err != nil {
-		log.Printf("TokenReview error: %v", err)
-		return nil, err
-	}
-
-	if !userCtx.IsAuthenticated {
-		log.Printf("TokenReview returned IsAuthenticated=false, username: '%s'", userCtx.Username)
-		return userCtx, nil
-	}
-
-	log.Printf("TokenReview successful for user: %s", userCtx.Username)
-
-	// 2. Check user type
-	// If it is a User token (not SA), we should allow it (Bootstrap/Admin access)
-	if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
-		log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
-		return userCtx, nil
-	}
-
-	log.Printf("Token validation successful for user: %s", userCtx.Username)
-	return userCtx, nil
-}
-
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
 // It takes a tier name, formats it as {instance}-tier-{tier}, and returns the namespace name.
 func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string, error) {
