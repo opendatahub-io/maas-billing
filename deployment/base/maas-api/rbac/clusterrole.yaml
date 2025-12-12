@@ -10,11 +10,12 @@ rules:
 # SA token provider resources
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "create"]
 - apiGroups: [""]
   resources: ["serviceaccounts"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "create", "delete"]
 - apiGroups: [""]
+  # Needed for TokenRequest API
   resources: ["serviceaccounts/token"]
   verbs: ["create"]
 
@@ -26,6 +27,11 @@ rules:
 # KServe resources for model management
 - apiGroups: ["serving.kserve.io"]
   resources: ["inferenceservices", "llminferenceservices"]
+  verbs: ["get", "list", "watch"]
+
+# Gateway API resources for route filtering
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["httproutes"]
   verbs: ["get", "list", "watch"]
 
 # Metrics and monitoring

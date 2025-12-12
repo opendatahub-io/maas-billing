@@ -31,9 +31,12 @@ The MaaS (Models as a Service) API provides a tier-based token management system
 | `/health`            | GET    | Service health check                   | None              | Health status               |
 | `/models`            | GET    | List available InferenceServices       | None              | OpenAI-compatible list      |
 | `/v1/models`         | GET    | List available LLMInferenceServices    | None              | OpenAI-compatible list      |
-| `/v1/tokens`         | POST   | Issue short-lived token for user       | `{"expiration"}` | Token with expiration       |
-| `/v1/tokens`         | DELETE | Revoke all tokens for user             | None              | Success confirmation        |
-| `/v1/tiers/lookup`   | POST   | Lookup tier for user groups (internal) | `{"groups"}`     | `{"tier", "displayName"}`  |
+| `/v1/tokens`         | POST   | Issue ephemeral short-lived token      | `{"expiration"}` | Token with expiration       |
+| `/v1/tokens`         | DELETE | Revoke all ephemeral tokens for user   | None              | Success confirmation        |
+| `/v1/api-keys`       | POST   | Create named API key (long-lived)      | `{"expiration", "name"}` | Token with metadata |
+| `/v1/api-keys`       | GET    | List all API keys for user             | None              | Array of API key metadata   |
+| `/v1/api-keys/{id}`  | GET    | Get specific API key by ID             | Bearer token      | API key metadata            |
+| `/v1/tiers/lookup`   | POST   | Lookup tier for user groups (internal) | `{"groups"}`     | `{"tier", "displayName"}`                 |
 
 ## Core Architecture Components
 

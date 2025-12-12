@@ -3,11 +3,13 @@ package fixtures
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	kservev1beta1 "github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	kserveclientv1alpha1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1alpha1"
@@ -25,6 +27,7 @@ import (
 	gatewayclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1"
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/api_keys"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
@@ -129,8 +132,7 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 }
 
 // StubTokenProviderAPIs creates common test components for token tests.
-func StubTokenProviderAPIs(t *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset) {
-	t.Helper()
+func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset, func()) {
 	var objects []runtime.Object
 
 	if withTierConfig {
@@ -146,7 +148,7 @@ func StubTokenProviderAPIs(t *testing.T, withTierConfig bool, tokenScenarios map
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
-	tierMapper := tier.NewMapper(t.Context(), fakeClient, TestTenant, TestNamespace)
+	tierMapper := tier.NewMapper(context.Background(), fakeClient, TestTenant, TestNamespace)
 	manager := token.NewManager(
 		TestTenant,
 		tierMapper,
@@ -156,24 +158,45 @@ func StubTokenProviderAPIs(t *testing.T, withTierConfig bool, tokenScenarios map
 	)
 	reviewer := token.NewReviewer(fakeClient)
 
-	return manager, reviewer, fakeClient
+	cleanup := func() {}
+
+	return manager, reviewer, fakeClient, cleanup
 }
 
 // SetupTestRouter creates a test router with token endpoints.
-func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) *gin.Engine {
+// Returns the router and a cleanup function that must be called to close the store and remove the temp DB file.
+func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Engine, func() error) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	handler := token.NewHandler("test", manager)
+	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
+	store, err := api_keys.NewStore(context.Background(), dbPath)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test store: %v", err))
+	}
+
+	tokenHandler := token.NewHandler("test", manager)
+	apiKeyService := api_keys.NewService(manager, store)
+	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
 	protected := router.Group("/v1")
 	if reviewer != nil {
-		protected.Use(token.ExtractUserInfo(reviewer))
+		protected.Use(tokenHandler.ExtractUserInfo(reviewer))
 	}
-	protected.POST("/tokens", handler.IssueToken)
-	protected.DELETE("/tokens", handler.RevokeAllTokens)
+	protected.POST("/tokens", tokenHandler.IssueToken)
+	protected.DELETE("/tokens", apiKeyHandler.RevokeAllTokens)
 
-	return router
+	cleanup := func() error {
+		if err := store.Close(); err != nil {
+			return fmt.Errorf("failed to close store: %w", err)
+		}
+		if err := os.Remove(dbPath); err != nil {
+			return fmt.Errorf("failed to remove temp DB file: %w", err)
+		}
+		return nil
+	}
+
+	return router, cleanup
 }
 
 // SetupTierTestRouter creates a test router for tier endpoints.
@@ -248,8 +271,20 @@ func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenR
 			return true, nil, fmt.Errorf("expected TokenRequest, got %T", createAction.GetObject())
 		}
 
+		// Generate valid JWT
+		claims := jwt.MapClaims{
+			"jti": fmt.Sprintf("mock-jti-%d", time.Now().UnixNano()),
+			"exp": time.Now().Add(time.Hour).Unix(),
+			"sub": "system:serviceaccount:test-namespace:test-sa",
+		}
+
+		signedToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("secret"))
+		if err != nil {
+			panic(fmt.Sprintf("failed to sign JWT token in test fixture: %v", err))
+		}
+
 		tokenRequest.Status = authv1.TokenRequestStatus{
-			Token:               "mock-service-account-token-" + strconv.FormatInt(time.Now().Unix(), 10),
+			Token:               signedToken,
 			ExpirationTimestamp: metav1.NewTime(time.Now().Add(time.Hour)),
 		}
 

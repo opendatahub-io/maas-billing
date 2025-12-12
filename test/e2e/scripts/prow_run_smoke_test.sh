@@ -15,7 +15,8 @@
 #      - Admin user (cluster-admin role)
 #      - Edit user (edit role) 
 #      - View user (view role)
-#   5. Run smoke tests for each user
+#   5. Run token metadata verification (as admin user)
+#   6. Run smoke tests for each user
 # 
 # USAGE:
 #   ./test/e2e/scripts/prow_run_smoke_test.sh
@@ -23,6 +24,8 @@
 # ENVIRONMENT VARIABLES:
 #   SKIP_VALIDATION - Skip deployment validation (default: false)
 #   SKIP_SMOKE      - Skip smoke tests (default: false)
+#   SKIP_TOKEN_VERIFICATION - Skip token metadata verification (default: false)
+#   MAAS_API_IMAGE - Custom image for MaaS API (e.g., quay.io/opendatahub/maas-api:pr-232)
 #
 # =============================================================================
 
@@ -51,6 +54,7 @@ PROJECT_ROOT="$(find_project_root)"
 # Options (can be set as environment variables)
 SKIP_VALIDATION=${SKIP_VALIDATION:-false}
 SKIP_SMOKE=${SKIP_SMOKE:-false}
+SKIP_TOKEN_VERIFICATION=${SKIP_TOKEN_VERIFICATION:-false}
 
 print_header() {
     echo ""
@@ -85,6 +89,13 @@ check_prerequisites() {
 }
 
 deploy_maas_platform() {
+    # Set custom MaaS API image
+    : "${MAAS_API_IMAGE:=quay.io/opendatahub/maas-api:latest}"
+    echo "Using custom MaaS API image: ${MAAS_API_IMAGE}"
+    pushd "$PROJECT_ROOT/deployment/base/maas-api" > /dev/null
+    kustomize edit set image maas-api="${MAAS_API_IMAGE}"
+    popd > /dev/null
+
     echo "Deploying MaaS platform on OpenShift..."
     if ! "$PROJECT_ROOT/deployment/scripts/deploy-openshift.sh"; then
         echo "❌ ERROR: MaaS platform deployment failed"
@@ -111,51 +122,13 @@ validate_deployment() {
     if [ "$SKIP_VALIDATION" = false ]; then
         if ! "$PROJECT_ROOT/deployment/scripts/validate-deployment.sh"; then
             echo "❌ ERROR: Deployment validation failed"
+            exit 1
         else
             echo "✅ Deployment validation completed"
         fi
     else
         echo "⏭️  Skipping validation"
     fi
-}
-
-setup_maas_users() {
-    echo "Setting up Maas users for testing"
-    
-    # Capture the script output in a variable
-    local script_output
-    if ! script_output=$(cd "$PROJECT_ROOT" && bash test/e2e/scripts/setup_maas_users_openshift.sh 2>&1); then
-        echo "❌ ERROR: Failed to setup Maas users on OpenShift"
-        exit 1
-    fi
-    
-    # Display the script output (excluding export statements for security)
-    echo "$script_output" | grep -v "^export "
-    
-    # Extract and evaluate the export statements
-    local export_statements
-    export_statements=$(echo "$script_output" | grep "^export " || true)
-    
-    if [ -n "$export_statements" ]; then
-        eval "$export_statements"
-        echo "✅ Credentials loaded for users:"
-        echo "   Admin user: ${OPENSHIFT_ADMIN_USER}"
-        echo "   Dev user: ${OPENSHIFT_DEV_USER}"
-        echo "✅ Maas users setup completed"
-    else
-        echo "❌ ERROR: Credentials not found"
-        echo "❌ ERROR: Maas users setup failed"
-        exit 1
-    fi
-}
-
-login_as_user() {
-    echo "Logging in as user: $1"
-    if ! (oc login -u "$1" -p "$2"); then
-        echo "❌ ERROR: Failed to login as user: $1"
-        exit 1
-    fi
-    echo "✅ User: $1 logged in successfully as: $(oc whoami)"
 }
 
 setup_vars_for_tests() {
@@ -191,19 +164,20 @@ run_smoke_tests() {
     fi
 }
 
-# Main execution
-print_header "Deploying Maas on OpenShift"
-check_prerequisites
-deploy_maas_platform
-
-print_header "Deploying Models"  
-deploy_models
-
-print_header "Setting up variables for tests"
-setup_vars_for_tests
-
-print_header "Validating Deployment"
-validate_deployment
+run_token_verification() {
+    echo "-- Token Metadata Verification --"
+    
+    if [ "$SKIP_TOKEN_VERIFICATION" = false ]; then
+        if ! (cd "$PROJECT_ROOT" && bash scripts/verify-tokens-metadata-logic.sh); then
+            echo "❌ ERROR: Token metadata verification failed"
+            exit 1
+        else
+            echo "✅ Token metadata verification completed successfully"
+        fi
+    else
+        echo "Skipping token metadata verification..."
+    fi
+}
 
 setup_test_user() {
     local username="$1"
@@ -228,6 +202,17 @@ setup_test_user() {
     echo "✅ User setup completed: $username"
 }
 
+# Main execution
+print_header "Deploying Maas on OpenShift"
+check_prerequisites
+deploy_maas_platform
+
+print_header "Deploying Models"  
+deploy_models
+
+print_header "Setting up variables for tests"
+setup_vars_for_tests
+
 # Setup all users first (while logged in as admin)
 print_header "Setting up test users"
 setup_test_user "tester-admin-user" "cluster-admin"
@@ -241,6 +226,10 @@ print_header "Running tests for all users"
 print_header "Running Maas e2e Tests as admin user"
 ADMIN_TOKEN=$(oc create token tester-admin-user -n default)
 oc login --token "$ADMIN_TOKEN" --server "$K8S_CLUSTER_URL"
+
+print_header "Validating Deployment and Token Metadata Logic"
+validate_deployment
+run_token_verification
 run_smoke_tests
 
 # Test edit user  

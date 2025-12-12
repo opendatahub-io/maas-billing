@@ -9,14 +9,16 @@ Follow these steps to validate your deployment and understand each component:
 ### 1. Get Gateway Endpoint
 
 ```bash
-CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
-HOST="https://maas.${CLUSTER_DOMAIN}"
+CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}') && \
+HOST="https://maas.${CLUSTER_DOMAIN}" && \
+echo "Gateway endpoint: $HOST"
 ```
 
 !!! note
     If you haven't created the `maas-default-gateway` yet, you can use the fallback:
     ```bash
-    HOST="https://gateway.${CLUSTER_DOMAIN}"
+    HOST="https://gateway.${CLUSTER_DOMAIN}" && \
+    echo "Using fallback gateway endpoint: $HOST"
     ```
 
 ### 2. Get Authentication Token
@@ -29,9 +31,9 @@ TOKEN_RESPONSE=$(curl -sSk \
   -H "Content-Type: application/json" \
   -X POST \
   -d '{"expiration": "10m"}' \
-  "${HOST}/maas-api/v1/tokens")
-
-TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
+  "${HOST}/maas-api/v1/tokens") && \
+TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token) && \
+echo "Token obtained: ${TOKEN:0:20}..."
 ```
 
 !!! note
@@ -42,13 +44,10 @@ TOKEN=$(echo $TOKEN_RESPONSE | jq -r .token)
 ```bash
 MODELS=$(curl -sSk ${HOST}/maas-api/v1/models \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" | jq -r .)
-
-echo $MODELS | jq .
-MODEL_NAME=$(echo $MODELS | jq -r '.data[0].id')
-# Get the full URL which includes the LLMInferenceService resource name in the path
-MODEL_URL=$(echo $MODELS | jq -r '.data[0].url')
-
+    -H "Authorization: Bearer $TOKEN" | jq -r .) && \
+echo $MODELS | jq . && \
+MODEL_NAME=$(echo $MODELS | jq -r '.data[0].id') && \
+MODEL_URL=$(echo $MODELS | jq -r '.data[0].url') && \
 echo "Model URL: $MODEL_URL"
 ```
 
@@ -60,7 +59,7 @@ Send a request to the model endpoint (should get a 200 OK response):
 curl -sSk -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"model\": \"${MODEL_NAME}\", \"prompt\": \"Hello\", \"max_tokens\": 50}" \
-  "${MODEL_URL}/v1/completions"
+  "${MODEL_URL}/v1/completions" | jq
 ```
 
 ### 5. Test Authorization Enforcement
@@ -92,9 +91,9 @@ done
 Check that all components are running:
 
 ```bash
-kubectl get pods -n maas-api
-kubectl get pods -n kuadrant-system
-kubectl get pods -n kserve
+kubectl get pods -n maas-api && \
+kubectl get pods -n kuadrant-system && \
+kubectl get pods -n kserve && \
 kubectl get pods -n llm
 ```
 
@@ -107,10 +106,8 @@ kubectl get gateway -n openshift-ingress maas-default-gateway
 Check that policies are enforced:
 
 ```bash
-kubectl get authpolicy -A
-kubectl get tokenratelimitpolicy -A
-
-# Check LLMInferenceServices are ready
+kubectl get authpolicy -A && \
+kubectl get tokenratelimitpolicy -A && \
 kubectl get llminferenceservices -n llm
 ```
 

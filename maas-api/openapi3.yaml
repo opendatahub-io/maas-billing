@@ -167,53 +167,6 @@ paths:
                                 error: internal_error
                                 message: "failed to lookup tier: connection to configmap failed"
     /v1/tokens:
-        delete:
-            tags:
-                - tokens
-            summary: Revoke all tokens for the authenticated user
-            description: Invalidate all tokens for the current user. This will break any applications currently using those tokens.
-            operationId: tokens#revoke_all
-            responses:
-                "204":
-                    description: No Content response. All tokens have been successfully revoked.
-                "401":
-                    description: Unauthorized response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ErrorResponse'
-                            examples:
-                                missing_auth:
-                                    summary: Missing Authorization header
-                                    value:
-                                        error: Authorization header required
-                                invalid_format:
-                                    summary: Invalid authorization format
-                                    value:
-                                        error: "Invalid authorization format. Use: Authorization: Bearer <token>"
-                                validation_failed:
-                                    summary: Token validation failed
-                                    value:
-                                        error: validation failed
-                                not_authenticated:
-                                    summary: Token not authenticated
-                                    value:
-                                        error: not authenticated
-                "500":
-                    description: Internal Server Error response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ErrorResponse'
-                            examples:
-                                user_context_missing:
-                                    summary: User context not found
-                                    value:
-                                        error: User context not found
-                                revocation_failed:
-                                    summary: Token revocation failed
-                                    value:
-                                        error: Failed to revoke tokens
         post:
             tags:
                 - tokens
@@ -292,6 +245,17 @@ paths:
                                         error: "invalid character 'x' looking for beginning of value"
                 "401":
                     description: Unauthorized response.
+        delete:
+            tags:
+                - tokens
+            summary: Revoke all ephemeral tokens for the authenticated user
+            description: Invalidate all ephemeral tokens for the current user. This will break any applications currently using those tokens.
+            operationId: tokens#revoke_all
+            responses:
+                "204":
+                    description: No Content response. All tokens have been successfully revoked.
+                "401":
+                    description: Unauthorized response.
                     content:
                         application/json:
                             schema:
@@ -324,10 +288,87 @@ paths:
                                     summary: User context not found
                                     value:
                                         error: User context not found
-                                token_generation_failed:
-                                    summary: Token generation failed
+                                revocation_failed:
+                                    summary: Token revocation failed
                                     value:
-                                        error: Failed to generate token
+                                        error: Failed to revoke tokens
+    /v1/api-keys:
+        post:
+            tags:
+                - api-keys
+            summary: Create a new named API key (long-lived token)
+            description: Creates a new named API key with specified expiration. Named tokens are tracked in the database and can be listed. Revocation is supported only via the bulk DELETE /v1/tokens endpoint (per-key revocation is not currently supported).
+            operationId: api-keys#create
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TokenRequest'
+                        examples:
+                            named_token:
+                                summary: Named API key for production app
+                                value:
+                                    expiration: 24h
+                                    name: my-production-app
+                            long_lived:
+                                summary: Long-lived API key (30 days)
+                                value:
+                                    expiration: 720h
+                                    name: backend-service
+            responses:
+                "201":
+                    description: Created response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TokenResponse'
+                "400":
+                    description: Bad Request response.
+                "401":
+                    description: Unauthorized response.
+        get:
+            tags:
+                - api-keys
+            summary: List all API keys for the authenticated user
+            description: Returns a list of all API key metadata for the current user with their creation dates, expiration dates, and status.
+            operationId: api-keys#list
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/TokenMetadata'
+                "401":
+                    description: Unauthorized response.
+    /v1/api-keys/{id}:
+        get:
+            tags:
+                - api-keys
+            summary: Get a specific API key by ID
+            description: Returns metadata for a single API key by its ID.
+            operationId: api-keys#get
+            parameters:
+                - in: path
+                  name: id
+                  schema:
+                      type: string
+                  required: true
+                  description: ID of the API key to retrieve
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TokenMetadata'
+                "404":
+                    description: Not Found. API key not found.
+                "401":
+                    description: Unauthorized response.
 components:
   securitySchemes:
     bearerAuth:
@@ -502,7 +543,50 @@ components:
                           description: Number of seconds
                           example: 14400
                     description: Token expiration - accepts either Go-style duration string or number of seconds. Minimum 10 minutes. Default is 4 hours.
+                name:
+                    type: string
+                    description: Optional name for the token. If provided, the token will be tracked in the metadata store.
+                    example: my-application-token
+                description:
+                    type: string
+                    description: Optional description for the token. Provides additional context about the token's purpose.
+                    example: Production API key for backend service
         
+        # Token metadata
+        TokenMetadata:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique identifier for the token metadata
+                name:
+                    type: string
+                    description: User-friendly name
+                description:
+                    type: string
+                    description: Optional description providing context about the token's purpose
+                creationDate:
+                    type: string
+                    format: date-time
+                    description: When the token was created
+                expirationDate:
+                    type: string
+                    format: date-time
+                    description: When the token expires
+                status:
+                    type: string
+                    description: Current status (active, expired)
+                expiredAt:
+                    type: string
+                    format: date-time
+                    description: When the token was revoked/expired (if applicable)
+            required:
+                - id
+                - name
+                - creationDate
+                - expirationDate
+                - status
+
         # Token response
         TokenResponse:
             type: object
@@ -520,13 +604,27 @@ components:
                     description: Token expiration timestamp (Unix seconds)
                     example: 1672531200
                     format: int64
+                jti:
+                    type: string
+                    description: JWT ID (JTI) - unique identifier for the token. Present in API key responses.
+                    example: abc123def456
+                name:
+                    type: string
+                    description: Token name. Present in API key responses.
+                    example: my-production-app
+                description:
+                    type: string
+                    description: Token description. Present in API key responses if provided.
+                    example: Production API key for backend service
             required:
                 - token
                 - expiration
                 - expiresAt
 tags:
     - name: tokens
-      description: "\U0001F511 Ephemeral Token Management service. Openshift identity access token is used to authenticate and as a refresh token."
+      description: "\U0001F511 Ephemeral Token Management service. Short-lived tokens for temporary access."
+    - name: api-keys
+      description: "\U0001F5DD️ Named API Key Management service. Long-lived, trackable tokens for applications."
     - name: models
       description: "\U0001F916 Model management service"
     - name: tiers

@@ -6,6 +6,6 @@ metadata:
 
 resources:
   - ../../base/networking/maas
-  - ../../base/policies
+  - ../odh
+  - ../../base/policies/usage-policies
   - ../../base/observability
-  - ../../base/maas-api

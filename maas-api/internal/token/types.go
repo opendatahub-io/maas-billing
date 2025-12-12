@@ -4,22 +4,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 )
 
-// UserContext contains user information extracted from a token.
+// UserContext holds user information extracted from the token.
 type UserContext struct {
 	Username        string   `json:"username"`
 	UID             string   `json:"uid"`
 	Groups          []string `json:"groups"`
 	IsAuthenticated bool     `json:"isAuthenticated"`
+	JTI             string   `json:"jti"` // JWT ID
 }
 
 type Token struct {
 	Token      string   `json:"token"`
 	Expiration Duration `json:"expiration"`
 	ExpiresAt  int64    `json:"expiresAt"`
+	IssuedAt   int64    `json:"issuedAt,omitempty"` // JWT iat claim
+	JTI        string   `json:"jti,omitempty"`
 }
 
 type Duration struct {
@@ -27,43 +29,56 @@ type Duration struct {
 }
 
 func (d *Duration) MarshalJSON() ([]byte, error) {
+	if d == nil {
+		return []byte("null"), nil
+	}
 	return json.Marshal(d.String())
 }
-
-var allowedUnits = regexp.MustCompile(`^(\d+(?:\.\d+)?[hms])+$`)
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var v any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
-
 	switch value := v.(type) {
-	case string:
-		if value == "" || value == "0" {
-			return nil // Let the caller handle defaulting
-		}
-		if !allowedUnits.MatchString(value) {
-			return fmt.Errorf("invalid duration %q: must be a positive number ending in s, m, or h (e.g. \"10s\", \"5m\", \"2h\")", value)
-		}
-		dur, err := time.ParseDuration(value)
-		if err != nil {
-			return err
-		}
-		*d = Duration{dur}
 	case float64:
 		if value == 0 {
+			d.Duration = 0
 			return nil // Let the caller handle defaulting
 		}
 		// JSON numbers are unmarshaled as float64.
-		*d = Duration{time.Duration(value * float64(time.Second))}
+		d.Duration = time.Duration(value * float64(time.Second))
+		return nil
+	case string:
+		if value == "" {
+			d.Duration = 0
+			return nil // Let the caller handle defaulting
+		}
+		var err error
+		d.Duration, err = time.ParseDuration(value)
+		if err != nil {
+			return err
+		}
+		return nil
 	default:
-		return fmt.Errorf("json: cannot unmarshal %T into Go value of type Duration", value)
+		return errors.New("invalid duration")
 	}
+}
 
-	if d.Duration < 10*time.Minute {
-		return errors.New("token expiration must be at least 10 minutes")
+// ValidateExpiration validates that a duration is positive and meets minimum requirements.
+// This provides consistent validation across handlers while keeping business rules
+// (like minimum duration) in the handlers that use them.
+func ValidateExpiration(d time.Duration, minDuration time.Duration) error {
+	if d <= 0 {
+		return errors.New("expiration must be positive")
 	}
-
+	if d < minDuration {
+		// Format duration in a user-friendly way
+		minutes := int(minDuration.Minutes())
+		if minutes > 0 && minDuration == time.Duration(minutes)*time.Minute {
+			return errors.New("token expiration must be at least " + fmt.Sprintf("%d minutes", minutes))
+		}
+		return errors.New("token expiration must be at least " + minDuration.String())
+	}
 	return nil
 }

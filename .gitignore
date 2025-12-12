@@ -17,6 +17,8 @@ apps/backend/package-lock.json
 # Go test coverage files
 coverage.out
 coverage.html
+
+# Go binaries
 bin/
 
 # Python
