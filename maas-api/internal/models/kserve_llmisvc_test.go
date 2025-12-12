@@ -16,6 +16,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
 )
 
@@ -289,7 +290,9 @@ func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is compla
 				return true, list, nil
 			})
 
+			testLogger := logger.Production()
 			manager := models.NewManager(
+				testLogger,
 				&kservefakev1beta1.FakeServingV1beta1{Fake: fakeKServe},
 				&kservefakev1alpha1.FakeServingV1alpha1{Fake: fakeKServe},
 				&gatewayfake.FakeGatewayV1{Fake: fakeGateway},

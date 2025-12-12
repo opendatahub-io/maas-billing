@@ -57,6 +57,15 @@ linters:
           alias: $1$2
         - pkg: github.com/openshift/api/(\w{1,4})\w*/(v[\w\d]+)
           alias: $1$2       
+    loggercheck:
+      require-string-key: true
+      no-printf-like: true
+      rules:
+        - (*github.com/opendatahub-io/maas-billing/maas-api/internal/logger.Logger).Debug
+        - (*github.com/opendatahub-io/maas-billing/maas-api/internal/logger.Logger).Info
+        - (*github.com/opendatahub-io/maas-billing/maas-api/internal/logger.Logger).Warn
+        - (*github.com/opendatahub-io/maas-billing/maas-api/internal/logger.Logger).Error
+        - (*github.com/opendatahub-io/maas-billing/maas-api/internal/logger.Logger).Fatal
     ireturn:
       allow:
         - anon

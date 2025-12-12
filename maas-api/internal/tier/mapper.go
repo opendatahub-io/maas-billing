@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"slices"
 	"sort"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 )
 
 // Mapper handles tier-to-group mapping lookups.
@@ -24,9 +24,10 @@ type Mapper struct {
 	tenantName      string
 	namespace       string
 	configMapLister corelisters.ConfigMapLister
+	logger          *logger.Logger
 }
 
-func NewMapper(ctx context.Context, clientset kubernetes.Interface, tenantName, namespace string) *Mapper {
+func NewMapper(ctx context.Context, log *logger.Logger, clientset kubernetes.Interface, tenantName, namespace string) *Mapper {
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(
 		clientset,
 		constant.DefaultResyncPeriod,
@@ -39,13 +40,14 @@ func NewMapper(ctx context.Context, clientset kubernetes.Interface, tenantName, 
 	informerFactory.Start(ctx.Done())
 
 	if !cache.WaitForCacheSync(ctx.Done(), configMapInformer.Informer().HasSynced) {
-		log.Fatalf("failed to wait for caches to sync")
+		log.Fatal("Failed to wait for caches to sync")
 	}
 
 	return &Mapper{
 		tenantName:      tenantName,
 		namespace:       namespace,
 		configMapLister: configMapLister,
+		logger:          log,
 	}
 }
 
@@ -77,7 +79,10 @@ func (m *Mapper) GetTierForGroups(groups ...string) (*Tier, error) {
 		if k8serrors.IsNotFound(err) {
 			return nil, fmt.Errorf("tier mapping not found, provide configuration in %s", constant.TierMappingConfigMap)
 		}
-		log.Printf("Failed to load tier configuration from ConfigMap %s: %v", constant.TierMappingConfigMap, err)
+		m.logger.Error("Failed to load tier configuration from ConfigMap",
+			"configmap", constant.TierMappingConfigMap,
+			"error", err,
+		)
 		return nil, fmt.Errorf("failed to load tier configuration: %w", err)
 	}
 
@@ -113,7 +118,9 @@ func (m *Mapper) loadTierConfig() ([]Tier, error) {
 
 	configData, exists := cm.Data["tiers"]
 	if !exists {
-		log.Printf("tiers key not found in ConfigMap %s", constant.TierMappingConfigMap)
+		m.logger.Warn("Tiers key not found in ConfigMap",
+			"configmap", constant.TierMappingConfigMap,
+		)
 		return nil, errors.New("tier to group mapping configuration not found")
 	}
 

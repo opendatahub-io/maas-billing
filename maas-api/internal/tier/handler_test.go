@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
@@ -231,7 +232,8 @@ func TestHandler_PostTierLookup_DisplayNameFallback(t *testing.T) {
 	}
 
 	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(t.Context(), clientset, fixtures.TestTenant, fixtures.TestNamespace)
+	testLogger := logger.Production()
+	mapper := tier.NewMapper(t.Context(), testLogger, clientset, fixtures.TestTenant, fixtures.TestNamespace)
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"basic-users"}}

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
 )
 
@@ -54,7 +55,8 @@ func TestAPIEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mockManager := new(MockManager)
-	handler := token.NewHandler("test", mockManager)
+	testLogger := logger.Production()
+	handler := token.NewHandler(testLogger, "test", mockManager)
 
 	// Middleware to inject user context
 	injectUser := func(c *gin.Context) {

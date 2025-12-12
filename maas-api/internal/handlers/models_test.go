@@ -13,6 +13,7 @@ import (
 	"knative.dev/pkg/apis"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
 	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
@@ -87,8 +88,9 @@ func TestListingModels(t *testing.T) {
 		Name:      testGatewayName,
 		Namespace: testGatewayNamespace,
 	}
-	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1, clients.Gateway, gatewayRef)
-	modelsHandler := handlers.NewModelsHandler(modelMgr)
+	testLogger := logger.Production()
+	modelMgr := models.NewManager(testLogger, clients.KServeV1Beta1, clients.KServeV1Alpha1, clients.Gateway, gatewayRef)
+	modelsHandler := handlers.NewModelsHandler(testLogger, modelMgr)
 	v1 := router.Group("/v1")
 	v1.GET("/models", modelsHandler.ListLLMs)
 

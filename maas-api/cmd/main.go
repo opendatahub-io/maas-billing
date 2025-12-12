@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +19,7 @@ import (
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
+	"github.com/opendatahub-io/maas-billing/maas-api/internal/logger"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
@@ -28,6 +28,12 @@ import (
 func main() {
 	cfg := config.Load()
 	flag.Parse()
+
+	// Initialize structured logger aligned with KServe conventions
+	appLogger := logger.New(cfg.DebugMode)
+	defer func() {
+		_ = appLogger.Sync() // Ignore sync errors on close, as per zap documentation
+	}()
 
 	gin.SetMode(gin.ReleaseMode) // Explicitly set release mode
 	if cfg.DebugMode {
@@ -53,17 +59,21 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Initialize store in main for proper cleanup
-	store, err := api_keys.NewStore(ctx, cfg.DBPath)
+	store, err := api_keys.NewStore(ctx, appLogger, cfg.DBPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize token store: %v", err)
+		appLogger.Fatal("Failed to initialize token store",
+			"error", err,
+		)
 	}
 	defer func() {
 		if err := store.Close(); err != nil {
-			log.Printf("Failed to close token store: %v", err)
+			appLogger.Error("Failed to close token store",
+				"error", err,
+			)
 		}
 	}()
 
-	registerHandlers(ctx, router, cfg, store)
+	registerHandlers(ctx, router, cfg, store, appLogger)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -76,47 +86,56 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Server starting on port %s", cfg.Port)
+		appLogger.Info("Server starting",
+			"port", cfg.Port,
+			"debug_mode", cfg.DebugMode,
+		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen: %s\n", err)
+			appLogger.Fatal("Server failed to start",
+				"error", err,
+			)
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutdown signal received, shutting down server...")
+	appLogger.Info("Shutdown signal received, shutting down server...")
 
 	cancel()
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatal("Server forced to shutdown:", err) //nolint:gocritic // exits immediately
+		appLogger.Fatal("Server forced to shutdown",
+			"error", err,
+		)
 	}
 
-	log.Println("Server exited gracefully")
+	appLogger.Info("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store) {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store, appLogger *logger.Logger) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	clusterConfig, err := config.NewClusterConfig()
 	if err != nil {
-		log.Fatalf("Failed to create Kubernetes client: %v", err)
+		appLogger.Fatal("Failed to create Kubernetes client",
+			"error", err,
+		)
 	}
 
 	gatewayRef := models.GatewayRef{
 		Name:      cfg.GatewayName,
 		Namespace: cfg.GatewayNamespace,
 	}
-	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef)
-	modelsHandler := handlers.NewModelsHandler(modelMgr)
+	modelMgr := models.NewManager(appLogger, clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef)
+	modelsHandler := handlers.NewModelsHandler(appLogger, modelMgr)
 
 	// V1 API routes
 	v1Routes := router.Group("/v1")
 
-	tierMapper := tier.NewMapper(ctx, clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
+	tierMapper := tier.NewMapper(ctx, appLogger, clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
 	tierHandler := tier.NewHandler(tierMapper)
 	v1Routes.POST("/tiers/lookup", tierHandler.TierLookup)
 
@@ -132,22 +151,23 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	informerFactory.Start(ctx.Done())
 
 	if !cache.WaitForNamedCacheSync("maas-api", ctx.Done(), informersSynced...) {
-		log.Fatalf("Failed to sync informer caches")
+		appLogger.Fatal("Failed to sync informer caches")
 	}
 
 	// Create token manager (ephemeral, K8s logic)
 	tokenManager := token.NewManager(
+		appLogger,
 		cfg.Name,
 		tierMapper,
 		clusterConfig.ClientSet,
 		namespaceInformer.Lister(),
 		serviceAccountInformer.Lister(),
 	)
-	tokenHandler := token.NewHandler(cfg.Name, tokenManager)
+	tokenHandler := token.NewHandler(appLogger, cfg.Name, tokenManager)
 
 	// Create api key service (persistent, SQLite logic)
 	apiKeyService := api_keys.NewService(tokenManager, store)
-	apiKeyHandler := api_keys.NewHandler(apiKeyService)
+	apiKeyHandler := api_keys.NewHandler(appLogger, apiKeyService)
 
 	// Create reviewer with audience to properly validate Service Account tokens
 	reviewer := token.NewReviewer(clusterConfig.ClientSet, cfg.Name+"-sa")
