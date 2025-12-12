@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-    title: MaaS Billing API
+    title: Models as a Service API
     description: Models as a Service Billing and Management API
     version: "1.0"
 servers:
