@@ -1,6 +1,6 @@
 # MaaS Installation Overview
 
-Currently, ODH's _Model-as-a-Service_ is provided as a standalone capability that is
+Currently, ODH's _Models-as-a-Service_ is provided as a standalone capability that is
 compatible with the Open Data Hub project (ODH), and with Red Hat OpenShift AI (RHOAI). To
 install MaaS:
 

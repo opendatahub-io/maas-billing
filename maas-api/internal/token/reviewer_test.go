@@ -10,7 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
 
 func TestResolver_ExtractUserInfo(t *testing.T) {

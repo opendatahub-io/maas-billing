@@ -32,7 +32,7 @@ LDFLAGS ?= -ldflags "-s -w -X main.version=$(TAG) -X main.commit=$(GIT_COMMIT) -
 
 .PHONY: help
 help: ## Show this help message
-	@echo "MaaS Billing Makefile"
+	@echo "MaaS API Makefile"
 	@echo ""
 	@echo "Usage: make <target> [REPO=your-repo] [TAG=your-tag]"
 	@echo ""

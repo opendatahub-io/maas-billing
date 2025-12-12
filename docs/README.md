@@ -1,6 +1,6 @@
 # MaaS Platform Documentation
 
-This directory contains the documentation for the MaaS (Model-as-a-Service) Platform. Documentation is built automatically using GitHub Actions and versioned with [mike](https://github.com/jimporter/mike).
+This directory contains the documentation for the MaaS (Models-as-a-Service) Platform. Documentation is built automatically using GitHub Actions and versioned with [mike](https://github.com/jimporter/mike).
 
 ## Documentation Versioning
 
@@ -15,7 +15,7 @@ When a new version tag is pushed (e.g., `v1.0.0`), the docs are automatically:
 2. Tagged as `latest`
 3. Set as the default version
 
-**Note**: The `dev` version is intentionally hidden from the version dropdown to avoid confusion for end users. Developers can access it directly at `https://opendatahub-io.github.io/maas-billing/dev/`
+**Note**: The `dev` version is intentionally hidden from the version dropdown to avoid confusion for end users. Developers can access it directly at `https://opendatahub-io.github.io/models-as-a-service/dev/`
 
 ## Styling Notes
 
@@ -56,7 +56,7 @@ pip install mike
 1. Navigate to the docs directory (where `mkdocs.yml` is located):
 
 ```bash
-cd /path/to/maas-billing/docs
+cd /path/to/models-as-a-service/docs
 ```
 
 2. Start the development server:
@@ -159,6 +159,6 @@ All versions are stored in the `gh-pages` branch.
 #### Accessing the Dev Version
 
 The `dev` version doesn't appear in the version selector but can be accessed directly:
-- URL: `https://opendatahub-io.github.io/maas-billing/dev/`
+- URL: `https://opendatahub-io.github.io/models-as-a-service/dev/`
 
 This keeps the version dropdown clean for end users while still making development docs available for contributors.

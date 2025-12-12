@@ -99,7 +99,7 @@ For local development and testing, you can also use our [Limitador Persistence](
 We are providing a basic dashboard for the MaaS Platform that can be used to get a quick
 overview of the system. Its definition can be found and imported from the following 
 link:
-[maas-token-metrics-dashboard.json](https://github.com/opendatahub-io/maas-billing/blob/main/docs/samples/dashboards/maas-token-metrics-dashboard.json)
+[maas-token-metrics-dashboard.json](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/samples/dashboards/maas-token-metrics-dashboard.json)
 
 See more detailed description of the Grafana Dashboard in [its README of the 
-repository](https://github.com/opendatahub-io/maas-billing/tree/main/docs/samples/dashboards).
+repository](https://github.com/opendatahub-io/models-as-a-service/tree/main/docs/samples/dashboards).

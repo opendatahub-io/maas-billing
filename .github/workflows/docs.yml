@@ -104,6 +104,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Version: \`dev\` (hidden from version selector)" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: \`gh-pages\`" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: https://opendatahub-io.github.io/maas-billing/dev/" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://opendatahub-io.github.io/models-as-a-service/dev/" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "ℹ️ The dev version is accessible directly but won't appear in the version dropdown." >> $GITHUB_STEP_SUMMARY

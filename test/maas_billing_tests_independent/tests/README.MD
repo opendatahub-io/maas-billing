@@ -1,4 +1,4 @@
-# MaaS Billing Tests — How to Run (Admin / Free / Premium)
+# Models-as-a-Service Tests — How to Run (Admin / Free / Premium)
 
 This guide shows how to run the **maas_billing_tests_independent** test pack
 against **your OpenShift cluster** and **whatever model is installed**.  

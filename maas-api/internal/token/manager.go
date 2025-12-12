@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corelistersv1 "k8s.io/client-go/listers/core/v1"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
 )
 
 type Manager struct {
