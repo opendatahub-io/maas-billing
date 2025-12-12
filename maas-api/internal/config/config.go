@@ -21,6 +21,11 @@ type Config struct {
 
 	// Server configuration
 	Port string
+	// Optional HTTPS listener configuration
+	TLSPort     string
+	TLSCertFile string
+	TLSKeyFile  string
+	DisableHTTP bool
 
 	// Executable-specific configuration
 	DebugMode bool
@@ -32,14 +37,19 @@ type Config struct {
 // Load loads configuration from environment variables.
 func Load() *Config {
 	debugMode, _ := env.GetBool("DEBUG_MODE", false)
+	disableHTTP, _ := env.GetBool("DISABLE_HTTP", false)
 	gatewayName := env.GetString("GATEWAY_NAME", constant.DefaultGatewayName)
 
 	c := &Config{
 		Name:             env.GetString("INSTANCE_NAME", gatewayName),
 		Namespace:        env.GetString("NAMESPACE", constant.DefaultNamespace),
-		GatewayName:      env.GetString("GATEWAY_NAME", gatewayName),
+		GatewayName:      gatewayName,
 		GatewayNamespace: env.GetString("GATEWAY_NAMESPACE", constant.DefaultGatewayNamespace),
 		Port:             env.GetString("PORT", "8080"),
+		TLSPort:          env.GetString("TLS_PORT", "8443"),
+		TLSCertFile:      env.GetString("TLS_CERT_FILE", ""),
+		TLSKeyFile:       env.GetString("TLS_KEY_FILE", ""),
+		DisableHTTP:      disableHTTP,
 		DebugMode:        debugMode,
 		DBPath:           env.GetString("DB_PATH", "/data/maas.db"),
 	}
@@ -55,6 +65,15 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.GatewayName, "gateway-name", c.GatewayName, "Name of the Gateway that has MaaS capabilities")
 	fs.StringVar(&c.GatewayNamespace, "gateway-namespace", c.GatewayNamespace, "Namespace where MaaS-enabled Gateway is deployed")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
+	fs.StringVar(&c.TLSPort, "tls-port", c.TLSPort, "HTTPS port to listen on")
+	fs.StringVar(&c.TLSCertFile, "tls-cert-file", c.TLSCertFile, "Path to TLS certificate")
+	fs.StringVar(&c.TLSKeyFile, "tls-key-file", c.TLSKeyFile, "Path to TLS private key")
+	fs.BoolVar(&c.DisableHTTP, "disable-http", c.DisableHTTP, "Disable plain HTTP listener")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
 	fs.StringVar(&c.DBPath, "db-path", c.DBPath, "Path to SQLite database file")
+}
+
+// TLSEnabled reports whether both TLS cert and key have been configured.
+func (c *Config) TLSEnabled() bool {
+	return c.TLSCertFile != "" && c.TLSKeyFile != ""
 }

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorino
+  namespace: kuadrant-system
+  labels:
+    authorino-resource: authorino
+    control-plane: controller-manager
+    kuadrant.io/managed: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      authorino-resource: authorino
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        authorino-resource: authorino
+        control-plane: controller-manager
+        kuadrant.io/managed: "true"
+        sidecar.istio.io/inject: "false"
+    spec:
+      serviceAccountName: authorino-authorino
+      containers:
+        - name: authorino
+          image: quay.io/kuadrant/authorino:v0.23.0
+          imagePullPolicy: Always
+          args:
+            - --allow-superseding-host-subsets
+          env:
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/maas-api-ca.pem
+            - name: REQUESTS_CA_BUNDLE
+              value: /etc/ssl/certs/maas-api-ca.pem
+          volumeMounts:
+            - name: maas-api-ca-cert
+              mountPath: /etc/ssl/certs
+      volumes:
+        - name: maas-api-ca-cert
+          projected:
+            sources:
+              - configMap:
+                  name: maas-api-ca-cert
+                  items:
+                    - key: ca-bundle.crt
+                      path: maas-api-ca.pem
