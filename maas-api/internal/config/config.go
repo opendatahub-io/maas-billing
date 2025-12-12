@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 
 	"k8s.io/utils/env"
 
@@ -13,28 +14,40 @@ type StorageMode string
 
 const (
 	StorageModeInMemory StorageMode = "in-memory"
-	StorageModeDisk     StorageMode = "disk"
+	StorageModeDisk StorageMode = "disk"
 	StorageModeExternal StorageMode = "external"
 )
 
-// For disk storage.
+// String implements flag.Value interface.
+func (s *StorageMode) String() string {
+	return string(*s)
+}
+
+func (s *StorageMode) Set(value string) error {
+	switch StorageMode(value) {
+	case StorageModeInMemory, StorageModeDisk, StorageModeExternal:
+		*s = StorageMode(value)
+		return nil
+	case "":
+		*s = StorageModeInMemory
+		return nil
+	default:
+		return fmt.Errorf("invalid storage mode %q: valid modes are %q, %q, or %q",
+			value, StorageModeInMemory, StorageModeDisk, StorageModeExternal)
+	}
+}
+
 const DefaultDataPath = "/data/maas-api.db"
 
-// Config holds application configuration.
 type Config struct {
-	// Name of the "MaaS Instance" maas-api handles keys for
 	Name string
-	// Namespace where maas-api is deployed
 	Namespace string
 
-	// MaaS enabled Gateway configuration
 	GatewayName      string
 	GatewayNamespace string
 
-	// Server configuration
 	Port string
 
-	// Executable-specific configuration
 	DebugMode bool
 
 	// StorageMode specifies the storage backend type:
@@ -80,19 +93,7 @@ func (c *Config) bindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.GatewayNamespace, "gateway-namespace", c.GatewayNamespace, "Namespace where MaaS-enabled Gateway is deployed")
 	fs.StringVar(&c.Port, "port", c.Port, "Port to listen on")
 	fs.BoolVar(&c.DebugMode, "debug", c.DebugMode, "Enable debug mode")
-	fs.Var((*storageModeValue)(&c.StorageMode), "storage", "Storage mode: in-memory (default), disk, or external")
+	fs.Var(&c.StorageMode, "storage", "Storage mode: in-memory (default), disk, or external")
 	fs.StringVar(&c.DBConnectionURL, "db-connection-url", c.DBConnectionURL, "Database connection URL (required for --storage=external)")
 	fs.StringVar(&c.DataPath, "data-path", c.DataPath, "Path to database file (for --storage=disk)")
-}
-
-// storageModeValue implements flag.Value for StorageMode.
-type storageModeValue StorageMode
-
-func (s *storageModeValue) String() string {
-	return string(*s)
-}
-
-func (s *storageModeValue) Set(value string) error {
-	*s = storageModeValue(value)
-	return nil
 }
