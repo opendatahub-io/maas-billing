@@ -227,7 +227,6 @@ patches:
 ```
 
 ## Connection URL Format
-
 The database connection URL follows the standard PostgreSQL URL format:
 
 ```
