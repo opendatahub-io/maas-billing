@@ -1,7 +1,6 @@
 package tier
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -11,10 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
 )
@@ -26,22 +22,7 @@ type Mapper struct {
 	configMapLister corelisters.ConfigMapLister
 }
 
-func NewMapper(ctx context.Context, clientset kubernetes.Interface, tenantName, namespace string) *Mapper {
-	informerFactory := informers.NewSharedInformerFactoryWithOptions(
-		clientset,
-		constant.DefaultResyncPeriod,
-		informers.WithNamespace(namespace),
-	)
-
-	configMapInformer := informerFactory.Core().V1().ConfigMaps()
-	configMapLister := configMapInformer.Lister()
-
-	informerFactory.Start(ctx.Done())
-
-	if !cache.WaitForCacheSync(ctx.Done(), configMapInformer.Informer().HasSynced) {
-		log.Fatalf("failed to wait for caches to sync")
-	}
-
+func NewMapper(configMapLister corelisters.ConfigMapLister, tenantName, namespace string) *Mapper {
 	return &Mapper{
 		tenantName:      tenantName,
 		namespace:       namespace,

@@ -1,25 +1,20 @@
 package models_test
 
 import (
-	"fmt"
 	"testing"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
-	kservefakev1alpha1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1alpha1/fake"
-	kservefakev1beta1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1beta1/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	k8stesting "k8s.io/client-go/testing"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1/fake"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
+	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
 )
 
-func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is complaining about the test cases being in a different order than the expected match
+func TestListAvailableLLMs(t *testing.T) {
 	gateway := models.GatewayRef{Name: "maas-gateway", Namespace: "gateway-ns"}
 
 	tests := []struct {
@@ -258,45 +253,15 @@ func TestListAvailableLLMs(t *testing.T) { //nolint:maintidx // linter is compla
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeKServe := &k8stesting.Fake{}
-			fakeKServe.AddReactor("list", "llminferenceservices", func(action k8stesting.Action) (bool, runtime.Object, error) {
-				list := &kservev1alpha1.LLMInferenceServiceList{Items: []kservev1alpha1.LLMInferenceService{}}
-				for _, llm := range tt.llmServices {
-					list.Items = append(list.Items, *llm)
-				}
-				return true, list, nil
-			})
-
-			fakeGateway := &k8stesting.Fake{}
-			fakeGateway.AddReactor("get", "httproutes", func(action k8stesting.Action) (bool, runtime.Object, error) {
-				getAction, ok := action.(k8stesting.GetAction)
-				if !ok {
-					return false, nil, fmt.Errorf("invalid action: %T", action)
-				}
-				for _, route := range tt.httpRoutes {
-					if route.Name == getAction.GetName() && route.Namespace == getAction.GetNamespace() {
-						return true, route, nil
-					}
-				}
-
-				return true, nil, fmt.Errorf("httproutes.gateway.networking.k8s.io %q not found", getAction.GetName())
-			})
-			fakeGateway.AddReactor("list", "httproutes", func(action k8stesting.Action) (bool, runtime.Object, error) {
-				list := &gwapiv1.HTTPRouteList{Items: []gwapiv1.HTTPRoute{}}
-				for _, route := range tt.httpRoutes {
-					list.Items = append(list.Items, *route)
-				}
-				return true, list, nil
-			})
-
-			manager := models.NewManager(
-				&kservefakev1beta1.FakeServingV1beta1{Fake: fakeKServe},
-				&kservefakev1alpha1.FakeServingV1alpha1{Fake: fakeKServe},
-				&gatewayfake.FakeGatewayV1{Fake: fakeGateway},
+			manager, errMgr := models.NewManager(
+				fixtures.NewInferenceServiceLister(),
+				fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects(tt.llmServices)...),
+				fixtures.NewHTTPRouteLister(fixtures.ToRuntimeObjects(tt.httpRoutes)...),
 				gateway,
 			)
+			require.NoError(t, errMgr)
 
-			availableModels, err := manager.ListAvailableLLMs(t.Context())
+			availableModels, err := manager.ListAvailableLLMs()
 			require.NoError(t, err)
 
 			var actualNames []string

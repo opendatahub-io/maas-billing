@@ -13,8 +13,6 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/tools/cache"
 
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
 	"github.com/opendatahub-io/maas-billing/maas-api/internal/config"
@@ -101,56 +99,46 @@ func main() {
 func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
-	clusterConfig, err := config.NewClusterConfig()
+	cluster, err := config.NewClusterConfig(cfg.Namespace, constant.DefaultResyncPeriod)
 	if err != nil {
-		log.Fatalf("Failed to create Kubernetes client: %v", err)
+		log.Fatalf("Failed to create cluster config: %v", err)
 	}
 
-	gatewayRef := models.GatewayRef{
-		Name:      cfg.GatewayName,
-		Namespace: cfg.GatewayNamespace,
-	}
-	modelMgr := models.NewManager(clusterConfig.KServeV1Beta1, clusterConfig.KServeV1Alpha1, clusterConfig.Gateway, gatewayRef)
-	modelsHandler := handlers.NewModelsHandler(modelMgr)
-
-	// V1 API routes
-	v1Routes := router.Group("/v1")
-
-	tierMapper := tier.NewMapper(ctx, clusterConfig.ClientSet, cfg.Name, cfg.Namespace)
-	tierHandler := tier.NewHandler(tierMapper)
-	v1Routes.POST("/tiers/lookup", tierHandler.TierLookup)
-
-	informerFactory := informers.NewSharedInformerFactory(clusterConfig.ClientSet, constant.DefaultResyncPeriod)
-
-	namespaceInformer := informerFactory.Core().V1().Namespaces()
-	serviceAccountInformer := informerFactory.Core().V1().ServiceAccounts()
-	informersSynced := []cache.InformerSynced{
-		namespaceInformer.Informer().HasSynced,
-		serviceAccountInformer.Informer().HasSynced,
-	}
-
-	informerFactory.Start(ctx.Done())
-
-	if !cache.WaitForNamedCacheSync("maas-api", ctx.Done(), informersSynced...) {
+	if !cluster.StartAndWaitForSync(ctx.Done()) {
 		log.Fatalf("Failed to sync informer caches")
 	}
 
-	// Create token manager (ephemeral, K8s logic)
+	v1Routes := router.Group("/v1")
+
+	tierMapper := tier.NewMapper(cluster.ConfigMapLister, cfg.Name, cfg.Namespace)
+	v1Routes.POST("/tiers/lookup", tier.NewHandler(tierMapper).TierLookup)
+
+	modelMgr, errMgr := models.NewManager(
+		cluster.InferenceServiceLister,
+		cluster.LLMInferenceServiceLister,
+		cluster.HTTPRouteLister,
+		models.GatewayRef{Name: cfg.GatewayName, Namespace: cfg.GatewayNamespace},
+	)
+
+	if errMgr != nil {
+		log.Fatalf("Failed to create model manager: %v", errMgr)
+	}
+
+	modelsHandler := handlers.NewModelsHandler(modelMgr)
+
 	tokenManager := token.NewManager(
 		cfg.Name,
 		tierMapper,
-		clusterConfig.ClientSet,
-		namespaceInformer.Lister(),
-		serviceAccountInformer.Lister(),
+		cluster.ClientSet,
+		cluster.NamespaceLister,
+		cluster.ServiceAccountLister,
 	)
 	tokenHandler := token.NewHandler(cfg.Name, tokenManager)
 
-	// Create api key service (persistent, SQLite logic)
 	apiKeyService := api_keys.NewService(tokenManager, store)
 	apiKeyHandler := api_keys.NewHandler(apiKeyService)
 
-	// Create reviewer with audience to properly validate Service Account tokens
-	reviewer := token.NewReviewer(clusterConfig.ClientSet, cfg.Name+"-sa")
+	reviewer := token.NewReviewer(cluster.ClientSet, cfg.Name+"-sa")
 
 	// Model listing endpoint (v1Routes is grouped under /v1, so this creates /v1/models)
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
