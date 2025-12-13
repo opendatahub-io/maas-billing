@@ -7,32 +7,37 @@ This guide explains how to configure `LLMInferenceService` resources to be picke
 The MaaS platform uses a **segregated gateway approach**, where models explicitly opt-in to MaaS capabilities by referencing the `maas-default-gateway`. This provides flexibility and isolation between different model deployment scenarios.
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'17px', 'fontFamily':'system-ui, -apple-system, sans-serif', 'clusterBkg':'#f5f5f5', 'clusterBorder':'#666', 'edgeLabelBackground':'transparent', 'labelBackground':'transparent', 'tertiaryColor':'transparent'}}}%%
 graph TB
-    subgraph cluster["OpenShift/Kubernetes Cluster"]
-        subgraph gateways["Gateway Layer"]
-            defaultGW["<b>Default Gateway</b><br/>(ODH/KServe)<br/><br/>✓ Existing auth model<br/>✓ No rate limits<br/>"]
-            maasGW["<b>MaaS Gateway</b><br/>(maas-default-gateway)<br/><br/>✓ Token authentication<br/>✓ Tier-based rate limits<br/>✓ Token consumption "]
+    subgraph cluster["<span style='font-size:18px;font-weight:700;color:#000'>OpenShift/Kubernetes Cluster</span>"]
+        subgraph gateways["<span style='font-size:16px;font-weight:600;color:#000'>Gateway Layer</span>"]
+            defaultGW["Default Gateway<br/>(ODH/KServe)<br/><br/>✓ Existing auth model<br/>✓ No rate limits<br/>"]
+            maasGW["MaaS Gateway<br/>(maas-default-gateway)<br/><br/>✓ Token authentication<br/>✓ Tier-based rate limits<br/>✓ Token consumption "]
         end
 
-        subgraph models["Model Deployments"]
+        subgraph models["<span style='font-size:16px;font-weight:600;color:#000'>Model Deployments</span>"]
             standardModel["LLMInferenceService<br/>(Standard)<br/><br/>spec:<br/>  model: ...<br/>  # Managed default Gateway instance"]
             maasModel["LLMInferenceService<br/>(MaaS-enabled)<br/><br/>spec:<br/>  model: ...<br/>  router:<br/>    gateway:<br/>      refs:<br/>        - name: maas-default-gateway"]
         end
 
-        defaultGW -.->|"Routes to"| standardModel
-        maasGW ==>|"Routes to"| maasModel
+        defaultGW -.->|Routes to| standardModel
+        maasGW ==>|Routes to| maasModel
     end
 
-    users["Users/Clients"] -->|"Default ODH auth"| defaultGW
-    apiUsers["API Clients"] -->|"Bearer token"| maasGW
+    users["Users/Clients"] -->|Default ODH auth| defaultGW
+    apiUsers["API Clients"] -->|Bearer token| maasGW
 
-    style defaultGW fill:#0d47a1,stroke:#1976d2,stroke-width:2px,color:#fff
-    style maasGW fill:#e65100,stroke:#f57c00,stroke-width:2px,color:#fff
-    style standardModel fill:#455a64,stroke:#607d8b,stroke-width:2px,color:#fff
-    style maasModel fill:#f57f17,stroke:#fbc02d,stroke-width:2px,color:#000
-    style cluster fill:#263238,stroke:#37474f,stroke-width:2px,color:#fff
-    style gateways fill:#37474f,stroke:#546e7a,stroke-width:2px,color:#fff
-    style models fill:#37474f,stroke:#546e7a,stroke-width:2px,color:#fff
+    style defaultGW fill:#1976d2,stroke:#0d47a1,stroke-width:3px,color:#fff
+    style maasGW fill:#f57c00,stroke:#e65100,stroke-width:3px,color:#fff
+    style standardModel fill:#78909c,stroke:#546e7a,stroke-width:3px,color:#fff
+    style maasModel fill:#ffa726,stroke:#f57c00,stroke-width:3px,color:#000
+    style cluster fill:#f5f5f5,stroke:#666,stroke-width:2px
+    style gateways fill:#e8eaf6,stroke:#999,stroke-width:2px
+    style models fill:#e8eaf6,stroke:#999,stroke-width:2px
+    linkStyle 0 stroke-width:2px,color:#000
+    linkStyle 1 stroke-width:2px,color:#000
+    linkStyle 2 stroke-width:2px,color:#000
+    linkStyle 3 stroke-width:2px,color:#000
 ```
 
 !!! note
