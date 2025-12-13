@@ -26,13 +26,13 @@ graph TB
     users["Users/Clients"] -->|"Default ODH auth"| defaultGW
     apiUsers["API Clients"] -->|"Bearer token"| maasGW
 
-    style defaultGW fill:#e1f5ff
-    style maasGW fill:#fff4e6
-    style standardModel fill:#f5f5f5
-    style maasModel fill:#fff9e6
-    style cluster fill:#fafafa
-    style gateways fill:#ffffff
-    style models fill:#ffffff
+    style defaultGW fill:#0d47a1,stroke:#1976d2,stroke-width:2px,color:#fff
+    style maasGW fill:#e65100,stroke:#f57c00,stroke-width:2px,color:#fff
+    style standardModel fill:#455a64,stroke:#607d8b,stroke-width:2px,color:#fff
+    style maasModel fill:#f57f17,stroke:#fbc02d,stroke-width:2px,color:#000
+    style cluster fill:#263238,stroke:#37474f,stroke-width:2px,color:#fff
+    style gateways fill:#37474f,stroke:#546e7a,stroke-width:2px,color:#fff
+    style models fill:#37474f,stroke:#546e7a,stroke-width:2px,color:#fff
 ```
 
 !!! note
