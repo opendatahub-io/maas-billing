@@ -1,22 +1,10 @@
 # External Database Configuration
 
-This guide explains how to configure maas-api with an external database for production deployments with high availability (HPA support).
+This is an example guide for setting up Model as a Service with the use of an external database, which is recommended for production deployments.
 
-## Overview
-
-For production deployments requiring high availability and multiple replicas, maas-api supports external PostgreSQL databases. This mode enables:
-
-- **Horizontal Pod Autoscaling (HPA)** - Multiple replicas can share the same database
-- **Full persistence** - Data survives pod restarts and cluster upgrades
-- **Enterprise-grade reliability** - Leverage managed database services or operators
-
-## Storage Modes
-
-| Mode | Flag | Use Case | HPA Support | Persistence |
-|------|------|----------|-------------|-------------|
-| **In-memory** (default) | `--storage=in-memory` | Development/testing | ❌ | ❌ Data lost on restart |
-| **Disk** | `--storage=disk` | Single replica, demos | ❌ | ✅ Survives restarts |
-| **External** | `--storage=external` | Production, HA | ✅ Multiple replicas | ✅ Full persistence |
+> [!WARNING]
+> **Example Purposes Only**
+> This configuration is intended as an example for testing and development. Do not use this in a production environment.
 
 ## Configuration
 
@@ -37,7 +25,7 @@ For production deployments requiring high availability and multiple replicas, ma
 
 ## Setting Up External Database
 
-### Option 1: CloudNativePG Operator (Recommended for Kubernetes)
+### Option 1: CloudNativePG Operator
 
 CloudNativePG is a CNCF project that simplifies PostgreSQL deployment on Kubernetes.
 
@@ -164,31 +152,8 @@ spec:
               key: DB_CONNECTION_URL
 ```
 
-> **Note:** The `command` must be specified explicitly when using `args`, otherwise the args will replace the container's default command.
-
-### Step 3: (Optional) Tune Connection Pool
-
-For high-availability scenarios with multiple replicas or connection poolers (like PgBouncer):
-
-```yaml
-# connection-pool-patch.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: maas-api
-spec:
-  template:
-    spec:
-      containers:
-      - name: maas-api
-        env:
-        - name: DB_MAX_OPEN_CONNS
-          value: "50"
-        - name: DB_MAX_IDLE_CONNS
-          value: "10"
-        - name: DB_CONN_MAX_LIFETIME_SECONDS
-          value: "600"
-```
+> [!NOTE]
+> The `command` must be specified explicitly when using `args`, otherwise the args will replace the container's default command.
 
 ## Example: Complete External Database Kustomization
 
@@ -240,15 +205,6 @@ postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=MODE
 | CloudNativePG (in-cluster) | `postgresql://app:secret@maas-postgres-rw:5432/app?sslmode=require` |
 | AWS RDS | `postgresql://username:password@mydb.123456.us-east-1.rds.amazonaws.com:5432/maas?sslmode=require` |
 | Local development | `postgresql://postgres:postgres@localhost:5432/maas_dev?sslmode=disable` |
-
-### SSL Modes
-
-| Mode | Description |
-|------|-------------|
-| `disable` | No SSL (not recommended for production) |
-| `require` | Require SSL but don't verify certificates |
-| `verify-ca` | Require SSL and verify CA certificate |
-| `verify-full` | Require SSL and verify full certificate chain |
 
 ## Troubleshooting
 

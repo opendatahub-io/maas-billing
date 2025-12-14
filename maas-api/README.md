@@ -216,11 +216,11 @@ curl -sSk \
 
 maas-api supports three storage modes, controlled by the `--storage` flag:
 
-| Mode | Flag | Use Case | HPA Support | Persistence |
-|------|------|----------|-------------|-------------|
-| **In-memory** (default) | `--storage=in-memory` | Development/testing | ❌ | ❌ Data lost on restart |
-| **Disk** | `--storage=disk` | Single replica, demos | ❌ | ✅ Survives restarts |
-| **External** | `--storage=external` | Production, HA | ✅ Multiple replicas | ✅ Full persistence |
+| Mode | Flag | Use Case | Persistence |
+|------|------|----------|-------------|
+| **In-memory** (default) | `--storage=in-memory` | Development/testing | ❌ Data lost on restart |
+| **Disk** | `--storage=disk` | Single replica, demos | ✅ Survives restarts |
+| **External** | `--storage=external` | Production, HA | ✅ Full persistence |
 
 #### Quick Start
 
