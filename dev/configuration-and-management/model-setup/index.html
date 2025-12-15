@@ -1791,11 +1791,12 @@
 <p>This guide explains how to configure <code>LLMInferenceService</code> resources to be picked up by the MaaS platform for authentication, rate limiting, and token-based consumption tracking.</p>
 <h2 id="gateway-architecture">Gateway Architecture</h2>
 <p>The MaaS platform uses a <strong>segregated gateway approach</strong>, where models explicitly opt-in to MaaS capabilities by referencing the <code>maas-default-gateway</code>. This provides flexibility and isolation between different model deployment scenarios.</p>
-<pre class="mermaid"><code>graph TB
-    subgraph cluster["OpenShift/Kubernetes Cluster"]
+<pre class="mermaid"><code>%%{init: {'theme':'base', 'themeVariables': { 'fontSize':'16px', 'fontFamily':'system-ui, -apple-system, sans-serif', 'edgeLabelBackground':'transparent', 'labelBackground':'transparent', 'tertiaryColor':'transparent'}}}%%
+graph TB
+    subgraph cluster["OpenShift/K8s Cluster"]
         subgraph gateways["Gateway Layer"]
-            defaultGW["&lt;b&gt;Default Gateway&lt;/b&gt;&lt;br/&gt;(ODH/KServe)&lt;br/&gt;&lt;br/&gt;✓ Existing auth model&lt;br/&gt;✓ No rate limits&lt;br/&gt;"]
-            maasGW["&lt;b&gt;MaaS Gateway&lt;/b&gt;&lt;br/&gt;(maas-default-gateway)&lt;br/&gt;&lt;br/&gt;✓ Token authentication&lt;br/&gt;✓ Tier-based rate limits&lt;br/&gt;✓ Token consumption "]
+            defaultGW["Default Gateway&lt;br/&gt;(ODH/KServe)&lt;br/&gt;&lt;br/&gt;✓ Existing auth model&lt;br/&gt;✓ No rate limits&lt;br/&gt;"]
+            maasGW["MaaS Gateway&lt;br/&gt;(maas-default-gateway)&lt;br/&gt;&lt;br/&gt;✓ Token authentication&lt;br/&gt;✓ Tier-based rate limits&lt;br/&gt;✓ Token consumption "]
         end
 
         subgraph models["Model Deployments"]
@@ -1803,20 +1804,20 @@
             maasModel["LLMInferenceService&lt;br/&gt;(MaaS-enabled)&lt;br/&gt;&lt;br/&gt;spec:&lt;br/&gt;  model: ...&lt;br/&gt;  router:&lt;br/&gt;    gateway:&lt;br/&gt;      refs:&lt;br/&gt;        - name: maas-default-gateway"]
         end
 
-        defaultGW -.-&gt;|"Routes to"| standardModel
-        maasGW ==&gt;|"Routes to"| maasModel
+        defaultGW -.-&gt;|Routes to| standardModel
+        maasGW ==&gt;|Routes to| maasModel
     end
 
-    users["Users/Clients"] --&gt;|"Default ODH auth"| defaultGW
-    apiUsers["API Clients"] --&gt;|"Bearer token"| maasGW
+    users["Users/Clients"] --&gt;|Default ODH auth| defaultGW
+    apiUsers["API Clients"] --&gt;|Bearer token| maasGW
 
-    style defaultGW fill:#e1f5ff
-    style maasGW fill:#fff4e6
-    style standardModel fill:#f5f5f5
-    style maasModel fill:#fff9e6
-    style cluster fill:#fafafa
-    style gateways fill:#ffffff
-    style models fill:#ffffff</code></pre>
+    style defaultGW fill:#1976d2,stroke:#0d47a1,stroke-width:3px,color:#fff
+    style maasGW fill:#f57c00,stroke:#e65100,stroke-width:3px,color:#fff
+    style standardModel fill:#78909c,stroke:#546e7a,stroke-width:3px,color:#fff
+    style maasModel fill:#ffa726,stroke:#f57c00,stroke-width:3px,color:#fff
+    style cluster fill:none,stroke:#666,stroke-width:2px
+    style gateways fill:none,stroke:#5c6bc0,stroke-width:2px
+    style models fill:none,stroke:#5c6bc0,stroke-width:2px</code></pre>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>The <code>maas-default-gateway</code> is created automatically during MaaS platform installation. You don't need to create it manually.</p>
@@ -2033,7 +2034,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="November 21, 2025 16:44:09 UTC">November 21, 2025</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="December 15, 2025 14:41:35 UTC">December 15, 2025</span>
   </span>
 
     
