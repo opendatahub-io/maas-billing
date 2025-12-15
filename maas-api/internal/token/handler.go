@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 )
 
 type TokenManager interface {
