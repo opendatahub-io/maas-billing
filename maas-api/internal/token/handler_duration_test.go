@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 func TestIssueToken_ExpirationFormats(t *testing.T) {

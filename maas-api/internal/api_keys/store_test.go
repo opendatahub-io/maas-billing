@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/api_keys"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/api_keys"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

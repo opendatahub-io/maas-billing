@@ -1,6 +1,6 @@
-# Install Model-as-a-Service
+# Install Models-as-a-Service
 
-The Model-as-a-Service (MaaS) of ODH project is provided as standalone capability. 
+The Models-as-a-Service (MaaS) of ODH project is provided as standalone capability. 
 Provided you have an OpenShift cluster where you had either:
 
 * [installed Open Data Hub project](odh-setup.md);
@@ -26,7 +26,7 @@ export CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jso
 
 kubectl create namespace maas-api
 kubectl apply --server-side=true \
-  -f <(kustomize build "https://github.com/opendatahub-io/maas-billing.git/deployment/overlays/openshift?ref=main" | \
+  -f <(kustomize build "https://github.com/opendatahub-io/models-as-a-service.git/deployment/overlays/openshift?ref=main" | \
        envsubst '$CLUSTER_DOMAIN')
 ```
 

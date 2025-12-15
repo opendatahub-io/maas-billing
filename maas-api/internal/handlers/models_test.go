@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"knative.dev/pkg/apis"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/handlers"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/models"
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/handlers"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 func TestListingModels(t *testing.T) {
@@ -87,7 +87,15 @@ func TestListingModels(t *testing.T) {
 		Name:      testGatewayName,
 		Namespace: testGatewayNamespace,
 	}
-	modelMgr := models.NewManager(clients.KServeV1Beta1, clients.KServeV1Alpha1, clients.Gateway, gatewayRef)
+
+	modelMgr, errMgr := models.NewManager(
+		clients.InferenceServiceLister,
+		clients.LLMInferenceServiceLister,
+		clients.HTTPRouteLister,
+		gatewayRef,
+	)
+	require.NoError(t, errMgr)
+
 	modelsHandler := handlers.NewModelsHandler(modelMgr)
 	v1 := router.Group("/v1")
 	v1.GET("/models", modelsHandler.ListLLMs)

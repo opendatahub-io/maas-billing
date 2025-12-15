@@ -1,7 +1,7 @@
 # Install Red Hat OpenShift AI
 
 This guide covers the installation of Red Hat OpenShift AI (RHOAI), with the required
-configuration to enable the Model-as-a-Service capability (MaaS).
+configuration to enable the Models-as-a-Service capability (MaaS).
 
 You need a Red Hat OpenShift cluster version 4.19.9 or later. Older OpenShift versions are
 not suitable.

@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# deploy-rhoai-stable.sh - Deploy Red Hat OpenShift AI v3 with Model-as-a-Service standalone capability
+# deploy-rhoai-stable.sh - Deploy Red Hat OpenShift AI v3 with Models-as-a-Service standalone capability
 #
 # DESCRIPTION:
 #   This script automates the deployment of Red Hat OpenShift AI (RHOAI) v3 along with
-#   its required prerequisites and the Model-as-a-Service (MaaS) capability.
+#   its required prerequisites and the Models-as-a-Service (MaaS) capability.
 #
 #   The deployment includes:
 #   - cert-manager
@@ -297,7 +297,7 @@ deploy_rhcl
 deploy_rhoai
 
 echo
-echo "## Installing Model-as-a-Service"
+echo "## Installing Models-as-a-Service"
 
 export CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
 export AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
@@ -314,7 +314,7 @@ EOF
 
 : "${MAAS_REF:=main}"
 kubectl apply --server-side=true \
-  -f <(kustomize build "https://github.com/opendatahub-io/maas-billing.git/deployment/overlays/openshift?ref=${MAAS_REF}" | \
+  -f <(kustomize build "https://github.com/opendatahub-io/models-as-a-service.git/deployment/overlays/openshift?ref=${MAAS_REF}" | \
        envsubst '$CLUSTER_DOMAIN')
 
 if [[ -n "$AUD" && "$AUD" != "https://kubernetes.default.svc"  ]]; then
@@ -341,7 +341,7 @@ echo ""
 echo "Next Steps:"
 echo "1. Deploy a sample model:"
 echo "   kubectl create namespace llm"
-echo "   kustomize build 'https://github.com/opendatahub-io/maas-billing.git/docs/samples/models/simulator?ref=${MAAS_REF}' | kubectl apply -f -"
+echo "   kustomize build 'https://github.com/opendatahub-io/models-as-a-service.git/docs/samples/models/simulator?ref=${MAAS_REF}' | kubectl apply -f -"
 echo ""
 echo "2. Get Gateway endpoint:"
 echo "   CLUSTER_DOMAIN=\$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
@@ -364,7 +364,7 @@ echo "6. Test rate limiting (200 OK followed by 429 Rate Limit Exceeded after ab
 echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\"; done"
 echo ""
 echo "7. Run validation script (Runs all the checks again):"
-echo "   curl https://raw.githubusercontent.com/opendatahub-io/maas-billing/refs/heads/${MAAS_REF}/deployment/scripts/validate-deployment.sh | sh -v -"
+echo "   curl https://raw.githubusercontent.com/opendatahub-io/models-as-a-service/refs/heads/${MAAS_REF}/deployment/scripts/validate-deployment.sh | sh -v -"
 echo ""
 echo "8. Check metrics generation:"
 echo "   kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080 &"
