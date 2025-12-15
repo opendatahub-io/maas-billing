@@ -10,8 +10,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	"github.com/opendatahub-io//models-as-a-service/maas-api/internal/models"
-	"github.com/opendatahub-io//models-as-a-service/maas-api/test/fixtures"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 func TestListAvailableLLMs(t *testing.T) {
