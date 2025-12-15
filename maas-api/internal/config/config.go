@@ -6,7 +6,7 @@ import (
 
 	"k8s.io/utils/env"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 )
 
 // StorageMode represents the storage backend type.

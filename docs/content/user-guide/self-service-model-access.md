@@ -4,7 +4,7 @@ This guide is for **end users** who want to use AI models through the MaaS platf
 
 ## 🎯 What is MaaS?
 
-The Model-as-a-Service (MaaS) platform provides access to AI models through a simple API. Your organization's administrator has set up the platform and configured access for your team.
+The Models-as-a-Service (MaaS) platform provides access to AI models through a simple API. Your organization's administrator has set up the platform and configured access for your team.
 
 ## Getting Your Access Token
 

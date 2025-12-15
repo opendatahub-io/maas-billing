@@ -212,7 +212,7 @@ echo "3️⃣ Installing dependencies..."
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
-if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.0 &>/dev/null 2>&1; then
+if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.1 &>/dev/null 2>&1; then
     echo "   No existing installation found, checking for leftover CRDs..."
     LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
     if [ -n "$LEFTOVER_CRDS" ]; then
@@ -289,7 +289,7 @@ fi
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
 # Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
-wait_for_csv "kuadrant-operator.v1.3.0" "kuadrant-system" 300 || \
+wait_for_csv "kuadrant-operator.v1.3.1" "kuadrant-system" 300 || \
     echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
 
 wait_for_csv "authorino-operator.v0.22.0" "kuadrant-system" 60 || \

@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corelistersv1 "k8s.io/client-go/listers/core/v1"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
 )
 
 type Manager struct {
@@ -162,33 +162,6 @@ func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (s
 
 	namespace := m.tierMapper.ProjectedNsName(userTier)
 	return namespace, nil
-}
-
-// ValidateToken verifies the token with K8s.
-func (m *Manager) ValidateToken(ctx context.Context, token string, reviewer *Reviewer) (*UserContext, error) {
-	// 1. Check K8s validity
-	userCtx, err := reviewer.ExtractUserInfo(ctx, token)
-	if err != nil {
-		log.Printf("TokenReview error: %v", err)
-		return nil, err
-	}
-
-	if !userCtx.IsAuthenticated {
-		log.Printf("TokenReview returned IsAuthenticated=false, username: '%s'", userCtx.Username)
-		return userCtx, nil
-	}
-
-	log.Printf("TokenReview successful for user: %s", userCtx.Username)
-
-	// 2. Check user type
-	// If it is a User token (not SA), we should allow it (Bootstrap/Admin access)
-	if !strings.HasPrefix(userCtx.Username, "system:serviceaccount:") {
-		log.Printf("Allowing non-SA token for user: %s", userCtx.Username)
-		return userCtx, nil
-	}
-
-	log.Printf("Token validation successful for user: %s", userCtx.Username)
-	return userCtx, nil
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.

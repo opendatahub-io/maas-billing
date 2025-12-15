@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/token"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
 
 type TokenManager interface {

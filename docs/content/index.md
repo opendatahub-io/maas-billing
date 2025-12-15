@@ -1,6 +1,6 @@
 # MaaS Platform Documentation
 
-Welcome to the Model-as-a-Service (MaaS) Platform documentation.
+Welcome to the Models-as-a-Service (MaaS) Platform documentation.
 
 The MaaS Platform enhances the model serving capabilities of [Open Data Hub](https://github.com/opendatahub-io) by adding a management layer for self-service access control, rate limiting, and tier-based subscriptions.
 

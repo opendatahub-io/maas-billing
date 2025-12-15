@@ -1,16 +1,15 @@
 package models
 
 import (
-	"context"
 	"fmt"
 	"log"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	"github.com/openai/openai-go/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"knative.dev/pkg/apis"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 type GatewayRef struct {
@@ -18,17 +17,16 @@ type GatewayRef struct {
 	Namespace string
 }
 
-func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
-	list, err := m.v1alpha1Client.LLMInferenceServices(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+func (m *Manager) ListAvailableLLMs() ([]Model, error) {
+	list, err := m.llmIsvcLister.List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list LLMInferenceServices: %w", err)
 	}
 
-	var instanceLLMs []kservev1alpha1.LLMInferenceService
-	for i := range list.Items {
-		llmIsvc := &list.Items[i]
-		if m.partOfMaaSInstance(ctx, llmIsvc) {
-			instanceLLMs = append(instanceLLMs, *llmIsvc)
+	var instanceLLMs []*kservev1alpha1.LLMInferenceService
+	for _, llmIsvc := range list {
+		if m.partOfMaaSInstance(llmIsvc) {
+			instanceLLMs = append(instanceLLMs, llmIsvc)
 		}
 	}
 
@@ -38,35 +36,22 @@ func (m *Manager) ListAvailableLLMs(ctx context.Context) ([]Model, error) {
 // partOfMaaSInstance checks if the given LLMInferenceService is part of this "MaaS instance". This means that it is
 // either directly referenced by the gateway that has MaaS capabilities, or it is referenced by an HTTPRoute that is managed by the gateway.
 // The gateway is part of the component configuration.
-func (m *Manager) partOfMaaSInstance(ctx context.Context, llmIsvc *kservev1alpha1.LLMInferenceService) bool {
+func (m *Manager) partOfMaaSInstance(llmIsvc *kservev1alpha1.LLMInferenceService) bool {
 	if llmIsvc.Spec.Router == nil {
 		return false
 	}
 
-	if m.hasDirectGatewayReference(llmIsvc) {
-		return true
-	}
-
-	if m.hasHTTPRouteSpecRefToGateway(llmIsvc) {
-		return true
-	}
-
-	if m.hasReferencedRouteAttachedToGateway(ctx, llmIsvc) {
-		return true
-	}
-
-	if m.hasManagedRouteAttachedToGateway(ctx, llmIsvc) {
-		return true
-	}
-
-	return false
+	return m.hasDirectGatewayReference(llmIsvc) ||
+		m.hasHTTPRouteSpecRefToGateway(llmIsvc) ||
+		m.hasReferencedRouteAttachedToGateway(llmIsvc) ||
+		m.hasManagedRouteAttachedToGateway(llmIsvc)
 }
 
-func llmInferenceServicesToModels(items []kservev1alpha1.LLMInferenceService) ([]Model, error) {
+func llmInferenceServicesToModels(items []*kservev1alpha1.LLMInferenceService) ([]Model, error) {
 	models := make([]Model, 0, len(items))
 
 	for _, item := range items {
-		url := findLLMInferenceServiceURL(&item)
+		url := findLLMInferenceServiceURL(item)
 		if url == nil {
 			log.Printf("DEBUG: Failed to find URL for LLMInferenceService %s/%s", item.Namespace, item.Name)
 		}
@@ -84,7 +69,7 @@ func llmInferenceServicesToModels(items []kservev1alpha1.LLMInferenceService) ([
 				Created: item.CreationTimestamp.Unix(),
 			},
 			URL:   url,
-			Ready: checkLLMInferenceServiceReadiness(&item),
+			Ready: checkLLMInferenceServiceReadiness(item),
 		})
 	}
 
@@ -179,38 +164,30 @@ func (m *Manager) hasHTTPRouteSpecRefToGateway(llmIsvc *kservev1alpha1.LLMInfere
 	return false
 }
 
-func (m *Manager) hasReferencedRouteAttachedToGateway(ctx context.Context, llmIsvc *kservev1alpha1.LLMInferenceService) bool {
+func (m *Manager) hasReferencedRouteAttachedToGateway(llmIsvc *kservev1alpha1.LLMInferenceService) bool {
 	if llmIsvc.Spec.Router.Route == nil || llmIsvc.Spec.Router.Route.HTTP == nil || len(llmIsvc.Spec.Router.Route.HTTP.Refs) == 0 {
 		return false
 	}
 
 	for _, routeRef := range llmIsvc.Spec.Router.Route.HTTP.Refs {
-		route, err := m.gatewayClient.HTTPRoutes(llmIsvc.Namespace).Get(ctx, routeRef.Name, metav1.GetOptions{})
+		route, err := m.httpRouteLister.HTTPRoutes(llmIsvc.Namespace).Get(routeRef.Name)
 		if err != nil {
-			log.Printf("DEBUG: Failed to fetch HTTPRoute %s/%s: %v", llmIsvc.Namespace, routeRef.Name, err)
+			log.Printf("DEBUG: HTTPRoute %s/%s not in cache: %v", llmIsvc.Namespace, routeRef.Name, err)
+			continue
+		}
+		if route == nil {
 			continue
 		}
 
-		for _, parentRef := range route.Spec.ParentRefs {
-			if string(parentRef.Name) != m.gatewayRef.Name {
-				continue
-			}
-
-			parentNamespace := llmIsvc.Namespace
-			if parentRef.Namespace != nil {
-				parentNamespace = string(*parentRef.Namespace)
-			}
-
-			if parentNamespace == m.gatewayRef.Namespace {
-				return true
-			}
+		if m.routeAttachedToGateway(route, llmIsvc.Namespace) {
+			return true
 		}
 	}
 
 	return false
 }
 
-func (m *Manager) hasManagedRouteAttachedToGateway(ctx context.Context, llmIsvc *kservev1alpha1.LLMInferenceService) bool {
+func (m *Manager) hasManagedRouteAttachedToGateway(llmIsvc *kservev1alpha1.LLMInferenceService) bool {
 	if llmIsvc.Spec.Router.Route == nil || llmIsvc.Spec.Router.Route.HTTP == nil {
 		return false
 	}
@@ -220,38 +197,40 @@ func (m *Manager) hasManagedRouteAttachedToGateway(ctx context.Context, llmIsvc 
 		return false
 	}
 
-	labelSelector := labels.SelectorFromSet(labels.Set{
+	selector := labels.SelectorFromSet(labels.Set{
 		"app.kubernetes.io/component": "llminferenceservice-router",
 		"app.kubernetes.io/name":      llmIsvc.Name,
 		"app.kubernetes.io/part-of":   "llminferenceservice",
 	})
 
-	routes, err := m.gatewayClient.HTTPRoutes(llmIsvc.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector.String(),
-	})
+	routes, err := m.httpRouteLister.HTTPRoutes(llmIsvc.Namespace).List(selector)
 	if err != nil {
 		log.Printf("DEBUG: Failed to list HTTPRoutes for LLM %s/%s: %v", llmIsvc.Namespace, llmIsvc.Name, err)
 		return false
 	}
 
-	if len(routes.Items) == 0 {
-		return false
+	for _, route := range routes {
+		if m.routeAttachedToGateway(route, llmIsvc.Namespace) {
+			return true
+		}
 	}
 
-	for _, route := range routes.Items {
-		for _, parentRef := range route.Spec.ParentRefs {
-			if string(parentRef.Name) != m.gatewayRef.Name {
-				continue
-			}
+	return false
+}
 
-			parentNamespace := llmIsvc.Namespace
-			if parentRef.Namespace != nil {
-				parentNamespace = string(*parentRef.Namespace)
-			}
+func (m *Manager) routeAttachedToGateway(route *gwapiv1.HTTPRoute, defaultNamespace string) bool {
+	for _, parentRef := range route.Spec.ParentRefs {
+		if string(parentRef.Name) != m.gatewayRef.Name {
+			continue
+		}
 
-			if parentNamespace == m.gatewayRef.Namespace {
-				return true
-			}
+		parentNamespace := defaultNamespace
+		if parentRef.Namespace != nil {
+			parentNamespace = string(*parentRef.Namespace)
+		}
+
+		if parentNamespace == m.gatewayRef.Namespace {
+			return true
 		}
 	}
 
