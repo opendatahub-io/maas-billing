@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
@@ -165,9 +166,9 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 
 			request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/tokens", bytes.NewBufferString(jsonPayload))
 			request.Header.Set("Content-Type", "application/json")
-			// Set required X-MAAS-* headers for header-based authentication
-			request.Header.Set("X-Maas-Username", "duration-test@example.com")
-			request.Header.Set("X-Maas-Group", `["system:authenticated"]`)
+			// Set required X-Maas-* headers for header-based authentication
+			request.Header.Set(constant.HeaderUsername, "duration-test@example.com")
+			request.Header.Set(constant.HeaderGroup, `["system:authenticated"]`)
 			router.ServeHTTP(w, request)
 
 			if w.Code != tt.expectedStatus {
