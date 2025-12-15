@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
 
@@ -108,10 +109,10 @@ func TestAPIEndpoints(t *testing.T) {
 
 			// Set headers based on test case (using canonical format)
 			if tt.username != "" {
-				req.Header.Set("X-Maas-Username", tt.username)
+				req.Header.Set(constant.HeaderUsername, tt.username)
 			}
 			if tt.group != "" {
-				req.Header.Set("X-Maas-Group", tt.group)
+				req.Header.Set(constant.HeaderGroup, tt.group)
 			}
 
 			w := httptest.NewRecorder()

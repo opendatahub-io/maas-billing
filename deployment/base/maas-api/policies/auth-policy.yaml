@@ -18,9 +18,9 @@ spec:
     response:
       success:
         headers:
-          X-MAAS-USERNAME:
+          X-Maas-Username:
             plain:
               selector: auth.identity.user.username
-          X-MAAS-GROUP:
+          X-Maas-Group:
             plain:
               selector: auth.identity.user.groups.@tostr

@@ -11,6 +11,6 @@ const (
 	DefaultResyncPeriod = 8 * time.Hour
 
 	// Header configuration constants.
-	HeaderUsername = "X-MAAS-USERNAME"
-	HeaderGroup    = "X-MAAS-GROUP"
+	HeaderUsername = "X-Maas-Username"
+	HeaderGroup    = "X-Maas-Group"
 )
