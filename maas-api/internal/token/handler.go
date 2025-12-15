@@ -69,7 +69,8 @@ func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 			log.Printf("ERROR: Missing or empty %s header - auth policy configuration issue", constant.HeaderUsername)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":         "Exception thrown while generating token",
-				"exceptionCode": "ERR_7F3A",
+				"exceptionCode": "AUTH_FAILURE",
+				"refId":         "001",
 			})
 			c.Abort()
 			return
@@ -79,7 +80,8 @@ func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 			log.Printf("ERROR: Missing %s header for user: %s - auth policy configuration issue", constant.HeaderGroup, username)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":         "Exception thrown while generating token",
-				"exceptionCode": "ERR_B2C9",
+				"exceptionCode": "AUTH_FAILURE",
+				"refId":         "002",
 			})
 			c.Abort()
 			return
@@ -92,7 +94,8 @@ func (h *Handler) ExtractUserInfo() gin.HandlerFunc {
 			log.Printf("ERROR: Failed to parse %s header. Header value: %q, Error: %v - auth policy configuration issue", constant.HeaderGroup, groupHeader, err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":         "Exception thrown while generating token",
-				"exceptionCode": "ERR_C4D1",
+				"exceptionCode": "AUTH_FAILURE",
+				"refId":         "003",
 			})
 			c.Abort()
 			return

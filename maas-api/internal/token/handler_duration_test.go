@@ -166,7 +166,7 @@ func TestIssueToken_ExpirationFormats(t *testing.T) {
 
 			request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/tokens", bytes.NewBufferString(jsonPayload))
 			request.Header.Set("Content-Type", "application/json")
-			// Set required X-Maas-* headers for header-based authentication
+			// Set required X-MaaS-* headers for header-based authentication
 			request.Header.Set(constant.HeaderUsername, "duration-test@example.com")
 			request.Header.Set(constant.HeaderGroup, `["system:authenticated"]`)
 			router.ServeHTTP(w, request)

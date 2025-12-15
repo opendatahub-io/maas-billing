@@ -56,6 +56,7 @@ func TestAPIEndpoints(t *testing.T) {
 		expectedStatus  int
 		expectedError   string
 		expectedCode    string
+		expectedRefId   string
 		shouldHaveToken bool
 		description     string
 	}{
@@ -73,7 +74,8 @@ func TestAPIEndpoints(t *testing.T) {
 			group:          `["test-group"]`,
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  "Exception thrown while generating token",
-			expectedCode:   "ERR_7F3A",
+			expectedCode:   "AUTH_FAILURE",
+			expectedRefId:  "001",
 			description:    "Missing username header should return 500",
 		},
 		{
@@ -82,7 +84,8 @@ func TestAPIEndpoints(t *testing.T) {
 			group:          "",
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  "Exception thrown while generating token",
-			expectedCode:   "ERR_B2C9",
+			expectedCode:   "AUTH_FAILURE",
+			expectedRefId:  "002",
 			description:    "Missing group header should return 500",
 		},
 		{
@@ -91,7 +94,8 @@ func TestAPIEndpoints(t *testing.T) {
 			group:          "invalid-format",
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  "Exception thrown while generating token",
-			expectedCode:   "ERR_C4D1",
+			expectedCode:   "AUTH_FAILURE",
+			expectedRefId:  "003",
 			description:    "Invalid group header format should return 500",
 		},
 	}
@@ -147,6 +151,14 @@ func TestAPIEndpoints(t *testing.T) {
 						t.Errorf("expected exceptionCode to be a string, got %T", response["exceptionCode"])
 					} else if exceptionCode != tt.expectedCode {
 						t.Errorf("expected exceptionCode: '%s'; got: '%s'. Description: %s", tt.expectedCode, exceptionCode, tt.description)
+					}
+				}
+				if tt.expectedRefId != "" {
+					refId, ok := response["refId"].(string)
+					if !ok {
+						t.Errorf("expected refId to be a string, got %T", response["refId"])
+					} else if refId != tt.expectedRefId {
+						t.Errorf("expected refId: '%s'; got: '%s'. Description: %s", tt.expectedRefId, refId, tt.description)
 					}
 				}
 			}
