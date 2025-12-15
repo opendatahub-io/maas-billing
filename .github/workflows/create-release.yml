@@ -1,0 +1,123 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      create_release:
+        description: 'Create GitHub release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Validate tag format
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [[ ! "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Warning: Tag '$TAG' doesn't follow semantic versioning format (v1.0.0)"
+            echo "Continuing anyway..."
+          fi
+
+      - name: Update kustomization files with new tag
+        run: |
+          chmod +x scripts/update-kustomize-tag.sh
+          ./scripts/update-kustomize-tag.sh "${{ inputs.tag }}"
+
+      - name: Verify changes
+        run: |
+          echo "Verifying tag updates..."
+          git diff --no-color || true
+          
+          # Check if files were actually updated
+          if ! git diff --quiet; then
+            echo "✓ Files updated successfully"
+          else
+            echo "⚠ No changes detected. Tag may already be set."
+          fi
+
+      - name: Commit changes
+        run: |
+          git add deployment/base/maas-api/kustomization.yaml
+          git add maas-api/deploy/overlays/dev/kustomization.yaml || true
+          git add maas-api/deploy/overlays/odh/params.env || true
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "chore: update image tag to ${{ inputs.tag }}"
+          
+      - name: Create and push git tag
+        run: |
+          TAG="${{ inputs.tag }}"
+          # Remove 'v' prefix if present for the tag name (git tags can have it)
+          # But keep it if user provided it
+          
+          # Check if tag already exists
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Deleting existing tag..."
+            git tag -d "$TAG" || true
+            git push origin ":refs/tags/$TAG" || true
+          fi
+          
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          git push origin HEAD
+
+      - name: Create GitHub Release
+        if: inputs.create_release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: Release ${{ inputs.tag }}
+          body: |
+            This release updates the MaaS billing deployment manifests to use image tag `${{ inputs.tag }}`.
+            
+            ### Updated Files
+            - `deployment/base/maas-api/kustomization.yaml`
+            - `maas-api/deploy/overlays/dev/kustomization.yaml`
+            - `maas-api/deploy/overlays/odh/params.env`
+            
+            > Note: Release notes can be edited after creation.
+          draft: false
+          prerelease: ${{ contains(inputs.tag, '-') || contains(inputs.tag, 'alpha') || contains(inputs.tag, 'beta') || contains(inputs.tag, 'rc') }}
+
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Tag**: \`${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Git Tag**: Created and pushed" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.create_release }}" == "true" ]; then
+            echo "✅ **GitHub Release**: Created" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Updated Files" >> $GITHUB_STEP_SUMMARY
+          echo "- \`deployment/base/maas-api/kustomization.yaml\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`maas-api/deploy/overlays/dev/kustomization.yaml\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`maas-api/deploy/overlays/odh/params.env\`" >> $GITHUB_STEP_SUMMARY
+
