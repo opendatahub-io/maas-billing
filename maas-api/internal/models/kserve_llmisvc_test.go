@@ -10,11 +10,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 func TestListAvailableLLMs(t *testing.T) {
+	testLogger := logger.Development()
 	gateway := models.GatewayRef{Name: "maas-gateway", Namespace: "gateway-ns"}
 
 	tests := []struct {
@@ -254,6 +256,7 @@ func TestListAvailableLLMs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			manager, errMgr := models.NewManager(
+				testLogger,
 				fixtures.NewInferenceServiceLister(),
 				fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects(tt.llmServices)...),
 				fixtures.NewHTTPRouteLister(fixtures.ToRuntimeObjects(tt.httpRoutes)...),

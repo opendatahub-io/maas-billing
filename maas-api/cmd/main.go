@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +17,7 @@ import (
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/config"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/handlers"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
@@ -26,6 +26,12 @@ import (
 func main() {
 	cfg := config.Load()
 	flag.Parse()
+
+	// Initialize structured logger aligned with KServe conventions
+	appLogger := logger.New(cfg.DebugMode)
+	defer func() {
+		_ = appLogger.Sync() // Ignore sync errors on close, as per zap documentation
+	}()
 
 	gin.SetMode(gin.ReleaseMode) // Explicitly set release mode
 	if cfg.DebugMode {
@@ -51,17 +57,21 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Initialize store in main for proper cleanup
-	store, err := api_keys.NewStore(ctx, cfg.DBPath)
+	store, err := api_keys.NewStore(ctx, appLogger, cfg.DBPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize token store: %v", err)
+		appLogger.Fatal("Failed to initialize token store",
+			"error", err,
+		)
 	}
 	defer func() {
 		if err := store.Close(); err != nil {
-			log.Printf("Failed to close token store: %v", err)
+			appLogger.Error("Failed to close token store",
+				"error", err,
+			)
 		}
 	}()
 
-	registerHandlers(ctx, router, cfg, store)
+	registerHandlers(ctx, router, cfg, store, appLogger)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -74,46 +84,56 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Server starting on port %s", cfg.Port)
+		appLogger.Info("Server starting",
+			"port", cfg.Port,
+			"debug_mode", cfg.DebugMode,
+		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen: %s\n", err)
+			appLogger.Fatal("Server failed to start",
+				"error", err,
+			)
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutdown signal received, shutting down server...")
+	appLogger.Info("Shutdown signal received, shutting down server...")
 
 	cancel()
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatal("Server forced to shutdown:", err) //nolint:gocritic // exits immediately
+		appLogger.Fatal("Server forced to shutdown",
+			"error", err,
+		)
 	}
 
-	log.Println("Server exited gracefully")
+	appLogger.Info("Server exited gracefully")
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store) {
+func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store *api_keys.Store, appLogger *logger.Logger) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	cluster, err := config.NewClusterConfig(cfg.Namespace, constant.DefaultResyncPeriod)
 	if err != nil {
-		log.Fatalf("Failed to create cluster config: %v", err)
+		appLogger.Fatal("Failed to create cluster config",
+			"error", err,
+		)
 	}
 
 	if !cluster.StartAndWaitForSync(ctx.Done()) {
-		log.Fatalf("Failed to sync informer caches")
+		appLogger.Fatal("Failed to sync informer caches")
 	}
 
 	v1Routes := router.Group("/v1")
 
-	tierMapper := tier.NewMapper(cluster.ConfigMapLister, cfg.Name, cfg.Namespace)
+	tierMapper := tier.NewMapper(appLogger, cluster.ConfigMapLister, cfg.Name, cfg.Namespace)
 	v1Routes.POST("/tiers/lookup", tier.NewHandler(tierMapper).TierLookup)
 
 	modelMgr, errMgr := models.NewManager(
+		appLogger,
 		cluster.InferenceServiceLister,
 		cluster.LLMInferenceServiceLister,
 		cluster.HTTPRouteLister,
@@ -121,22 +141,25 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	)
 
 	if errMgr != nil {
-		log.Fatalf("Failed to create model manager: %v", errMgr)
+		appLogger.Fatal("Failed to create model manager",
+			"error", errMgr,
+		)
 	}
 
-	modelsHandler := handlers.NewModelsHandler(modelMgr)
+	modelsHandler := handlers.NewModelsHandler(appLogger, modelMgr)
 
 	tokenManager := token.NewManager(
+		appLogger,
 		cfg.Name,
 		tierMapper,
 		cluster.ClientSet,
 		cluster.NamespaceLister,
 		cluster.ServiceAccountLister,
 	)
-	tokenHandler := token.NewHandler(cfg.Name, tokenManager)
+	tokenHandler := token.NewHandler(appLogger, cfg.Name, tokenManager)
 
 	apiKeyService := api_keys.NewService(tokenManager, store)
-	apiKeyHandler := api_keys.NewHandler(apiKeyService)
+	apiKeyHandler := api_keys.NewHandler(appLogger, apiKeyService)
 
 	// Model listing endpoint (v1Routes is grouped under /v1, so this creates /v1/models)
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(), modelsHandler.ListLLMs)

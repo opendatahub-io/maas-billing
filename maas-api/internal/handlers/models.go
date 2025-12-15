@@ -1,24 +1,29 @@
 package handlers
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openai/openai-go/v2/packages/pagination"
 
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
 )
 
 // ModelsHandler handles model-related endpoints.
 type ModelsHandler struct {
 	modelMgr *models.Manager
+	logger   *logger.Logger
 }
 
 // NewModelsHandler creates a new models handler.
-func NewModelsHandler(modelMgr *models.Manager) *ModelsHandler {
+func NewModelsHandler(log *logger.Logger, modelMgr *models.Manager) *ModelsHandler {
+	if log == nil {
+		log = logger.Production()
+	}
 	return &ModelsHandler{
 		modelMgr: modelMgr,
+		logger:   log,
 	}
 }
 
@@ -26,7 +31,9 @@ func NewModelsHandler(modelMgr *models.Manager) *ModelsHandler {
 func (h *ModelsHandler) ListModels(c *gin.Context) {
 	modelList, err := h.modelMgr.ListAvailableModels()
 	if err != nil {
-		log.Printf("Failed to get available models: %v", err)
+		h.logger.WithContext(c.Request.Context()).Error("Failed to get available models",
+			"error", err,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve models"})
 		return
 	}
@@ -41,7 +48,9 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 	modelList, err := h.modelMgr.ListAvailableLLMs()
 	if err != nil {
-		log.Printf("Failed to get available LLM models: %v", err)
+		h.logger.WithContext(c.Request.Context()).Error("Failed to get available LLM models",
+			"error", err,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": "Failed to retrieve LLM models",

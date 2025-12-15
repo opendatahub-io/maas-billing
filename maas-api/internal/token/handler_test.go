@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
 
@@ -42,8 +43,9 @@ func (m *MockManager) GetNamespaceForUser(ctx context.Context, user *token.UserC
 func TestAPIEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	testLogger := logger.Development()
 	mockManager := new(MockManager)
-	handler := token.NewHandler("test", mockManager)
+	handler := token.NewHandler(testLogger, "test", mockManager)
 
 	router := gin.New()
 	router.Use(handler.ExtractUserInfo())

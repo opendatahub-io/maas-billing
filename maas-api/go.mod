@@ -10,15 +10,15 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/openai/openai-go/v2 v2.3.1
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.34.1
 	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1
 	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 	knative.dev/pkg v0.0.0-20250915135827-db4c336acdbe
+	sigs.k8s.io/gateway-api v1.4.0
 )
-
-require sigs.k8s.io/gateway-api v1.4.0
 
 require (
 	cel.dev/expr v0.24.0 // indirect
@@ -117,7 +117,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.18.0 // indirect

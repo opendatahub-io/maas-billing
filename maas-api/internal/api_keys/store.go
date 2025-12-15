@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 )
 
 // ErrTokenNotFound is returned when a token is not found in the store.
@@ -24,11 +25,12 @@ const (
 
 // Store handles the persistence of token metadata using SQLite.
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	logger *logger.Logger
 }
 
 // NewStore creates a new TokenStore backed by SQLite.
-func NewStore(ctx context.Context, dbPath string) (*Store, error) {
+func NewStore(ctx context.Context, log *logger.Logger, dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -39,7 +41,14 @@ func NewStore(ctx context.Context, dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	s := &Store{db: db}
+	if log == nil {
+		log = logger.Production()
+	}
+
+	s := &Store{
+		db:     db,
+		logger: log,
+	}
 	if err := s.initSchema(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
@@ -82,7 +91,7 @@ func (s *Store) initSchema(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, alterTableQuery); err != nil {
 			return fmt.Errorf("failed to add description column: %w", err)
 		}
-		log.Printf("Added description column to tokens table")
+		s.logger.Info("Added description column to tokens table")
 	}
 
 	// 3. Create indices
@@ -146,7 +155,9 @@ func (s *Store) MarkTokensAsExpiredForUser(ctx context.Context, namespace, usern
 	}
 
 	rows, _ := result.RowsAffected()
-	log.Printf("Marked %d tokens as expired for user %s", rows, username)
+	s.logger.WithFields(
+		"affected_rows", rows,
+	).Debug("Marked tokens as expired")
 	return nil
 }
 
@@ -183,7 +194,10 @@ func (s *Store) GetTokensForUser(ctx context.Context, namespace, username string
 
 		expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
 		if err != nil {
-			log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
+			s.logger.WithFields(
+				"expiration_date", t.ExpirationDate,
+				"error", err,
+			).Warn("Failed to parse expiration date; marking as expired")
 			t.Status = TokenStatusExpired // Mark as expired if date is unreadable
 		} else {
 			if now.After(expiration) {
@@ -222,7 +236,10 @@ func (s *Store) GetToken(ctx context.Context, namespace, username, jti string) (
 
 	expiration, err := time.Parse(time.RFC3339, t.ExpirationDate)
 	if err != nil {
-		log.Printf("Failed to parse expiration date for token %s: %v", t.ID, err)
+		s.logger.WithFields(
+			"expiration_date", t.ExpirationDate,
+			"error", err,
+		).Warn("Failed to parse expiration date; marking as expired")
 		t.Status = TokenStatusExpired
 	} else {
 		if time.Now().After(expiration) {
