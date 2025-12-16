@@ -13,11 +13,13 @@ import (
 	"knative.dev/pkg/apis"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/handlers"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
 func TestListingModels(t *testing.T) {
+	testLogger := logger.Development()
 	strptr := func(s string) *string { return &s }
 
 	const (
@@ -89,6 +91,7 @@ func TestListingModels(t *testing.T) {
 	}
 
 	modelMgr, errMgr := models.NewManager(
+		testLogger,
 		clients.InferenceServiceLister,
 		clients.LLMInferenceServiceLister,
 		clients.HTTPRouteLister,
@@ -96,7 +99,7 @@ func TestListingModels(t *testing.T) {
 	)
 	require.NoError(t, errMgr)
 
-	modelsHandler := handlers.NewModelsHandler(modelMgr)
+	modelsHandler := handlers.NewModelsHandler(testLogger, modelMgr)
 	v1 := router.Group("/v1")
 	v1.GET("/models", modelsHandler.ListLLMs)
 

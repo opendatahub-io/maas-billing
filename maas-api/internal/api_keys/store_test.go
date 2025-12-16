@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/api_keys"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ func createTestStore(t *testing.T) api_keys.MetadataStore {
 func TestStore(t *testing.T) {
 	ctx := t.Context()
 
-	store := createTestStore(t)
+store := createTestStore(t)
 	defer store.Close()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
