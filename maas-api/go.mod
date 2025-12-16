@@ -7,18 +7,22 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/kserve/kserve v0.0.0-20251121160314-57d83d202f36
-	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/openai/openai-go/v2 v2.3.1
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.34.1
 	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1
 	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 	knative.dev/pkg v0.0.0-20250915135827-db4c336acdbe
+	sigs.k8s.io/gateway-api v1.4.0
 )
 
-require sigs.k8s.io/gateway-api v1.4.0
+require (
+	github.com/jackc/pgx/v5 v5.7.6
+	github.com/mattn/go-sqlite3 v1.14.32
+)
 
 require (
 	cel.dev/expr v0.24.0 // indirect
@@ -75,6 +79,9 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
 	github.com/googleapis/google-cloud-go-testing v0.0.0-20210719221736-1c9a4c676720 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -117,7 +124,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.18.0 // indirect

@@ -22,11 +22,11 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: DB_PATH
-          value: /data/maas.db
-        volumeMounts:
-        - name: db-data
-          mountPath: /data
+        # Note: By default, uses in-memory storage (ephemeral - data lost on restart).
+        # For persistent storage, use one of the overlays:
+        #   - deployment/overlays/sqlite-pvc (single replica, file-based)
+        # Or configure external database (HA-ready):
+        #   - See docs/samples/database/external for configuration examples
         resources:
           requests:
             memory: "64Mi"
@@ -57,8 +57,4 @@ spec:
             - ALL
           readOnlyRootFilesystem: true
           runAsNonRoot: true
-      volumes:
-      - name: db-data
-        persistentVolumeClaim:
-          claimName: maas-api-db
       terminationGracePeriodSeconds: 30

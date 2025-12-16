@@ -17,10 +17,10 @@ type TokenManager interface {
 
 type Service struct {
 	tokenManager TokenManager
-	store        *Store
+	store        MetadataStore
 }
 
-func NewService(tokenManager TokenManager, store *Store) *Service {
+func NewService(tokenManager TokenManager, store MetadataStore) *Service {
 	return &Service{
 		tokenManager: tokenManager,
 		store:        store,
@@ -48,7 +48,7 @@ func (s *Service) CreateAPIKey(ctx context.Context, user *token.UserContext, nam
 		Namespace:   namespace,
 	}
 
-	if err := s.store.AddTokenMetadata(ctx, namespace, user.Username, apiKey); err != nil {
+	if err := s.store.Add(ctx, namespace, user.Username, apiKey); err != nil {
 		return nil, fmt.Errorf("failed to persist api key metadata: %w", err)
 	}
 
@@ -60,7 +60,7 @@ func (s *Service) ListAPIKeys(ctx context.Context, user *token.UserContext) ([]A
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine namespace for user: %w", err)
 	}
-	return s.store.GetTokensForUser(ctx, namespace, user.Username)
+	return s.store.List(ctx, namespace, user.Username)
 }
 
 func (s *Service) GetAPIKey(ctx context.Context, user *token.UserContext, id string) (*ApiKeyMetadata, error) {
@@ -68,7 +68,7 @@ func (s *Service) GetAPIKey(ctx context.Context, user *token.UserContext, id str
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine namespace for user: %w", err)
 	}
-	return s.store.GetToken(ctx, namespace, user.Username, id)
+	return s.store.Get(ctx, namespace, user.Username, id)
 }
 
 // RevokeAll invalidates all tokens for the user (ephemeral and persistent).
@@ -81,7 +81,7 @@ func (s *Service) RevokeAll(ctx context.Context, user *token.UserContext) error 
 	}
 
 	// Mark API key metadata as expired (preserves history)
-	if err := s.store.MarkTokensAsExpiredForUser(ctx, namespace, user.Username); err != nil {
+	if err := s.store.InvalidateAll(ctx, namespace, user.Username); err != nil {
 		return fmt.Errorf("tokens revoked but failed to mark metadata as expired: %w", err)
 	}
 

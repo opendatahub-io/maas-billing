@@ -9,4 +9,8 @@ const (
 	DefaultGatewayNamespace = "openshift-ingress"
 
 	DefaultResyncPeriod = 8 * time.Hour
+
+	// Header configuration constants.
+	HeaderUsername = "X-MaaS-Username"
+	HeaderGroup    = "X-MaaS-Group"
 )

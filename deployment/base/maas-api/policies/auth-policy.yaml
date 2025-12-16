@@ -15,3 +15,12 @@ spec:
           audiences:
             - https://kubernetes.default.svc
             - maas-default-gateway-sa
+    response:
+      success:
+        headers:
+          X-MaaS-Username:
+            plain:
+              selector: auth.identity.user.username
+          X-MaaS-Group:
+            plain:
+              selector: auth.identity.user.groups.@tostr

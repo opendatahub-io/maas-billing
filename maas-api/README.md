@@ -210,7 +210,41 @@ curl -sSk \
 ```
 
 > [!NOTE]
-> API keys are stored in a SQLite database (`/data/maas.db` in the container) with metadata including creation date, expiration date, and status. They can be listed and inspected individually. To revoke tokens, use `DELETE /v1/tokens` which revokes all tokens (ephemeral and API keys) by recreating the Service Account and marking API key metadata as expired.
+> API keys are stored in the configured database (see [Storage Configuration](#storage-configuration)) with metadata including creation date, expiration date, and status. They can be listed and inspected individually. To revoke tokens, use `DELETE /v1/tokens` which revokes all tokens (ephemeral and API keys) by recreating the Service Account and marking API key metadata as expired.
+
+### Storage Configuration
+
+maas-api supports three storage modes, controlled by the `--storage` flag:
+
+| Mode | Flag | Use Case | Persistence |
+|------|------|----------|-------------|
+| **In-memory** (default) | `--storage=in-memory` | Development/testing | ❌ Data lost on restart |
+| **Disk** | `--storage=disk` | Single replica, demos | ✅ Survives restarts |
+| **External** | `--storage=external` | Production, HA | ✅ Full persistence |
+
+#### Quick Start
+
+```bash
+# In-memory (default - no configuration needed)
+
+# Disk storage (persistent, single replica)
+kustomize build deployment/overlays/sqlite-pvc | kubectl apply -f -
+
+# External database - see docs/samples/database/external for configuration
+```
+
+#### Configuration Flags and Environment Variables
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `--storage` | `STORAGE_MODE` | `in-memory` | Storage mode: `in-memory`, `disk`, or `external` |
+| `--db-connection-url` | `DB_CONNECTION_URL` | - | Database URL (required for `--storage=external`) |
+| `--data-path` | `DATA_PATH` | `/data/maas-api.db` | Path for disk storage |
+| - | `DB_MAX_OPEN_CONNS` | 25 | Max open connections (external mode only) |
+| - | `DB_MAX_IDLE_CONNS` | 5 | Max idle connections (external mode only) |
+| - | `DB_CONN_MAX_LIFETIME_SECONDS` | 300 | Connection max lifetime in seconds (external mode only) |
+
+For detailed external database setup instructions, see [docs/samples/database/external](../docs/samples/database/external/README.md).
 
 #### Calling the model and hitting the rate limit
 

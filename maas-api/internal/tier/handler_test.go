@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
@@ -212,6 +213,7 @@ func TestHandler_PostTierLookup_ConfigMapMissing_ShouldError(t *testing.T) {
 }
 
 func TestHandler_PostTierLookup_DisplayNameFallback(t *testing.T) {
+	testLogger := logger.Development()
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      constant.TierMappingConfigMap,
@@ -227,7 +229,7 @@ func TestHandler_PostTierLookup_DisplayNameFallback(t *testing.T) {
 		},
 	}
 
-	mapper := tier.NewMapper(fixtures.NewConfigMapLister(configMap), fixtures.TestTenant, fixtures.TestNamespace)
+	mapper := tier.NewMapper(testLogger, fixtures.NewConfigMapLister(configMap), fixtures.TestTenant, fixtures.TestNamespace)
 	router := fixtures.SetupTierTestRouter(mapper)
 
 	reqBody := tier.LookupRequest{Groups: []string{"basic-users"}}

@@ -9,11 +9,8 @@ import (
 
 // UserContext holds user information extracted from the token.
 type UserContext struct {
-	Username        string   `json:"username"`
-	UID             string   `json:"uid"`
-	Groups          []string `json:"groups"`
-	IsAuthenticated bool     `json:"isAuthenticated"`
-	JTI             string   `json:"jti"` // JWT ID
+	Username string   `json:"username"`
+	Groups   []string `json:"groups"`
 }
 
 type Token struct {

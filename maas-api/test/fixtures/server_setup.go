@@ -3,8 +3,6 @@ package fixtures
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,6 +23,7 @@ import (
 	gatewaylisters "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/api_keys"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
@@ -48,7 +47,6 @@ type TokenReviewScenario struct {
 // TestServerConfig holds configuration for test server setup.
 type TestServerConfig struct {
 	WithTierConfig bool
-	TokenScenarios map[string]TokenReviewScenario
 	Objects        []runtime.Object
 	TestNamespace  string
 	TestTenant     string
@@ -64,7 +62,6 @@ type TestClients struct {
 // TestComponents holds common test components.
 type TestComponents struct {
 	Manager   *token.Manager
-	Reviewer  *token.Reviewer
 	Clientset *k8sfake.Clientset
 }
 
@@ -105,10 +102,6 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 	}
 
 	k8sClient := k8sfake.NewClientset(k8sObjects...)
-	if config.TokenScenarios != nil {
-		StubTokenReview(k8sClient, config.TokenScenarios)
-	}
-
 	clients := &TestClients{
 		K8sClient:                 k8sClient,
 		InferenceServiceLister:    NewInferenceServiceLister(ToRuntimeObjects(isvcs)...),
@@ -120,7 +113,9 @@ func SetupTestServer(_ *testing.T, config TestServerConfig) (*gin.Engine, *TestC
 }
 
 // StubTokenProviderAPIs creates common test components for token tests.
-func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map[string]TokenReviewScenario) (*token.Manager, *token.Reviewer, *k8sfake.Clientset, func()) {
+func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool) (*token.Manager, *k8sfake.Clientset, func()) {
+	testLogger := logger.Development()
+
 	var objects []runtime.Object
 	var configMaps []*corev1.ConfigMap
 
@@ -132,58 +127,52 @@ func StubTokenProviderAPIs(_ *testing.T, withTierConfig bool, tokenScenarios map
 
 	fakeClient := k8sfake.NewClientset(objects...)
 
-	StubTokenReview(fakeClient, tokenScenarios)
+	// Stub ServiceAccount token creation for tests
+	StubServiceAccountTokenCreation(fakeClient)
 
 	informerFactory := informers.NewSharedInformerFactory(fakeClient, 0)
 	namespaceLister := informerFactory.Core().V1().Namespaces().Lister()
 	serviceAccountLister := informerFactory.Core().V1().ServiceAccounts().Lister()
 
-	tierMapper := tier.NewMapper(NewConfigMapLister(configMaps...), TestTenant, TestNamespace)
+	tierMapper := tier.NewMapper(testLogger, NewConfigMapLister(configMaps...), TestTenant, TestNamespace)
 	manager := token.NewManager(
+		testLogger,
 		TestTenant,
 		tierMapper,
 		fakeClient,
 		namespaceLister,
 		serviceAccountLister,
 	)
-	reviewer := token.NewReviewer(fakeClient)
 
 	cleanup := func() {}
 
-	return manager, reviewer, fakeClient, cleanup
+	return manager, fakeClient, cleanup
 }
 
 // SetupTestRouter creates a test router with token endpoints.
 // Returns the router and a cleanup function that must be called to close the store and remove the temp DB file.
-func SetupTestRouter(manager *token.Manager, reviewer *token.Reviewer) (*gin.Engine, func() error) {
+func SetupTestRouter(manager *token.Manager) (*gin.Engine, func() error) {
+	testLogger := logger.Development()
+
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	dbPath := filepath.Join(os.TempDir(), fmt.Sprintf("maas-test-%d.db", time.Now().UnixNano()))
-	store, err := api_keys.NewStore(context.Background(), dbPath)
+	store, err := api_keys.NewSQLiteStore(context.Background(), ":memory:")
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test store: %v", err))
 	}
 
-	tokenHandler := token.NewHandler("test", manager)
+	tokenHandler := token.NewHandler(testLogger, "test", manager)
 	apiKeyService := api_keys.NewService(manager, store)
-	apiKeyHandler := api_keys.NewHandler(apiKeyService)
+	apiKeyHandler := api_keys.NewHandler(testLogger, apiKeyService)
 
 	protected := router.Group("/v1")
-	if reviewer != nil {
-		protected.Use(tokenHandler.ExtractUserInfo(reviewer))
-	}
+	protected.Use(tokenHandler.ExtractUserInfo())
 	protected.POST("/tokens", tokenHandler.IssueToken)
 	protected.DELETE("/tokens", apiKeyHandler.RevokeAllTokens)
 
 	cleanup := func() error {
-		if err := store.Close(); err != nil {
-			return fmt.Errorf("failed to close store: %w", err)
-		}
-		if err := os.Remove(dbPath); err != nil {
-			return fmt.Errorf("failed to remove temp DB file: %w", err)
-		}
-		return nil
+		return store.Close()
 	}
 
 	return router, cleanup
@@ -202,52 +191,23 @@ func SetupTierTestRouter(mapper *tier.Mapper) *gin.Engine {
 
 // CreateTestMapper creates a tier mapper for testing.
 func CreateTestMapper(withConfigMap bool) *tier.Mapper {
+	testLogger := logger.Development()
+
 	var configMaps []*corev1.ConfigMap
 
 	if withConfigMap {
 		configMaps = append(configMaps, CreateTierConfigMap(TestNamespace))
 	}
 
-	return tier.NewMapper(NewConfigMapLister(configMaps...), TestTenant, TestNamespace)
+	return tier.NewMapper(testLogger, NewConfigMapLister(configMaps...), TestTenant, TestNamespace)
 }
 
-// StubTokenReview sets up TokenReview API mocking for authentication tests.
-func StubTokenReview(clientset kubernetes.Interface, scenarios map[string]TokenReviewScenario) {
+// StubServiceAccountTokenCreation sets up ServiceAccount token creation mocking for tests.
+func StubServiceAccountTokenCreation(clientset kubernetes.Interface) {
 	fakeClient, ok := clientset.(*k8sfake.Clientset)
 	if !ok {
-		panic("StubTokenReview: clientset is not a *k8sfake.Clientset")
+		panic("StubServiceAccountTokenCreation: clientset is not a *k8sfake.Clientset")
 	}
-	fakeClient.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		createAction, ok := action.(k8stesting.CreateAction)
-		if !ok {
-			return true, nil, fmt.Errorf("expected CreateAction, got %T", action)
-		}
-		tokenReview, ok := createAction.GetObject().(*authv1.TokenReview)
-		if !ok {
-			return true, nil, fmt.Errorf("expected TokenReview, got %T", createAction.GetObject())
-		}
-		tokenSpec := tokenReview.Spec.Token
-
-		scenario, exists := scenarios[tokenSpec]
-		if !exists {
-			return true, &authv1.TokenReview{
-				Status: authv1.TokenReviewStatus{
-					Authenticated: false,
-				},
-			}, nil
-		}
-
-		if scenario.ShouldError {
-			return true, nil, fmt.Errorf("tokenSpec review API error: %s", scenario.ErrorMessage)
-		}
-
-		tokenReview.Status = authv1.TokenReviewStatus{
-			Authenticated: scenario.Authenticated,
-			User:          scenario.UserInfo,
-		}
-
-		return true, tokenReview, nil
-	})
 
 	fakeClient.PrependReactor("create", "serviceaccounts/token", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		createAction, ok := action.(k8stesting.CreateAction)
