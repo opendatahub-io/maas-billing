@@ -10,12 +10,20 @@ import (
 	"knative.dev/pkg/apis"
 )
 
+// Details contains additional metadata from LLMInferenceService annotations.
+type Details struct {
+	GenAIUseCase string `json:"genaiUseCase,omitempty"`
+	Description  string `json:"description,omitempty"`
+	DisplayName  string `json:"displayName,omitempty"`
+}
+
 // Model extends openai.Model with additional fields.
 type Model struct {
 	openai.Model `json:",inline"`
 
-	URL   *apis.URL `json:"url,omitempty"`
-	Ready bool      `json:"ready"`
+	URL     *apis.URL `json:"url,omitempty"`
+	Ready   bool      `json:"ready"`
+	Details *Details  `json:"modelDetails,omitempty"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshalling to work around openai.Model's

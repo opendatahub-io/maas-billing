@@ -68,8 +68,9 @@ func llmInferenceServicesToModels(items []*kservev1alpha1.LLMInferenceService) (
 				OwnedBy: item.Namespace,
 				Created: item.CreationTimestamp.Unix(),
 			},
-			URL:   url,
-			Ready: checkLLMInferenceServiceReadiness(item),
+			URL:     url,
+			Ready:   checkLLMInferenceServiceReadiness(item),
+			Details: extractModelDetails(item),
 		})
 	}
 
@@ -91,6 +92,35 @@ func findLLMInferenceServiceURL(llmIsvc *kservev1alpha1.LLMInferenceService) *ap
 
 	log.Printf("DEBUG: No URL found for LLMInferenceService %s/%s", llmIsvc.Namespace, llmIsvc.Name)
 	return nil
+}
+
+// Annotation keys for model metadata.
+const (
+	AnnotationGenAIUseCase = "opendatahub.io/genai-use-case"
+	AnnotationDescription  = "openshift.io/description"
+	AnnotationDisplayName  = "openshift.io/display-name"
+)
+
+func extractModelDetails(llmIsvc *kservev1alpha1.LLMInferenceService) *Details {
+	annotations := llmIsvc.GetAnnotations()
+	if annotations == nil {
+		return nil
+	}
+
+	genaiUseCase := annotations[AnnotationGenAIUseCase]
+	description := annotations[AnnotationDescription]
+	displayName := annotations[AnnotationDisplayName]
+
+	// Only return Details if at least one field is populated
+	if genaiUseCase == "" && description == "" && displayName == "" {
+		return nil
+	}
+
+	return &Details{
+		GenAIUseCase: genaiUseCase,
+		Description:  description,
+		DisplayName:  displayName,
+	}
 }
 
 func checkLLMInferenceServiceReadiness(llmIsvc *kservev1alpha1.LLMInferenceService) bool {
