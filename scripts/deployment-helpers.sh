@@ -1,0 +1,173 @@
+#!/bin/bash
+
+# Deployment Helper Functions
+# This file contains reusable helper functions for MaaS platform deployment scripts
+
+# Helper function to wait for CRD to be established
+wait_for_crd() {
+  local crd="$1"
+  local timeout="${2:-60}"  # timeout in seconds
+  local interval=2
+  local elapsed=0
+
+  echo "⏳ Waiting for CRD ${crd} to appear (timeout: ${timeout}s)…"
+  while [ $elapsed -lt $timeout ]; do
+    if kubectl get crd "$crd" &>/dev/null; then
+      echo "✅ CRD ${crd} detected, waiting for it to become Established..."
+      kubectl wait --for=condition=Established --timeout="${timeout}s" "crd/$crd" 2>/dev/null
+      return 0
+    fi
+    sleep $interval
+    elapsed=$((elapsed + interval))
+  done
+
+  echo "❌ Timed out after ${timeout}s waiting for CRD $crd to appear." >&2
+  return 1
+}
+
+# Helper function to extract version from CSV name (e.g., "operator.v1.2.3" -> "1.2.3")
+extract_version_from_csv() {
+  local csv_name="$1"
+  echo "$csv_name" | sed -n 's/.*\.v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p'
+}
+
+# Helper function to compare semantic versions (returns 0 if version1 >= version2)
+version_compare() {
+  local version1="$1"
+  local version2="$2"
+  
+  # Convert versions to comparable numbers (e.g., "1.2.3" -> "001002003")
+  local v1=$(echo "$version1" | awk -F. '{printf "%03d%03d%03d", $1, $2, $3}')
+  local v2=$(echo "$version2" | awk -F. '{printf "%03d%03d%03d", $1, $2, $3}')
+  
+  [ "$v1" -ge "$v2" ]
+}
+
+# Helper function to find CSV by operator name and check minimum version
+find_csv_with_min_version() {
+  local operator_prefix="$1"
+  local min_version="$2"
+  local namespace="${3:-kuadrant-system}"
+  
+  local csv_name=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}' || echo "")
+  
+  if [ -z "$csv_name" ]; then
+    echo ""
+    return 1
+  fi
+  
+  local installed_version=$(extract_version_from_csv "$csv_name")
+  if version_compare "$installed_version" "$min_version"; then
+    echo "$csv_name"
+    return 0
+  else
+    echo ""
+    return 1
+  fi
+}
+
+# Helper function to wait for CSV with minimum version requirement
+wait_for_csv_with_min_version() {
+  local operator_prefix="$1"
+  local min_version="$2"
+  local namespace="${3:-kuadrant-system}"
+  local timeout="${4:-180}"
+  
+  echo "⏳ Looking for ${operator_prefix} (minimum version: ${min_version})..."
+  
+  local csv_name=$(find_csv_with_min_version "$operator_prefix" "$min_version" "$namespace")
+  if [ -z "$csv_name" ]; then
+    # Check if any version exists (for better error message)
+    local any_csv=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}' || echo "")
+    if [ -n "$any_csv" ]; then
+      local installed_version=$(extract_version_from_csv "$any_csv")
+      echo "❌ Found ${any_csv} with version ${installed_version}, but minimum required is ${min_version}"
+      return 1
+    else
+      echo "❌ No CSV found for operator ${operator_prefix} in namespace ${namespace}"
+      return 1
+    fi
+  fi
+  
+  local installed_version=$(extract_version_from_csv "$csv_name")
+  echo "✅ Found CSV: ${csv_name} (version: ${installed_version} >= ${min_version})"
+  wait_for_csv "$csv_name" "$namespace" "$timeout"
+}
+
+# Helper function to wait for CSV to reach Succeeded state
+wait_for_csv() {
+  local csv_name="$1"
+  local namespace="${2:-kuadrant-system}"
+  local timeout="${3:-180}"  # timeout in seconds
+  local interval=5
+  local elapsed=0
+  local last_status_print=0
+
+  echo "⏳ Waiting for CSV ${csv_name} to succeed (timeout: ${timeout}s)..."
+  while [ $elapsed -lt $timeout ]; do
+    local phase=$(kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+
+    case "$phase" in
+      "Succeeded")
+        echo "✅ CSV ${csv_name} succeeded"
+        return 0
+        ;;
+      "Failed")
+        echo "❌ CSV ${csv_name} failed" >&2
+        kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.message}' 2>/dev/null
+        return 1
+        ;;
+      *)
+        if [ $((elapsed - last_status_print)) -ge 30 ]; then
+          echo "   CSV ${csv_name} status: ${phase} (${elapsed}s elapsed)"
+          last_status_print=$elapsed
+        fi
+        ;;
+    esac
+
+    sleep $interval
+    elapsed=$((elapsed + interval))
+  done
+
+  echo "❌ Timed out after ${timeout}s waiting for CSV ${csv_name}" >&2
+  return 1
+}
+
+# Helper function to wait for pods in a namespace to be ready
+wait_for_pods() {
+  local namespace="$1"
+  local timeout="${2:-120}"
+  
+  kubectl get namespace "$namespace" &>/dev/null || return 0
+  
+  echo "⏳ Waiting for pods in $namespace to be ready..."
+  local end=$((SECONDS + timeout))
+  while [ $SECONDS -lt $end ]; do
+    local not_ready=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | grep -v -E 'Running|Completed|Succeeded' | wc -l)
+    [ "$not_ready" -eq 0 ] && return 0
+    sleep 5
+  done
+  echo "⚠️  Timeout waiting for pods in $namespace" >&2
+  return 1
+}
+
+# Helper function to wait for validating webhooks to be established
+wait_for_validating_webhooks() {
+    local namespace="$1"
+    local timeout="${2:-60}"
+    local interval=2
+    local end=$((SECONDS+timeout))
+
+    echo "⏳ Waiting for validating webhooks in namespace $namespace (timeout: $timeout sec)..."
+    while [ $SECONDS -lt $end ]; do
+        if kubectl get validatingwebhookconfigurations -n $namespace &>/dev/null &&
+           [ "$(kubectl get validatingwebhookconfigurations -n $namespace --no-headers 2>/dev/null | wc -l)" -gt 0 ]; then
+            echo "✅ Validating webhooks in $namespace are established"
+            return 0
+        fi
+        sleep $interval
+    done
+
+    echo "⚠️  Timeout: validating webhooks not found in $namespace" >&2
+    return 1
+}
