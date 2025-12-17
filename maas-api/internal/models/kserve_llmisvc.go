@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"knative.dev/pkg/apis"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 )
 
 type GatewayRef struct {
@@ -94,22 +96,15 @@ func findLLMInferenceServiceURL(llmIsvc *kservev1alpha1.LLMInferenceService) *ap
 	return nil
 }
 
-// Annotation keys for model metadata.
-const (
-	AnnotationGenAIUseCase = "opendatahub.io/genai-use-case"
-	AnnotationDescription  = "openshift.io/description"
-	AnnotationDisplayName  = "openshift.io/display-name"
-)
-
 func extractModelDetails(llmIsvc *kservev1alpha1.LLMInferenceService) *Details {
 	annotations := llmIsvc.GetAnnotations()
 	if annotations == nil {
 		return nil
 	}
 
-	genaiUseCase := annotations[AnnotationGenAIUseCase]
-	description := annotations[AnnotationDescription]
-	displayName := annotations[AnnotationDisplayName]
+	genaiUseCase := annotations[constant.AnnotationGenAIUseCase]
+	description := annotations[constant.AnnotationDescription]
+	displayName := annotations[constant.AnnotationDisplayName]
 
 	// Only return Details if at least one field is populated
 	if genaiUseCase == "" && description == "" && displayName == "" {

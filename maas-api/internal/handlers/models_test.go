@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"knative.dev/pkg/apis"
 
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/handlers"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
@@ -88,9 +89,9 @@ func TestListingModels(t *testing.T) {
 			GatewayName:      testGatewayName,
 			GatewayNamespace: testGatewayNamespace,
 			Annotations: map[string]string{
-				models.AnnotationGenAIUseCase: "General purpose LLM",
-				models.AnnotationDescription:  "A large language model for general AI tasks",
-				models.AnnotationDisplayName:  "Test Model Alpha",
+				constant.AnnotationGenAIUseCase: "General purpose LLM",
+				constant.AnnotationDescription:  "A large language model for general AI tasks",
+				constant.AnnotationDisplayName:  "Test Model Alpha",
 			},
 			AssertDetails: func(t *testing.T, model models.Model) {
 				t.Helper()
@@ -108,7 +109,7 @@ func TestListingModels(t *testing.T) {
 			GatewayName:      testGatewayName,
 			GatewayNamespace: testGatewayNamespace,
 			Annotations: map[string]string{
-				models.AnnotationDisplayName: "Test Model Beta",
+				constant.AnnotationDisplayName: "Test Model Beta",
 			},
 			AssertDetails: func(t *testing.T, model models.Model) {
 				t.Helper()
@@ -126,7 +127,7 @@ func TestListingModels(t *testing.T) {
 			GatewayName:      testGatewayName,
 			GatewayNamespace: testGatewayNamespace,
 			Annotations: map[string]string{
-				models.AnnotationDisplayName: "",
+				constant.AnnotationDisplayName: "",
 			},
 			AssertDetails: func(t *testing.T, model models.Model) {
 				t.Helper()
