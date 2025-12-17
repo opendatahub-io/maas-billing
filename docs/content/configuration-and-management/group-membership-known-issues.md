@@ -94,10 +94,19 @@ When a user is removed from a group, their Service Account in the tier namespace
 
 **Workaround**:
 
-- Service Accounts can be manually cleaned up if needed:
+- Service Accounts can be manually cleaned up if needed.
+- The Service Account name is derived from the username: special characters are replaced with dashes, converted to lowercase, and an 8-character hash suffix is appended (e.g., `alice-example-com-a1b2c3d4` for `alice@example.com`).
+- To find the Service Account for a specific user, list and filter by the username pattern:
 
 ```bash
-kubectl delete serviceaccount <username-hash> -n maas-default-gateway-tier-<old-tier>
+# List all Service Accounts in the tier namespace
+kubectl get serviceaccount -n maas-default-gateway-tier-<old-tier>
+
+# Filter by username pattern (e.g., for user "alice@example.com")
+kubectl get serviceaccount -n maas-default-gateway-tier-<old-tier> | grep alice
+
+# Delete the identified Service Account
+kubectl delete serviceaccount <sa-name> -n maas-default-gateway-tier-<old-tier>
 ```
 
 #### 4. User Downgrade Creates New Service Account
@@ -106,7 +115,7 @@ kubectl delete serviceaccount <username-hash> -n maas-default-gateway-tier-<old-
 
 **Description**:
 
-When a user is moved to a lower tier (e.g., removed from `premium-users`, now only in `system:authenticated`):
+When a user is moved to a lower tier (e.g., removed from `premium-users`, now only matching the `free` tier group, such as `system:authenticated` in the default configuration):
 
 - A new Service Account is created in the new tier namespace (e.g., `maas-default-gateway-tier-free`).
 - The old Service Account in the premium tier namespace remains.
@@ -117,7 +126,7 @@ When a user is moved to a lower tier (e.g., removed from `premium-users`, now on
 
 ```text
 Before: Alice in "premium-users" -> SA in maas-default-gateway-tier-premium
-After:  Alice removed from "premium-users" (still in system:authenticated)
+After:  Alice removed from "premium-users" (still matches "free" tier group)
         -> Old SA still exists in premium namespace
         -> New token request creates SA in maas-default-gateway-tier-free
         -> Alice now has SAs in both namespaces
