@@ -8,17 +8,12 @@ import (
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 )
 
-type TokenManager interface {
-	GenerateToken(ctx context.Context, user *token.UserContext, expiration time.Duration, name string) (*token.Token, error)
-	RevokeTokens(ctx context.Context, user *token.UserContext) error
-}
-
 type Service struct {
-	tokenManager TokenManager
+	tokenManager *token.Manager
 	store        MetadataStore
 }
 
-func NewService(tokenManager TokenManager, store MetadataStore) *Service {
+func NewService(tokenManager *token.Manager, store MetadataStore) *Service {
 	return &Service{
 		tokenManager: tokenManager,
 		store:        store,
@@ -50,8 +45,8 @@ func (s *Service) ListAPIKeys(ctx context.Context, user *token.UserContext) ([]A
 	return s.store.List(ctx, user.Username)
 }
 
-func (s *Service) GetAPIKey(ctx context.Context, user *token.UserContext, id string) (*ApiKeyMetadata, error) {
-	return s.store.Get(ctx, user.Username, id)
+func (s *Service) GetAPIKey(ctx context.Context, id string) (*ApiKeyMetadata, error) {
+	return s.store.Get(ctx, id)
 }
 
 // RevokeAll invalidates all tokens for the user (ephemeral and persistent).

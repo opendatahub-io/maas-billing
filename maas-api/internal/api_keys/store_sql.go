@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 )
 
 var (
@@ -18,6 +19,7 @@ var (
 type SQLStore struct {
 	db     *sql.DB
 	dbType DBType
+	logger *logger.Logger
 }
 
 var _ MetadataStore = (*SQLStore)(nil)
@@ -25,11 +27,11 @@ var _ MetadataStore = (*SQLStore)(nil)
 // NewSQLiteStore creates a SQLite store with a file path.
 // Use ":memory:" for an in-memory database (ephemeral, for testing).
 // Use a file path like "/data/maas-api.db" for persistent storage.
-func NewSQLiteStore(ctx context.Context, dbPath string) (*SQLStore, error) {
+func NewSQLiteStore(ctx context.Context, log *logger.Logger, dbPath string) (*SQLStore, error) {
 	if dbPath == "" {
 		dbPath = sqliteMemory
 	}
-	
+
 	dsn := dbPath
 	if dbPath != sqliteMemory {
 		dsn = fmt.Sprintf("%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", dbPath)
@@ -47,16 +49,16 @@ func NewSQLiteStore(ctx context.Context, dbPath string) (*SQLStore, error) {
 		return nil, fmt.Errorf("failed to ping SQLite database: %w", err)
 	}
 
-	s := &SQLStore{db: db, dbType: DBTypeSQLite}
+	s := &SQLStore{db: db, dbType: DBTypeSQLite, logger: log}
 	if err := s.initSchema(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
 	if dbPath == sqliteMemory {
-		log.Printf("Connected to SQLite in-memory database (ephemeral - data will be lost on restart)")
+		log.Info("Connected to SQLite in-memory database (ephemeral - data will be lost on restart)")
 	} else {
-		log.Printf("Connected to SQLite database at %s", dbPath)
+		log.Info("Connected to SQLite database", "path", dbPath)
 	}
 	return s, nil
 }
@@ -149,7 +151,7 @@ func (s *SQLStore) InvalidateAll(ctx context.Context, username string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-	log.Printf("Marked %d tokens as expired for user %s", rows, username)
+	s.logger.Info("Marked tokens as expired", "count", rows, "user", username)
 	return nil
 }
 
@@ -192,15 +194,15 @@ func (s *SQLStore) List(ctx context.Context, username string) ([]ApiKeyMetadata,
 	return tokens, nil
 }
 
-func (s *SQLStore) Get(ctx context.Context, username, jti string) (*ApiKeyMetadata, error) {
+func (s *SQLStore) Get(ctx context.Context, jti string) (*ApiKeyMetadata, error) {
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
 	SELECT id, name, COALESCE(description, ''), creation_date, expiration_date
 	FROM tokens 
-	WHERE username = %s AND id = %s
-	`, s.placeholder(1), s.placeholder(2))
+	WHERE id = %s
+	`, s.placeholder(1))
 
-	row := s.db.QueryRowContext(ctx, query, username, jti)
+	row := s.db.QueryRowContext(ctx, query, jti)
 
 	var t ApiKeyMetadata
 	var creationStr, expirationStr string

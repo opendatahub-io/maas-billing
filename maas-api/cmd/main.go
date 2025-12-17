@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -59,7 +58,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	store, err := initStore(ctx, cfg)
+	store, err := initStore(ctx, cfg, appLogger)
 	if err != nil {
 		appLogger.Fatal("Failed to initialize token store",
 			"error", err,
@@ -123,28 +122,28 @@ func main() {
 //   - external: External database (PostgreSQL), supports multiple replicas
 //
 //nolint:ireturn // Returns MetadataStore interface by design for pluggable storage backends.
-func initStore(ctx context.Context, cfg *config.Config) (api_keys.MetadataStore, error) {
+func initStore(ctx context.Context, cfg *config.Config, log *logger.Logger) (api_keys.MetadataStore, error) {
 	switch cfg.StorageMode {
 	case config.StorageModeInMemory, "":
-		log.Printf("Using in-memory storage (data will be lost on restart). " +
+		log.Info("Using in-memory storage (data will be lost on restart). " +
 			"For persistent storage, use --storage=disk or --storage=external")
-		return api_keys.NewSQLiteStore(ctx, ":memory:")
+		return api_keys.NewSQLiteStore(ctx, log, ":memory:")
 
 	case config.StorageModeDisk:
 		dataPath := strings.TrimSpace(cfg.DataPath)
 		if dataPath == "" {
 			dataPath = config.DefaultDataPath
 		}
-		log.Printf("Using persistent disk storage at %s", dataPath)
-		return api_keys.NewSQLiteStore(ctx, dataPath)
+		log.Info("Using persistent disk storage", "path", dataPath)
+		return api_keys.NewSQLiteStore(ctx, log, dataPath)
 
 	case config.StorageModeExternal:
 		dbURL := strings.TrimSpace(cfg.DBConnectionURL)
 		if dbURL == "" {
 			return nil, errors.New("--db-connection-url is required when using --storage=external")
 		}
-		log.Printf("Connecting to external database...")
-		return api_keys.NewExternalStore(ctx, dbURL)
+		log.Info("Connecting to external database...")
+		return api_keys.NewExternalStore(ctx, log, dbURL)
 
 	default:
 		return nil, fmt.Errorf("unknown storage mode: %q (valid modes: in-memory, disk, external)", cfg.StorageMode)

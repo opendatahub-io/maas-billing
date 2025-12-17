@@ -1,7 +1,6 @@
 package token
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,17 +15,13 @@ import (
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 )
 
-type TokenManager interface {
-	GenerateToken(ctx context.Context, user *UserContext, expiration time.Duration, name string) (*Token, error)
-}
-
 type Handler struct {
 	name    string
-	manager TokenManager
+	manager *Manager
 	logger  *logger.Logger
 }
 
-func NewHandler(log *logger.Logger, name string, manager TokenManager) *Handler {
+func NewHandler(log *logger.Logger, name string, manager *Manager) *Handler {
 	if log == nil {
 		log = logger.Production()
 	}

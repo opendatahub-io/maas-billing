@@ -17,7 +17,7 @@ type MetadataStore interface {
 
 	List(ctx context.Context, username string) ([]ApiKeyMetadata, error)
 
-	Get(ctx context.Context, username, jti string) (*ApiKeyMetadata, error)
+	Get(ctx context.Context, jti string) (*ApiKeyMetadata, error)
 
 	// InvalidateAll marks all active tokens for a user as expired.
 	InvalidateAll(ctx context.Context, username string) error

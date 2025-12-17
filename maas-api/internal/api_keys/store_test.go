@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/api_keys"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,8 @@ import (
 func createTestStore(t *testing.T) api_keys.MetadataStore {
 	t.Helper()
 	ctx := context.Background()
-	store, err := api_keys.NewSQLiteStore(ctx, ":memory:")
+	testLogger := logger.Development()
+	store, err := api_keys.NewSQLiteStore(ctx, testLogger, ":memory:")
 	require.NoError(t, err, "failed to create test store")
 	return store
 }
@@ -95,7 +97,7 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("GetToken", func(t *testing.T) {
-		gotToken, err := store.Get(ctx, "user2", "jti3")
+		gotToken, err := store.Get(ctx, "jti3")
 		require.NoError(t, err)
 		assert.NotNil(t, gotToken)
 		assert.Equal(t, "token3", gotToken.Name)
@@ -118,10 +120,11 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, api_keys.TokenStatusExpired, tokens[0].Status)
 
 		// Get single token check
-		gotToken, err := store.Get(ctx, "user4", "jti-expired")
+		gotToken, err := store.Get(ctx, "jti-expired")
 		require.NoError(t, err)
 		assert.Equal(t, api_keys.TokenStatusExpired, gotToken.Status)
 	})
+
 }
 
 func TestStoreValidation(t *testing.T) {
@@ -156,7 +159,7 @@ func TestStoreValidation(t *testing.T) {
 	})
 
 	t.Run("TokenNotFound", func(t *testing.T) {
-		_, err := store.Get(ctx, "nonexistent-user", "nonexistent-jti")
+		_, err := store.Get(ctx, "nonexistent-jti")
 		require.Error(t, err)
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
@@ -164,9 +167,10 @@ func TestStoreValidation(t *testing.T) {
 
 func TestSQLiteStore(t *testing.T) {
 	ctx := context.Background()
+	testLogger := logger.Development()
 
 	t.Run("InMemory", func(t *testing.T) {
-		store, err := api_keys.NewSQLiteStore(ctx, ":memory:")
+		store, err := api_keys.NewSQLiteStore(ctx, testLogger, ":memory:")
 		require.NoError(t, err)
 		defer store.Close()
 
@@ -177,7 +181,7 @@ func TestSQLiteStore(t *testing.T) {
 
 	t.Run("EmptyPath", func(t *testing.T) {
 		// Empty path should default to in-memory
-		store, err := api_keys.NewSQLiteStore(ctx, "")
+		store, err := api_keys.NewSQLiteStore(ctx, testLogger, "")
 		require.NoError(t, err)
 		defer store.Close()
 
@@ -189,15 +193,16 @@ func TestSQLiteStore(t *testing.T) {
 
 func TestExternalStore(t *testing.T) {
 	ctx := context.Background()
+	testLogger := logger.Development()
 
 	t.Run("InvalidURL", func(t *testing.T) {
-		_, err := api_keys.NewExternalStore(ctx, "mysql://localhost:3306/db")
+		_, err := api_keys.NewExternalStore(ctx, testLogger, "mysql://localhost:3306/db")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported external database URL")
 	})
 
 	t.Run("EmptyURL", func(t *testing.T) {
-		_, err := api_keys.NewExternalStore(ctx, "")
+		_, err := api_keys.NewExternalStore(ctx, testLogger, "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported external database URL")
 	})

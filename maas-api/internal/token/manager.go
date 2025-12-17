@@ -97,15 +97,8 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 	// Extract iat (issued at) claim from JWT
 	var issuedAt int64
-	if iatClaim, ok := claims["iat"]; ok {
-		switch v := iatClaim.(type) {
-		case float64:
-			issuedAt = int64(v)
-		case int64:
-			issuedAt = v
-		case int:
-			issuedAt = int64(v)
-		}
+	if iat, err := claims.GetIssuedAt(); err == nil && iat != nil {
+		issuedAt = iat.Unix()
 	}
 
 	log.Debug("Successfully generated token",

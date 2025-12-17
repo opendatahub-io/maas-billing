@@ -125,19 +125,7 @@ func (h *Handler) GetAPIKey(c *gin.Context) {
 		return
 	}
 
-	userCtx, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
-		return
-	}
-
-	user, ok := userCtx.(*token.UserContext)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
-		return
-	}
-
-	tok, err := h.service.GetAPIKey(c.Request.Context(), user, tokenID)
+	tok, err := h.service.GetAPIKey(c.Request.Context(), tokenID)
 	if err != nil {
 		if errors.Is(err, ErrTokenNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
