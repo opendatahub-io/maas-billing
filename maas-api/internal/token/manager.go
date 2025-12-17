@@ -125,59 +125,47 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 }
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account.
-// Returns the namespace where the revocation happened.
-func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, error) {
+func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	log := m.logger.WithContext(ctx)
 
 	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
-		return "", fmt.Errorf("failed to determine user tier for %s (groups: %v): %w", user.Username, user.Groups, err)
+		return fmt.Errorf("failed to determine user tier for %s (groups: %v): %w", user.Username, user.Groups, err)
 	}
 
 	log = log.WithFields("tier", userTier.Name)
 	namespace, errNS := m.tierMapper.Namespace(userTier.Name)
 	if errNS != nil {
-		return "", fmt.Errorf("failed to determine namespace for tier %s: %w", userTier.Name, errNS)
+		return fmt.Errorf("failed to determine namespace for tier %s: %w", userTier.Name, errNS)
 	}
 
 	saName, errName := m.sanitizeServiceAccountName(user.Username)
 	if errName != nil {
-		return namespace, fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
+		return fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
 	}
 
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
 	if errors.IsNotFound(err) {
 		log.Debug("Service account not found, nothing to revoke")
-		return namespace, nil
+		return nil
 	}
 
 	if err != nil {
-		return namespace, fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
+		return fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	err = m.deleteServiceAccount(ctx, namespace, saName)
 	if err != nil {
-		return namespace, fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
+		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	_, err = m.ensureServiceAccount(ctx, namespace, user.Username, userTier.Name)
 	if err != nil {
-		return namespace, fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
+		return fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
 	}
 
 	log.Debug("Successfully revoked all tokens for user")
-	return namespace, nil
-}
-
-// GetNamespaceForUser returns the namespace for a user based on their tier.
-func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (string, error) {
-	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
-	if err != nil {
-		return "", fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
-	}
-
-	namespace := m.tierMapper.ProjectedNsName(userTier)
-	return namespace, nil
+	return nil
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.

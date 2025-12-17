@@ -75,7 +75,6 @@ func (s *SQLStore) initSchema(ctx context.Context) error {
 		username TEXT NOT NULL,
 		name TEXT NOT NULL,
 		description TEXT,
-		namespace TEXT NOT NULL,
 		creation_date TEXT NOT NULL,
 		expiration_date TEXT NOT NULL
 	)`
@@ -88,10 +87,6 @@ func (s *SQLStore) initSchema(ctx context.Context) error {
 		return fmt.Errorf("failed to create username index: %w", err)
 	}
 
-	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tokens_username_namespace ON tokens(username, namespace)`); err != nil {
-		return fmt.Errorf("failed to create username-namespace composite index: %w", err)
-	}
-
 	return nil
 }
 
@@ -101,7 +96,7 @@ func (s *SQLStore) placeholder(index int) string {
 	return placeholder(s.dbType, index)
 }
 
-func (s *SQLStore) Add(ctx context.Context, namespace, username string, apiKey *APIKey) error {
+func (s *SQLStore) Add(ctx context.Context, username string, apiKey *APIKey) error {
 	jti := strings.TrimSpace(apiKey.JTI)
 	if jti == "" {
 		return ErrEmptyJTI
@@ -126,26 +121,26 @@ func (s *SQLStore) Add(ctx context.Context, namespace, username string, apiKey *
 
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
-	INSERT INTO tokens (id, username, name, description, namespace, creation_date, expiration_date)
-	VALUES (%s, %s, %s, %s, %s, %s, %s)
-	`, s.placeholder(1), s.placeholder(2), s.placeholder(3), s.placeholder(4), s.placeholder(5), s.placeholder(6), s.placeholder(7))
+	INSERT INTO tokens (id, username, name, description, creation_date, expiration_date)
+	VALUES (%s, %s, %s, %s, %s, %s)
+	`, s.placeholder(1), s.placeholder(2), s.placeholder(3), s.placeholder(4), s.placeholder(5), s.placeholder(6))
 
 	description := strings.TrimSpace(apiKey.Description)
-	_, err := s.db.ExecContext(ctx, query, jti, username, name, description, namespace, creationStr, expirationStr)
+	_, err := s.db.ExecContext(ctx, query, jti, username, name, description, creationStr, expirationStr)
 	if err != nil {
 		return fmt.Errorf("failed to insert token metadata: %w", err)
 	}
 	return nil
 }
 
-func (s *SQLStore) InvalidateAll(ctx context.Context, namespace, username string) error {
+func (s *SQLStore) InvalidateAll(ctx context.Context, username string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
-	query := fmt.Sprintf(`UPDATE tokens SET expiration_date = %s WHERE username = %s AND namespace = %s AND expiration_date > %s`,
-		s.placeholder(1), s.placeholder(2), s.placeholder(3), s.placeholder(4))
+	query := fmt.Sprintf(`UPDATE tokens SET expiration_date = %s WHERE username = %s AND expiration_date > %s`,
+		s.placeholder(1), s.placeholder(2), s.placeholder(3))
 
-	result, err := s.db.ExecContext(ctx, query, now, username, namespace, now)
+	result, err := s.db.ExecContext(ctx, query, now, username, now)
 	if err != nil {
 		return fmt.Errorf("failed to mark tokens as expired: %w", err)
 	}
@@ -154,20 +149,20 @@ func (s *SQLStore) InvalidateAll(ctx context.Context, namespace, username string
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-	log.Printf("Marked %d tokens as expired in namespace %s", rows, namespace)
+	log.Printf("Marked %d tokens as expired for user %s", rows, username)
 	return nil
 }
 
-func (s *SQLStore) List(ctx context.Context, namespace, username string) ([]ApiKeyMetadata, error) {
+func (s *SQLStore) List(ctx context.Context, username string) ([]ApiKeyMetadata, error) {
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
 	SELECT id, name, COALESCE(description, ''), creation_date, expiration_date
 	FROM tokens 
-	WHERE username = %s AND namespace = %s
+	WHERE username = %s
 	ORDER BY creation_date DESC
-	`, s.placeholder(1), s.placeholder(2))
+	`, s.placeholder(1))
 
-	rows, err := s.db.QueryContext(ctx, query, username, namespace)
+	rows, err := s.db.QueryContext(ctx, query, username)
 	if err != nil {
 		return nil, err
 	}
@@ -197,15 +192,15 @@ func (s *SQLStore) List(ctx context.Context, namespace, username string) ([]ApiK
 	return tokens, nil
 }
 
-func (s *SQLStore) Get(ctx context.Context, namespace, username, jti string) (*ApiKeyMetadata, error) {
+func (s *SQLStore) Get(ctx context.Context, username, jti string) (*ApiKeyMetadata, error) {
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
 	SELECT id, name, COALESCE(description, ''), creation_date, expiration_date
 	FROM tokens 
-	WHERE username = %s AND namespace = %s AND id = %s
-	`, s.placeholder(1), s.placeholder(2), s.placeholder(3))
+	WHERE username = %s AND id = %s
+	`, s.placeholder(1), s.placeholder(2))
 
-	row := s.db.QueryRowContext(ctx, query, username, namespace, jti)
+	row := s.db.QueryRowContext(ctx, query, username, jti)
 
 	var t ApiKeyMetadata
 	var creationStr, expirationStr string

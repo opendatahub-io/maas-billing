@@ -23,7 +23,7 @@ func createTestStore(t *testing.T) api_keys.MetadataStore {
 func TestStore(t *testing.T) {
 	ctx := t.Context()
 
-store := createTestStore(t)
+	store := createTestStore(t)
 	defer store.Close()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
@@ -34,10 +34,10 @@ store := createTestStore(t)
 			},
 			Name: "token1",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token1", tokens[0].Name)
@@ -52,10 +52,10 @@ store := createTestStore(t)
 			},
 			Name: "token2",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 2)
 	})
@@ -68,20 +68,20 @@ store := createTestStore(t)
 			},
 			Name: "token3",
 		}
-		err := store.Add(ctx, "test-ns", "user2", apiKey)
+		err := store.Add(ctx, "user2", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user2")
+		tokens, err := store.List(ctx, "user2")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token3", tokens[0].Name)
 	})
 
 	t.Run("MarkTokensAsExpiredForUser", func(t *testing.T) {
-		err := store.InvalidateAll(ctx, "test-ns", "user1")
+		err := store.InvalidateAll(ctx, "user1")
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 2)
 		for _, tok := range tokens {
@@ -89,13 +89,13 @@ store := createTestStore(t)
 		}
 
 		// User2 should still exist
-		tokens2, err := store.List(ctx, "test-ns", "user2")
+		tokens2, err := store.List(ctx, "user2")
 		require.NoError(t, err)
 		assert.Len(t, tokens2, 1)
 	})
 
 	t.Run("GetToken", func(t *testing.T) {
-		gotToken, err := store.Get(ctx, "test-ns", "user2", "jti3")
+		gotToken, err := store.Get(ctx, "user2", "jti3")
 		require.NoError(t, err)
 		assert.NotNil(t, gotToken)
 		assert.Equal(t, "token3", gotToken.Name)
@@ -109,60 +109,18 @@ store := createTestStore(t)
 			},
 			Name: "expired-token",
 		}
-		err := store.Add(ctx, "test-ns", "user4", apiKey)
+		err := store.Add(ctx, "user4", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user4")
+		tokens, err := store.List(ctx, "user4")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, api_keys.TokenStatusExpired, tokens[0].Status)
 
 		// Get single token check
-		gotToken, err := store.Get(ctx, "test-ns", "user4", "jti-expired")
+		gotToken, err := store.Get(ctx, "user4", "jti-expired")
 		require.NoError(t, err)
 		assert.Equal(t, api_keys.TokenStatusExpired, gotToken.Status)
-	})
-
-	t.Run("CrossNamespaceIsolation", func(t *testing.T) {
-		apiKey1 := &api_keys.APIKey{
-			Token: token.Token{
-				JTI:       "jti-ns1",
-				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
-			},
-			Name: "ns1-token",
-		}
-		err := store.Add(ctx, "namespace-1", "shared-user", apiKey1)
-		require.NoError(t, err)
-
-		apiKey2 := &api_keys.APIKey{
-			Token: token.Token{
-				JTI:       "jti-ns2",
-				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
-			},
-			Name: "ns2-token",
-		}
-		err = store.Add(ctx, "namespace-2", "shared-user", apiKey2)
-		require.NoError(t, err)
-
-		tokens1, err := store.List(ctx, "namespace-1", "shared-user")
-		require.NoError(t, err)
-		assert.Len(t, tokens1, 1)
-		assert.Equal(t, "ns1-token", tokens1[0].Name)
-		assert.Equal(t, "jti-ns1", tokens1[0].ID)
-
-		tokens2, err := store.List(ctx, "namespace-2", "shared-user")
-		require.NoError(t, err)
-		assert.Len(t, tokens2, 1)
-		assert.Equal(t, "ns2-token", tokens2[0].Name)
-		assert.Equal(t, "jti-ns2", tokens2[0].ID)
-
-		gotToken1, err := store.Get(ctx, "namespace-1", "shared-user", "jti-ns1")
-		require.NoError(t, err)
-		assert.Equal(t, "ns1-token", gotToken1.Name)
-
-		_, err = store.Get(ctx, "namespace-1", "shared-user", "jti-ns2")
-		require.Error(t, err)
-		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
 }
 
@@ -179,7 +137,7 @@ func TestStoreValidation(t *testing.T) {
 			},
 			Name: "token-no-jti",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, api_keys.ErrEmptyJTI)
 	})
@@ -192,13 +150,13 @@ func TestStoreValidation(t *testing.T) {
 			},
 			Name: "",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, api_keys.ErrEmptyName)
 	})
 
 	t.Run("TokenNotFound", func(t *testing.T) {
-		_, err := store.Get(ctx, "test-ns", "nonexistent-user", "nonexistent-jti")
+		_, err := store.Get(ctx, "nonexistent-user", "nonexistent-jti")
 		require.Error(t, err)
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
@@ -212,7 +170,7 @@ func TestSQLiteStore(t *testing.T) {
 		require.NoError(t, err)
 		defer store.Close()
 
-		tokens, err := store.List(ctx, "test", "user")
+		tokens, err := store.List(ctx, "user")
 		require.NoError(t, err)
 		assert.Empty(t, tokens)
 	})
@@ -223,7 +181,7 @@ func TestSQLiteStore(t *testing.T) {
 		require.NoError(t, err)
 		defer store.Close()
 
-		tokens, err := store.List(ctx, "test", "user")
+		tokens, err := store.List(ctx, "user")
 		require.NoError(t, err)
 		assert.Empty(t, tokens)
 	})

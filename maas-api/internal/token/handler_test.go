@@ -35,11 +35,6 @@ func (m *MockManager) GenerateToken(ctx context.Context, user *token.UserContext
 	return tok, args.Error(1)
 }
 
-func (m *MockManager) GetNamespaceForUser(ctx context.Context, user *token.UserContext) (string, error) {
-	args := m.Called(ctx, user)
-	return args.String(0), args.Error(1)
-}
-
 func TestAPIEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
