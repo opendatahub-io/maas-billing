@@ -124,7 +124,6 @@ func TestStore(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, api_keys.TokenStatusExpired, gotToken.Status)
 	})
-
 }
 
 func TestStoreValidation(t *testing.T) {
