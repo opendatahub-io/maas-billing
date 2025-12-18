@@ -180,7 +180,7 @@ EOF
         echo "   Patching Kuadrant operator..."
         if ! kubectl -n kuadrant-system get deployment kuadrant-operator-controller-manager -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ISTIO_GATEWAY_CONTROLLER_NAMES")]}' | grep -q "ISTIO_GATEWAY_CONTROLLER_NAMES"; then
           # Find the actual CSV name instead of hardcoding it
-          KUADRANT_CSV=$(find_csv_with_min_version "kuadrant-operator" "1.3.0" "kuadrant-system")
+          KUADRANT_CSV=$(find_csv_with_min_version "kuadrant-operator" "1.3.0" "kuadrant-system" || echo "")
           if [ -n "$KUADRANT_CSV" ]; then
             kubectl patch csv "$KUADRANT_CSV" -n kuadrant-system --type='json' -p='[
               {

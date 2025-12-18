@@ -78,7 +78,7 @@ echo "3️⃣ Installing dependencies..."
 
 # Only clean up leftover CRDs if Kuadrant operators are NOT already installed
 echo "   Checking for existing Kuadrant installation..."
-EXISTING_KUADRANT_CSV=$(find_csv_with_min_version "kuadrant-operator" "1.3.0" "kuadrant-system")
+EXISTING_KUADRANT_CSV=$(find_csv_with_min_version "kuadrant-operator" "1.3.0" "kuadrant-system" || echo "")
 if [ -z "$EXISTING_KUADRANT_CSV" ]; then
     echo "   No existing installation found, checking for leftover CRDs..."
     LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
