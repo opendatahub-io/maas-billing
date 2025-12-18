@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1" //nolint:gosec // SHA1 used for non-cryptographic hashing of usernames, not for security
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -12,7 +13,7 @@ import (
 
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	corelistersv1 "k8s.io/client-go/listers/core/v1"
@@ -101,7 +102,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		return nil, fmt.Errorf("failed to extract iat claim: %w", err)
 	}
 	if iat == nil {
-		return nil, fmt.Errorf("token is missing required 'iat' claim")
+		return nil, errors.New("token is missing required 'iat' claim")
 	}
 	issuedAt := iat.Unix()
 
@@ -142,7 +143,7 @@ func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
 	}
 
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		log.Debug("Service account not found, nothing to revoke")
 		return nil
 	}
@@ -178,7 +179,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 		return namespace, nil
 	}
 
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check namespace %s: %w", namespace, err)
 	}
 
@@ -191,7 +192,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 
 	_, err = m.clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			return namespace, nil
 		}
 		return "", fmt.Errorf("failed to create namespace %s: %w", namespace, err)
@@ -216,7 +217,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 		return saName, nil
 	}
 
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
@@ -230,7 +231,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 
 	_, err = m.clientset.CoreV1().ServiceAccounts(namespace).Create(ctx, sa, metav1.CreateOptions{})
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			return saName, nil
 		}
 		return "", fmt.Errorf("failed to create service account %s in namespace %s: %w", saName, namespace, err)
@@ -266,7 +267,7 @@ func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saNa
 func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName string) error {
 	err := m.clientset.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
