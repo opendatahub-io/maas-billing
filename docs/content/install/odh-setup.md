@@ -1,7 +1,7 @@
 # Install Open Data Hub project
 
 This guide covers the installation of the Open Data Hub project, with the required
-configuration to deploy the Model-as-a-Service capability (MaaS).
+configuration to deploy the Models-as-a-Service capability (MaaS).
 
 You need a Red Hat OpenShift cluster version 4.19.9 or later. Older OpenShift
 versions are not suitable.
@@ -48,7 +48,7 @@ lws-controller-manager   2/2     2            2           35s
 ## Install Kuadrant
 
 [Kuadrant official documentation](https://docs.kuadrant.io/latest/install-olm/)
-is used as a base to install Kuadrant's latest version (v1.3.0+ is required) using the
+is used as a base to install Kuadrant's latest version (v1.3.1+ is required) using the
 OLM method.
 
 Start by creating the `kuadrant-system` namespace:

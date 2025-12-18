@@ -169,7 +169,7 @@ Configuration can be validated by logging in as a user belonging to the appropri
 
 ```bash
 # Validate the configuration with 20 requests and a max tokens limit of 500
-./deployment/scripts/validate-deployment.sh --rate-limit-requests 20 --max-tokens 500
+./scripts/validate-deployment.sh --rate-limit-requests 20 --max-tokens 500
 ```
 
 **Example Output:**

@@ -6,7 +6,6 @@ namespace: maas-api
 resources:
   - deployment.yaml
   - service.yaml
-  - pvc.yaml
   - rbac
   - networking
   - policies
@@ -15,7 +14,7 @@ resources:
 labels:
   - includeSelectors: true
     pairs:
-      app.kubernetes.io/part-of: model-as-a-service
+      app.kubernetes.io/part-of: models-as-a-service
       app.kubernetes.io/component: api
       app.kubernetes.io/name: maas-api
 

@@ -31,7 +31,7 @@ For OpenShift clusters, use the automated deployment script:
 
 ```bash
 export MAAS_REF="main"
-./deployment/scripts/deploy-rhoai-stable.sh
+./scripts/deploy-rhoai-stable.sh
 ```
 
 ### Verify Deployment

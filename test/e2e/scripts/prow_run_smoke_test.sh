@@ -26,7 +26,6 @@
 #   SKIP_SMOKE      - Skip smoke tests (default: false)
 #   SKIP_TOKEN_VERIFICATION - Skip token metadata verification (default: false)
 #   MAAS_API_IMAGE - Custom image for MaaS API (e.g., quay.io/opendatahub/maas-api:pr-232)
-#
 # =============================================================================
 
 set -euo pipefail
@@ -97,7 +96,7 @@ deploy_maas_platform() {
     popd > /dev/null
 
     echo "Deploying MaaS platform on OpenShift..."
-    if ! "$PROJECT_ROOT/deployment/scripts/deploy-openshift.sh"; then
+    if ! "$PROJECT_ROOT/scripts/deploy-openshift.sh"; then
         echo "❌ ERROR: MaaS platform deployment failed"
         exit 1
     fi
@@ -120,7 +119,7 @@ deploy_models() {
 validate_deployment() {
     echo "Deployment Validation"
     if [ "$SKIP_VALIDATION" = false ]; then
-        if ! "$PROJECT_ROOT/deployment/scripts/validate-deployment.sh"; then
+        if ! "$PROJECT_ROOT/scripts/validate-deployment.sh"; then
             echo "❌ ERROR: Deployment validation failed"
             exit 1
         else
@@ -230,6 +229,7 @@ oc login --token "$ADMIN_TOKEN" --server "$K8S_CLUSTER_URL"
 print_header "Validating Deployment and Token Metadata Logic"
 validate_deployment
 run_token_verification
+
 run_smoke_tests
 
 # Test edit user  

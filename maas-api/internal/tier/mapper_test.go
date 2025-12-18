@@ -6,25 +6,22 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/constant"
-	"github.com/opendatahub-io/maas-billing/maas-api/internal/tier"
-	"github.com/opendatahub-io/maas-billing/maas-api/test/fixtures"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/tier"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
 
-// Use unified test constants from fixtures.
 const (
 	testNamespace = fixtures.TestNamespace
 	testTenant    = fixtures.TestTenant
 )
 
 func TestMapper_GetTierForGroups(t *testing.T) {
+	testLogger := logger.Development()
 	configMap := fixtures.CreateTierConfigMap(testNamespace)
-
-	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
+	mapper := tier.NewMapper(testLogger, fixtures.NewConfigMapLister(configMap), testTenant, testNamespace)
 
 	tests := []struct {
 		name          string
@@ -153,7 +150,7 @@ func TestMapper_GetTierForGroups(t *testing.T) {
 }
 
 func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
-	// Test case where two tiers have the same level
+	testLogger := logger.Development()
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      constant.TierMappingConfigMap,
@@ -175,8 +172,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 		},
 	}
 
-	clientset := fake.NewClientset([]runtime.Object{configMap}...)
-	mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
+	mapper := tier.NewMapper(testLogger, fixtures.NewConfigMapLister(configMap), testTenant, testNamespace)
 
 	// When levels are equal, first tier found should win
 	mappedTier, err := mapper.GetTierForGroups("group-a", "group-b")
@@ -191,6 +187,7 @@ func TestMapper_GetTierForGroups_SameLevels(t *testing.T) {
 }
 
 func TestMapper_GetTierForGroups_InvalidConfig(t *testing.T) {
+	testLogger := logger.Development()
 	tests := []struct {
 		name        string
 		tiersYAML   string
@@ -245,8 +242,7 @@ func TestMapper_GetTierForGroups_InvalidConfig(t *testing.T) {
 				},
 			}
 
-			clientset := fake.NewClientset([]runtime.Object{configMap}...)
-			mapper := tier.NewMapper(t.Context(), clientset, testTenant, testNamespace)
+			mapper := tier.NewMapper(testLogger, fixtures.NewConfigMapLister(configMap), testTenant, testNamespace)
 
 			_, err := mapper.GetTierForGroups("group-a")
 			if err == nil {

@@ -1,60 +1,72 @@
 package models
 
 import (
-	"context"
+	"errors"
 	"fmt"
-	"log"
 
 	kservev1beta1 "github.com/kserve/kserve/pkg/apis/serving/v1beta1"
-	kserveclientv1alpha1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1alpha1"
-	kserveclientv1beta1 "github.com/kserve/kserve/pkg/client/clientset/versioned/typed/serving/v1beta1"
+	kservelistersv1alpha1 "github.com/kserve/kserve/pkg/client/listers/serving/v1alpha1"
+	kservelistersv1beta1 "github.com/kserve/kserve/pkg/client/listers/serving/v1beta1"
 	"github.com/openai/openai-go/v2"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"knative.dev/pkg/apis"
-	gatewayclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1"
+	gatewaylisters "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 )
 
-// Manager handles model discovery and listing.
 type Manager struct {
-	v1beta1Client  kserveclientv1beta1.ServingV1beta1Interface
-	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface
-	gatewayClient  gatewayclient.GatewayV1Interface
-	gatewayRef     GatewayRef
+	isvcLister      kservelistersv1beta1.InferenceServiceLister
+	llmIsvcLister   kservelistersv1alpha1.LLMInferenceServiceLister
+	httpRouteLister gatewaylisters.HTTPRouteLister
+	gatewayRef      GatewayRef
+	logger          *logger.Logger
 }
 
-// NewManager creates a new model manager.
 func NewManager(
-	v1beta1Client kserveclientv1beta1.ServingV1beta1Interface,
-	v1alpha1Client kserveclientv1alpha1.ServingV1alpha1Interface,
-	gatewayClient gatewayclient.GatewayV1Interface,
+	log *logger.Logger,
+	isvcLister kservelistersv1beta1.InferenceServiceLister,
+	llmIsvcLister kservelistersv1alpha1.LLMInferenceServiceLister,
+	httpRouteLister gatewaylisters.HTTPRouteLister,
 	gatewayRef GatewayRef,
-) *Manager {
-	return &Manager{
-		v1beta1Client:  v1beta1Client,
-		v1alpha1Client: v1alpha1Client,
-		gatewayClient:  gatewayClient,
-		gatewayRef:     gatewayRef,
+) (*Manager, error) {
+	if isvcLister == nil {
+		return nil, errors.New("isvcLister is required")
 	}
+	if llmIsvcLister == nil {
+		return nil, errors.New("llmIsvcLister is required")
+	}
+	if httpRouteLister == nil {
+		return nil, errors.New("httpRouteLister is required")
+	}
+
+	return &Manager{
+		isvcLister:      isvcLister,
+		llmIsvcLister:   llmIsvcLister,
+		httpRouteLister: httpRouteLister,
+		gatewayRef:      gatewayRef,
+		logger:          log,
+	}, nil
 }
 
 // ListAvailableModels lists all InferenceServices across all namespaces.
-func (m *Manager) ListAvailableModels(ctx context.Context) ([]Model, error) {
-	list, err := m.v1beta1Client.InferenceServices(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+func (m *Manager) ListAvailableModels() ([]Model, error) {
+	list, err := m.isvcLister.List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list InferenceServices: %w", err)
 	}
 
-	return inferenceServicesToModels(list.Items)
+	return m.inferenceServicesToModels(list)
 }
 
-func inferenceServicesToModels(items []kservev1beta1.InferenceService) ([]Model, error) {
+func (m *Manager) inferenceServicesToModels(items []*kservev1beta1.InferenceService) ([]Model, error) {
 	models := make([]Model, 0, len(items))
 
 	for _, item := range items {
-		url := findInferenceServiceURL(&item)
+		url := m.findInferenceServiceURL(item)
 		if url == nil {
-			log.Printf("DEBUG: Failed to find URL for InferenceService %s/%s", item.Namespace, item.Name)
+			m.logger.Debug("Failed to find URL for InferenceService")
 		}
 
 		modelID := item.Name
@@ -70,14 +82,14 @@ func inferenceServicesToModels(items []kservev1beta1.InferenceService) ([]Model,
 				Created: item.CreationTimestamp.Unix(),
 			},
 			URL:   url,
-			Ready: checkInferenceServiceReadiness(&item),
+			Ready: m.checkInferenceServiceReadiness(item),
 		})
 	}
 
 	return models, nil
 }
 
-func findInferenceServiceURL(is *kservev1beta1.InferenceService) *apis.URL {
+func (m *Manager) findInferenceServiceURL(is *kservev1beta1.InferenceService) *apis.URL {
 	if is.Status.URL != nil {
 		return is.Status.URL
 	}
@@ -86,23 +98,25 @@ func findInferenceServiceURL(is *kservev1beta1.InferenceService) *apis.URL {
 		return is.Status.Address.URL
 	}
 
-	log.Printf("DEBUG: No URL found for InferenceService %s/%s", is.Namespace, is.Name)
+	m.logger.Debug("No URL found for InferenceService")
 	return nil
 }
 
-func checkInferenceServiceReadiness(is *kservev1beta1.InferenceService) bool {
+func (m *Manager) checkInferenceServiceReadiness(is *kservev1beta1.InferenceService) bool {
 	if is.DeletionTimestamp != nil {
 		return false
 	}
 
 	if is.Generation > 0 && is.Status.ObservedGeneration != is.Generation {
-		log.Printf("DEBUG: observedGeneration %d is stale (expected %d), not ready yet",
-			is.Status.ObservedGeneration, is.Generation)
+		m.logger.Debug("ObservedGeneration is stale, not ready yet",
+			"observed_generation", is.Status.ObservedGeneration,
+			"expected_generation", is.Generation,
+		)
 		return false
 	}
 
 	if len(is.Status.Conditions) == 0 {
-		log.Printf("DEBUG: No conditions found for InferenceService %s/%s", is.Namespace, is.Name)
+		m.logger.Debug("No conditions found for InferenceService")
 		return false
 	}
 

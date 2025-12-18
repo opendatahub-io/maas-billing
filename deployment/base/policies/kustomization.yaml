@@ -2,10 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 metadata:
-  name: maas-auth
+  name: maas-gateway-policies
 
 resources:
-# Gateway policies - default for all models
-- gateway-auth-policy.yaml
-- token-limit-policy.yaml
-- rate-limit-policy.yaml
+- auth-policies
+- usage-policies
