@@ -2,95 +2,93 @@
 
 This directory contains Grafana dashboard samples for the MaaS platform.
 
-## 🚀 MaaS Token Metrics Dashboard
+## 📁 Dashboard Files
 
-**File:** `maas-token-metrics-dashboard.json`
+| File | Description |
+| ---- | ----------- |
+| `platform-admin-dashboard.json` | Unified view for platform administrators |
+| `ai-engineer-dashboard.json` | API key-filtered view for AI engineers |
+| `maas-token-metrics-dashboard.json` | Legacy token metrics dashboard |
 
-### 📋 Overview
+## 📖 Documentation Files
 
-This dashboard provides comprehensive monitoring of token usage, rate limiting, and tier-based analytics for the MaaS platform using Kuadrant/Limitador metrics.
+| File | Description |
+| ---- | ----------- |
+| `METRICS-SUMMARY.md` | **Main reference** - Complete metrics documentation, queries, and limitations |
+| `METRICS-EXPORT-FLOW.md` | Architecture flow showing how metrics are exported |
+| `PROMETHEUS-COUNTER-BEHAVIOR.md` | Educational guide on Prometheus counter behavior |
 
-### 🎯 Key Metrics
+## 🎯 Available Metrics
 
-- **`authorized_hits`** - Total successful API calls with tier/user/model information
-- **`authorized_calls`** - Rate limiting success metrics  
-- **`limited_calls`** - Rate limiting block metrics
-- **`tier` labels** - Free/Premium/Enterprise tier information
-- **`model` labels** - Model-specific usage tracking
-- **`limitador_namespace`** - Namespace filtering
+### ✅ All Custom Labels Working!
 
-### 📊 Dashboard Panels
+| Metric | Source | Labels |
+| ------ | ------ | ------ |
+| `authorized_hits` | Limitador | ✅ `user`, `tier`, `model`, `limitador_namespace` |
+| `authorized_calls` | Limitador | ✅ `user`, `tier`, `model`, `limitador_namespace` |
+| `limited_calls` | Limitador | ✅ `user`, `tier`, `model`, `limitador_namespace` |
+| `limitador_up` | Limitador | Standard |
+| `auth_server_response_status_total` | Authorino | `authconfig`, `status` |
+| `envoy_http_downstream_rq_xx` | Envoy | `envoy_response_code_class` |
 
-1. **🎯 Total Authorized Hits** - Main success metric
-2. **📈 Authorized Hits Rate by Tier** - Tier-based performance
-3. **👥 Authorized Hits by User & Tier** - User activity
-4. **🏆 Top 10 Users by Hits** - Usage leaders
-5. **⏰ Hourly Authorized Hits by User** - Time-based analysis
-6. **📊 Total Authorized Hits by Tier** - Tier comparison
-7. **👥 Active Users** - User count
-8. **💰 Top 5 Users by Cost** - Cost analysis with tier pricing
-9. **📋 Detailed Metrics Table** - Complete data view
+**Verified on cluster:**
 
-### 🔧 How to Use
+```
+authorized_hits{model="facebook-opt-125m-simulated",tier="free",user="tgitelma-redhat-com-dd264a84",...} 376
+```
+
+See `METRICS-SUMMARY.md` for full details and query examples.
+
+## 🔧 How to Use
 
 1. **Import into Grafana:**
    - Go to Grafana → Dashboards → Import
-   - Upload `maas-token-metrics-dashboard.json`
-   - Configure Prometheus datasource (DS_PROMETHEUS)
+   - Upload the desired dashboard JSON file
+   - Configure Prometheus datasource
 
 2. **Prerequisites:**
-   - Prometheus configured to scrape Limitador metrics
-   - ServiceMonitor for `limitador-limitador` service deployed
-   - Kuadrant policies generating metrics
+   - Prometheus configured to scrape Kuadrant metrics
+   - ServiceMonitors deployed for Limitador and Authorino
+   - Kuadrant policies configured
 
-3. **Features:**
-   - **Tier-based filtering** - Free vs Premium vs Enterprise
-   - **User activity tracking** - Individual user usage patterns
-   - **Model usage analytics** - Which models are used most
-   - **Rate limiting monitoring** - Success vs blocked requests
-   - **Cost analysis** - Revenue tracking by tier and user
-   - **Namespace filtering** - Multi-tenant scenarios
+## 📈 Working Queries
 
-### 💰 Cost Analysis
+```promql
+# Requests per user
+sum by (user) (authorized_hits)
 
-The dashboard includes cost calculations:
-- **Free Tier:** $0.005 per authorized hit
-- **Premium Tier:** $0.008 per authorized hit
-- **Enterprise Tier:** Custom pricing (configurable)
+# Requests per model
+sum by (model) (authorized_hits)
 
-### 🎨 Visual Features
+# Requests per tier
+sum by (tier) (authorized_hits)
 
-- **Emojis** for better visual appeal
-- **Color coding** by tier (Free=Green, Premium=Blue, Enterprise=Gold)
-- **Modern layout** with better spacing
-- **Interactive filtering** and grouping
-- **Real-time updates** (30s refresh)
+# Top 10 users
+topk(10, sum by (user) (authorized_hits))
 
-### 📈 Key Insights
+# User activity by model
+sum by (user, model) (authorized_hits)
 
-Monitor these important metrics:
-- **Success Rate:** `authorized_calls / (authorized_calls + limited_calls)`
-- **Tier Distribution:** Usage by Free/Premium/Enterprise
-- **Model Popularity:** Which models are used most
-- **User Activity:** Top users and their tier usage
-- **Cost Analysis:** Revenue by tier and user
+# Success rate per user
+sum by (user) (authorized_calls) / (sum by (user) (authorized_calls) + sum by (user) (limited_calls))
+```
 
-### 🔗 Related Documentation
+## 🔗 Related Files
 
-- [Deployment Guide](../../README.md)
-- [Token Metrics Guide](../../token-metrics.md)
-- [Observability Setup](../../deployment/base/observability/)
+- **TelemetryPolicy**: `deployment/base/observability/telemetry-policy.yaml`
+- **ServiceMonitors**: `deployment/components/observability/prometheus/`
 
-### 🛠️ Customization
+## 📝 Notes
+
+- Dashboards are compatible with Kuadrant v1.3.0+
+- ✅ Per-user, per-model, per-tier filtering is fully working
+- All custom labels exported by Limitador
+- Requires Prometheus Operator for ServiceMonitor support
+- Metrics are generated by Limitador with TelemetryPolicy
+- Dashboard auto-refreshes every 30 seconds
 
 To customize the dashboard:
 1. Import into Grafana
 2. Edit panels as needed
 3. Export updated JSON
 4. Replace this file with your custom version
-
-### 📝 Notes
-
-- Requires Prometheus Operator for ServiceMonitor support
-- Metrics are generated by Limitador with TelemetryPolicy
-- Dashboard auto-refreshes every 30 seconds

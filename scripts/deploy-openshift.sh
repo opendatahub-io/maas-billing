@@ -28,17 +28,31 @@ wait_for_crd() {
 }
 
 # Helper function to wait for CSV to reach Succeeded state
+# Supports both exact CSV names (e.g., "kuadrant-operator.v1.3.0") and partial names (e.g., "rhcl-operator")
 wait_for_csv() {
-  local csv_name="$1"
+  local csv_pattern="$1"
   local namespace="${2:-kuadrant-system}"
   local timeout="${3:-180}"  # timeout in seconds
   local interval=5
   local elapsed=0
   local last_status_print=0
 
-  echo "⏳ Waiting for CSV ${csv_name} to succeed (timeout: ${timeout}s)..."
+  echo "⏳ Waiting for CSV matching '${csv_pattern}' to succeed (timeout: ${timeout}s)..."
   while [ $elapsed -lt $timeout ]; do
-    local phase=$(kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+    # Find CSV matching the pattern (supports partial names like "rhcl-operator" or exact like "kuadrant-operator.v1.3.0")
+    local csv_name=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "$csv_pattern" | awk '{print $1}' | head -1)
+    
+    if [ -z "$csv_name" ]; then
+      if [ $((elapsed - last_status_print)) -ge 30 ]; then
+        echo "   CSV matching '${csv_pattern}' not found yet (${elapsed}s elapsed)"
+        last_status_print=$elapsed
+      fi
+      sleep $interval
+      elapsed=$((elapsed + interval))
+      continue
+    fi
+
+    local phase=$(kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
 
     case "$phase" in
       "Succeeded")
@@ -62,7 +76,7 @@ wait_for_csv() {
     elapsed=$((elapsed + interval))
   done
 
-  echo "❌ Timed out after ${timeout}s waiting for CSV ${csv_name}" >&2
+  echo "❌ Timed out after ${timeout}s waiting for CSV matching '${csv_pattern}'" >&2
   return 1
 }
 
@@ -211,18 +225,32 @@ done
 echo ""
 echo "3️⃣ Installing dependencies..."
 
-# Only clean up leftover CRDs if Kuadrant operators are NOT already installed
-echo "   Checking for existing Kuadrant installation..."
-if ! kubectl get csv -n kuadrant-system kuadrant-operator.v1.3.1 &>/dev/null 2>&1; then
-    echo "   No existing installation found, checking for leftover CRDs..."
-    LEFTOVER_CRDS=$(kubectl get crd 2>/dev/null | grep -E "kuadrant|authorino|limitador" | awk '{print $1}')
-    if [ -n "$LEFTOVER_CRDS" ]; then
-        echo "   Found leftover CRDs, cleaning up before installation..."
-        echo "$LEFTOVER_CRDS" | xargs -r kubectl delete crd --timeout=30s 2>/dev/null || true
-        sleep 5  # Brief wait for cleanup to complete
-    fi
-else
-    echo "   ✅ Kuadrant operator already installed, skipping CRD cleanup"
+# Only clean up leftover CRDs if Kuadrant/RHCL operators are NOT already installed
+echo "   Checking for existing Kuadrant/RHCL installation..."
+KUADRANT_INSTALLED=false
+
+# Check for RHCL (downstream) OR upstream Kuadrant
+if kubectl get csv -n kuadrant-system 2>/dev/null | grep -qE "rhcl-operator|kuadrant-operator"; then
+    KUADRANT_INSTALLED=true
+    echo "   ✅ Kuadrant/RHCL operator already installed, skipping CRD cleanup"
+fi
+
+# Also check if CRDs exist (even without CSV - means something is installed)
+if kubectl get crd kuadrants.kuadrant.io &>/dev/null 2>&1; then
+    KUADRANT_INSTALLED=true
+    echo "   ✅ Kuadrant CRDs exist, skipping CRD cleanup"
+fi
+
+# Also check if operator pods are running
+if kubectl get pods -n kuadrant-system --no-headers 2>/dev/null | grep -qE "kuadrant-operator.*Running"; then
+    KUADRANT_INSTALLED=true
+    echo "   ✅ Kuadrant operator pods running, skipping CRD cleanup"
+fi
+
+if [ "$KUADRANT_INSTALLED" = "false" ]; then
+    echo "   No existing Kuadrant/RHCL installation detected"
+    # Note: We no longer automatically delete CRDs - this was too dangerous!
+    # If there are orphaned CRDs, the operator installation will handle them
 fi
 
 echo "   Installing Kuadrant..."
@@ -296,6 +324,40 @@ fi
 export CLUSTER_DOMAIN
 echo "   Cluster domain: $CLUSTER_DOMAIN"
 
+# Create TLS certificate for Gateway
+echo "   Creating TLS certificate for Gateway..."
+if kubectl get secret default-gateway-tls -n openshift-ingress &>/dev/null; then
+    echo "   ✅ TLS secret default-gateway-tls already exists"
+elif kubectl get secret router-certs-default -n openshift-ingress &>/dev/null; then
+    # Copy the existing OpenShift router certificate (works on ROSA and OCP)
+    echo "   Copying existing router certificate..."
+    # Use kubectl to create a clean copy without server-managed fields
+    kubectl get secret router-certs-default -n openshift-ingress -o json | \
+      jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.ownerReferences, .metadata.managedFields) | .metadata.name = "default-gateway-tls"' | \
+      kubectl apply -f - && \
+      echo "   ✅ Copied router certificate to default-gateway-tls" || \
+      echo "   ⚠️  Failed to copy router certificate, will create self-signed"
+fi
+
+# If still no certificate, create a self-signed one
+if ! kubectl get secret default-gateway-tls -n openshift-ingress &>/dev/null; then
+    echo "   Creating self-signed TLS certificate..."
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /tmp/gateway-tls.key \
+      -out /tmp/gateway-tls.crt \
+      -subj "/CN=maas.${CLUSTER_DOMAIN}" \
+      -addext "subjectAltName=DNS:maas.${CLUSTER_DOMAIN}" 2>/dev/null
+    
+    kubectl create secret tls default-gateway-tls \
+      --cert=/tmp/gateway-tls.crt \
+      --key=/tmp/gateway-tls.key \
+      -n openshift-ingress && \
+      echo "   ✅ Created self-signed TLS certificate" || \
+      echo "   ⚠️  Failed to create TLS certificate"
+    
+    rm -f /tmp/gateway-tls.key /tmp/gateway-tls.crt
+fi
+
 echo "   Deploying Gateway and GatewayClass..."
 cd "$PROJECT_ROOT"
 kubectl apply --server-side=true --force-conflicts -f deployment/base/networking/odh/odh-gateway-api.yaml
@@ -326,18 +388,83 @@ fi
 
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
-# Wait for CSVs to reach Succeeded state (this ensures CRDs are created and deployments are ready)
-wait_for_csv "kuadrant-operator.v1.3.1" "kuadrant-system" 300 || \
-    echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
 
-wait_for_csv "authorino-operator.v0.22.0" "kuadrant-system" 60 || \
-    echo "   ⚠️  Authorino operator CSV did not succeed"
+# First, check if essential Kuadrant CRDs exist
+echo "   Checking for essential Kuadrant CRDs..."
+ESSENTIAL_CRDS_MISSING=0
+for crd in "kuadrants.kuadrant.io" "authpolicies.kuadrant.io" "ratelimitpolicies.kuadrant.io"; do
+    if ! kubectl get crd "$crd" &>/dev/null 2>&1; then
+        ESSENTIAL_CRDS_MISSING=1
+        break
+    fi
+done
 
-wait_for_csv "limitador-operator.v0.16.0" "kuadrant-system" 60 || \
-    echo "   ⚠️  Limitador operator CSV did not succeed"
+# Check if operator pods are running
+RUNNING_PODS=$(kubectl get pods -n kuadrant-system --no-headers 2>/dev/null | grep -E "kuadrant-operator|authorino-operator|limitador-operator" | grep Running | wc -l)
 
-wait_for_csv "dns-operator.v0.15.0" "kuadrant-system" 60 || \
-    echo "   ⚠️  DNS operator CSV did not succeed"
+# Detect broken state: pods running but CRDs missing
+if [ "$ESSENTIAL_CRDS_MISSING" -eq 1 ] && [ "$RUNNING_PODS" -ge 1 ]; then
+    echo ""
+    echo "   ❌ BROKEN STATE DETECTED: Operator pods are running but CRDs are missing!"
+    echo "   This typically happens after a failed upgrade or CRD deletion."
+    echo ""
+    echo "   ⚠️  MANUAL FIX REQUIRED - Run these commands:"
+    echo "      oc delete csv --all -n kuadrant-system"
+    echo "      oc delete installplan --all -n kuadrant-system"
+    echo "      # Wait 60s for OLM to recreate CSVs from existing subscriptions"
+    echo "      sleep 60"
+    echo "      oc get csv -n kuadrant-system"
+    echo ""
+    echo "   The script will NOT automatically delete resources to avoid further damage."
+    echo "   Please fix manually and re-run this script."
+    echo ""
+    exit 1
+fi
+
+# Check if RHCL (downstream) or upstream Kuadrant is installed
+# RHCL uses different CSV names than upstream Kuadrant
+echo "   Detecting operator distribution..."
+if kubectl get csv -n kuadrant-system 2>/dev/null | grep -q "rhcl-operator"; then
+    echo "   ✅ Detected RHCL (Red Hat Connectivity Link) - downstream distribution"
+    OPERATOR_TYPE="rhcl"
+elif kubectl get csv -n kuadrant-system 2>/dev/null | grep -q "kuadrant-operator"; then
+    echo "   ✅ Detected upstream Kuadrant operator"
+    OPERATOR_TYPE="upstream"
+else
+    echo "   ⚠️  No Kuadrant operator CSV found, will check if pods are running"
+    OPERATOR_TYPE="unknown"
+fi
+
+# Re-check running pods after potential reinstall
+RUNNING_PODS=$(kubectl get pods -n kuadrant-system --no-headers 2>/dev/null | grep -E "kuadrant-operator|authorino-operator|limitador-operator" | grep Running | wc -l)
+
+# Also verify CRDs exist now
+CRDS_EXIST=$(kubectl get crd kuadrants.kuadrant.io &>/dev/null 2>&1 && echo "yes" || echo "no")
+
+if [ "$RUNNING_PODS" -ge 3 ] && [ "$CRDS_EXIST" = "yes" ]; then
+    echo "   ✅ Kuadrant operator pods are running ($RUNNING_PODS pods) and CRDs exist"
+    echo "   Skipping CSV wait - operators are healthy"
+else
+    echo "   Waiting for operator CSVs to succeed..."
+    if [ "$OPERATOR_TYPE" = "rhcl" ]; then
+        # RHCL CSV names (v1.x versions)
+        wait_for_csv "rhcl-operator" "kuadrant-system" 120 || \
+            echo "   ⚠️  RHCL operator CSV did not succeed, continuing anyway..."
+    elif [ "$OPERATOR_TYPE" = "upstream" ]; then
+        # Upstream Kuadrant CSV names
+        wait_for_csv "kuadrant-operator" "kuadrant-system" 120 || \
+            echo "   ⚠️  Kuadrant operator CSV did not succeed, continuing anyway..."
+    else
+        # Unknown - wait briefly and continue
+        echo "   Waiting 30s for operators to initialize..."
+        sleep 30
+    fi
+fi
+
+# Verify pods are running regardless of CSV status
+echo "   Verifying operator pods are running..."
+kubectl get pods -n kuadrant-system --no-headers 2>/dev/null | grep Running || \
+    echo "   ⚠️  Some operator pods may not be running"
 
 # Verify CRDs are present
 echo "   Verifying Kuadrant CRDs are available..."
@@ -354,17 +481,70 @@ kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 echo ""
 echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
-# Process kustomization.yaml to replace hardcoded namespace, then build
-TMP_DIR=$(mktemp -d)
-cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
-# Replace hardcoded "namespace: maas-api" with "namespace: ${MAAS_API_NAMESPACE}" in kustomization.yaml
-sed -i "s|namespace: maas-api|namespace: \${MAAS_API_NAMESPACE}|g" "$TMP_DIR/kustomization.yaml"
-# Replace ${MAAS_API_NAMESPACE} placeholder with actual value
-envsubst '$MAAS_API_NAMESPACE' < "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
-mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
-# Build and replace any remaining hardcoded namespace references in the output
-kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
-rm -rf "$TMP_DIR"
+
+# Check if maas-api deployment already exists and is healthy
+MAAS_API_EXISTS=false
+MAAS_API_HEALTHY=false
+if kubectl get deployment maas-api -n "$MAAS_API_NAMESPACE" &>/dev/null; then
+    MAAS_API_EXISTS=true
+    READY_REPLICAS=$(kubectl get deployment maas-api -n "$MAAS_API_NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    if [ "$READY_REPLICAS" -ge 1 ] 2>/dev/null; then
+        MAAS_API_HEALTHY=true
+    fi
+fi
+
+if [ "$MAAS_API_HEALTHY" = "true" ]; then
+    echo ""
+    echo "   ⚠️  ============================================================"
+    echo "   ⚠️  WARNING: MaaS API deployment already exists and is HEALTHY!"
+    echo "   ⚠️  SKIPPING deployment to avoid overwriting working configuration."
+    echo "   ⚠️  ============================================================"
+    echo ""
+    echo "   Current image: $(kubectl get deployment maas-api -n "$MAAS_API_NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
+    echo "   Ready replicas: $READY_REPLICAS"
+    echo ""
+    echo "   To force redeploy, first delete the deployment:"
+    echo "      kubectl delete deployment maas-api -n $MAAS_API_NAMESPACE"
+    echo "      Then re-run this script."
+    echo ""
+else
+    # Detect the cluster's OIDC audience for AuthPolicy
+    echo "   Detecting cluster OIDC audience..."
+    MAAS_AUTH_AUDIENCE="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
+    if [ -z "$MAAS_AUTH_AUDIENCE" ] || [ "$MAAS_AUTH_AUDIENCE" = "null" ]; then
+        MAAS_AUTH_AUDIENCE="https://kubernetes.default.svc"
+        echo "   ⚠️  Could not detect audience, using default: $MAAS_AUTH_AUDIENCE"
+    else
+        echo "   ✅ Detected audience: $MAAS_AUTH_AUDIENCE"
+    fi
+    export MAAS_AUTH_AUDIENCE
+
+    # Process kustomization.yaml to replace hardcoded namespace, then build
+    TMP_DIR=$(mktemp -d)
+    cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
+    # Replace hardcoded "namespace: maas-api" with "namespace: ${MAAS_API_NAMESPACE}" in kustomization.yaml
+    # Use temp file approach for cross-platform compatibility (macOS sed -i differs from Linux)
+    sed "s|namespace: maas-api|namespace: \${MAAS_API_NAMESPACE}|g" "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
+    mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
+    # Replace ${MAAS_API_NAMESPACE} placeholder with actual value
+    envsubst '$MAAS_API_NAMESPACE' < "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
+    mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
+
+    # Build kustomize output, substitute namespace and OIDC audience
+    MAAS_API_MANIFEST=$(kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | envsubst '$MAAS_AUTH_AUDIENCE')
+
+    # Handle immutable selector error by deleting deployment first if needed
+    kubectl apply -f - <<< "$MAAS_API_MANIFEST" 2>&1 | tee /tmp/maas-api-apply.log
+    APPLY_EXIT=${PIPESTATUS[0]}
+    if [ $APPLY_EXIT -ne 0 ] || grep -q "field is immutable" /tmp/maas-api-apply.log 2>/dev/null; then
+        if grep -q "field is immutable" /tmp/maas-api-apply.log 2>/dev/null; then
+            echo "   ⚠️  Deployment selector changed, recreating maas-api deployment..."
+            kubectl delete deployment maas-api -n "$MAAS_API_NAMESPACE" --ignore-not-found=true
+            echo "$MAAS_API_MANIFEST" | kubectl apply -f -
+        fi
+    fi
+    rm -rf "$TMP_DIR" /tmp/maas-api-apply.log 2>/dev/null
+fi
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
@@ -394,52 +574,120 @@ echo "   Waiting for Gateway to become ready..."
 kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshift-ingress --timeout=300s || \
   echo "   ⚠️  Gateway is taking longer than expected, continuing..."
 
+# Create OpenShift Route to expose Gateway through the default router
+# Note: We rely on Route for external access instead of externalIP to avoid conflicts with router
+echo "   Creating OpenShift Route to expose Gateway through the default router..."
+GATEWAY_SVC="maas-default-gateway-openshift-default"
+kubectl apply -f - <<EOF
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: maas-gateway-route
+  namespace: openshift-ingress
+spec:
+  host: maas.${CLUSTER_DOMAIN}
+  to:
+    kind: Service
+    name: ${GATEWAY_SVC}
+    weight: 100
+  port:
+    targetPort: 443
+  tls:
+    termination: passthrough
+EOF
+echo "   ✅ OpenShift Route created for Gateway"
+
+# Check Gateway PROGRAMMED status
+# Note: Gateway may show PROGRAMMED: False on bare-metal without externalIP, but Route provides external access
+# Policies will still work as long as Gateway is Accepted
+echo "   Checking Gateway PROGRAMMED status..."
+sleep 5
+GATEWAY_PROGRAMMED=$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "False")
+GATEWAY_ACCEPTED=$(kubectl get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null || echo "False")
+if [ "$GATEWAY_PROGRAMMED" = "True" ]; then
+    echo "   ✅ Gateway is Programmed"
+elif [ "$GATEWAY_ACCEPTED" = "True" ]; then
+    echo "   ⚠️  Gateway is Accepted but not Programmed (common on bare-metal without externalIP)"
+    echo "   ✅ Route provides external access, policies will still work"
+else
+    echo "   ⚠️  Gateway is not yet Accepted (status: $GATEWAY_ACCEPTED)"
+fi
+
 echo ""
-echo "1️⃣1️⃣ Applying Gateway Policies..."
+echo "1️⃣1️⃣ Applying Gateway Policies (includes RBAC for tier ServiceAccounts)..."
 cd "$PROJECT_ROOT"
+# Substitute MAAS_API_NAMESPACE in gateway-auth-policy.yaml (for tier lookup URL)
 kustomize build deployment/base/policies | envsubst '$MAAS_API_NAMESPACE' | kubectl apply --server-side=true --force-conflicts -f -
 
-echo ""
-echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
-# Cross-platform base64 decode (macOS uses -D, Linux uses -d)
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    BASE64_DECODE="base64 -D"
+# Verify RBAC was applied
+if kubectl get clusterrolebinding maas-tier-llm-access &>/dev/null; then
+    echo "   ✅ Gateway Policies and RBAC applied"
 else
-    BASE64_DECODE="base64 -d"
+    echo "   ⚠️  RBAC for tier ServiceAccounts may not have been applied"
 fi
 
-echo "   Attempting to detect audience..."
-TOKEN=$(kubectl create token default --duration=10m 2>/dev/null || echo "")
-if [ -z "$TOKEN" ]; then
-    echo "   ⚠️  Could not create token, skipping audience detection"
-    AUD=""
-else
-    echo "   Token created successfully"
-    JWT_PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 2>/dev/null || echo "")
-    if [ -z "$JWT_PAYLOAD" ]; then
-        echo "   ⚠️  Could not extract JWT payload, skipping audience detection"
-        AUD=""
+echo ""
+echo "1️⃣2️⃣ Creating ClusterIssuer for cert-manager (for model TLS certificates)..."
+if ! kubectl get clusterissuer selfsigned-issuer &>/dev/null; then
+    if kubectl get crd clusterissuers.cert-manager.io &>/dev/null; then
+        kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+EOF
+        echo "   ✅ ClusterIssuer created"
     else
-        echo "   JWT payload extracted"
-        DECODED_PAYLOAD=$(echo "$JWT_PAYLOAD" | $BASE64_DECODE 2>/dev/null || echo "")
-        if [ -z "$DECODED_PAYLOAD" ]; then
-            echo "   ⚠️  Could not decode base64 payload, skipping audience detection"
-            AUD=""
-        else
-            echo "   Payload decoded successfully"
-            AUD=$(echo "$DECODED_PAYLOAD" | jq -r '.aud[0]' 2>/dev/null || echo "")
-        fi
+        echo "   ⚠️  cert-manager CRDs not found, skipping ClusterIssuer creation"
     fi
-fi
-if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
-    echo "   Detected audience: $AUD"
-    PATCH_JSON="[{\"op\":\"replace\",\"path\":\"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0\",\"value\":\"$AUD\"}]"
-    kubectl patch authpolicy maas-api-auth-policy -n "$MAAS_API_NAMESPACE"  \
-      --type='json' \
-      -p "$PATCH_JSON" 2>/dev/null && echo "   ✅ AuthPolicy patched" || echo "   ⚠️  Failed to patch AuthPolicy (may need manual configuration)"
 else
-    echo "   ⚠️  Could not detect audience, skipping AuthPolicy patch"
-    echo "      You may need to manually configure the audience later"
+    echo "   ✅ ClusterIssuer already exists"
+fi
+
+echo ""
+echo "1️⃣3️⃣ Verifying AuthPolicy audience and authorization verb..."
+# Note: Audience is now dynamically set in step 8 via envsubst
+# This step verifies and patches as a fallback if needed
+AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
+CURRENT_AUD=$(kubectl get authpolicy maas-api-auth-policy -n "$MAAS_API_NAMESPACE" -o jsonpath='{.spec.rules.authentication.openshift-identities.kubernetesTokenReview.audiences[0]}' 2>/dev/null || echo "")
+if [ -n "$AUD" ] && [ "$AUD" != "null" ]; then
+    if [ "$CURRENT_AUD" = "$AUD" ]; then
+        echo "   ✅ AuthPolicy audience is correctly set: $AUD"
+    else
+        echo "   Detected audience: $AUD (current: $CURRENT_AUD)"
+        echo "   Patching AuthPolicy with correct audience..."
+        kubectl patch authpolicy maas-api-auth-policy -n "$MAAS_API_NAMESPACE" \
+          --type='json' \
+          -p "$(jq -nc --arg aud "$AUD" '[{
+            op:"replace",
+            path:"/spec/rules/authentication/openshift-identities/kubernetesTokenReview/audiences/0",
+            value:$aud
+          }]')" 2>/dev/null && echo "   ✅ AuthPolicy audience patched" || echo "   ⚠️  Failed to patch AuthPolicy (may need manual configuration)"
+    fi
+else
+    echo "   ⚠️  Could not detect audience, skipping AuthPolicy verification"
+fi
+
+# Fix authorization verb: Kubernetes uses 'get' not 'post'
+echo "   Checking AuthPolicy authorization verb..."
+if kubectl get authpolicy gateway-auth-policy -n openshift-ingress &>/dev/null; then
+    CURRENT_VERB=$(kubectl get authpolicy gateway-auth-policy -n openshift-ingress -o jsonpath='{.spec.rules.authorization.tier-access.kubernetesSubjectAccessReview.resourceAttributes.verb.value}' 2>/dev/null || echo "")
+    if [ "$CURRENT_VERB" = "get" ]; then
+        echo "   ✅ AuthPolicy authorization verb is already correct (get)"
+    elif [ -n "$CURRENT_VERB" ]; then
+        echo "   Current verb is '$CURRENT_VERB', patching to 'get'..."
+        kubectl patch authpolicy gateway-auth-policy -n openshift-ingress \
+          --type='json' \
+          -p='[{"op":"replace","path":"/spec/rules/authorization/tier-access/kubernetesSubjectAccessReview/resourceAttributes/verb/value","value":"get"}]' && \
+          echo "   ✅ AuthPolicy authorization verb patched" || \
+          echo "   ⚠️  Failed to patch authorization verb"
+    else
+        echo "   ⚠️  Could not read authorization verb, skipping patch"
+    fi
+else
+    echo "   ⚠️  AuthPolicy gateway-auth-policy not found, skipping verb patch"
 fi
 
 echo ""
@@ -448,34 +696,6 @@ kubectl -n kuadrant-system patch limitador limitador --type merge \
   -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}' 2>/dev/null && \
   echo "   ✅ Limitador image updated" || \
   echo "   ⚠️  Could not update Limitador image (may not be critical)"
-
-echo ""
-echo "========================================="
-echo "⚠️  TEMPORARY WORKAROUNDS (TO BE REMOVED)"
-echo "========================================="
-echo ""
-echo "Applying temporary workarounds for known issues..."
-
-echo "   🔧 Restarting Kuadrant, Authorino, and Limitador operators to refresh webhook configurations..."
-kubectl delete pod -n kuadrant-system -l control-plane=controller-manager 2>/dev/null && \
-  echo "   ✅ Kuadrant operator restarted" || \
-  echo "   ⚠️  Could not restart Kuadrant operator"
-
-kubectl rollout restart deployment authorino-operator -n kuadrant-system 2>/dev/null && \
-  echo "   ✅ Authorino operator restarted" || \
-  echo "   ⚠️  Could not restart Authorino operator"
-
-kubectl rollout restart deployment limitador-operator-controller-manager -n kuadrant-system 2>/dev/null && \
-  echo "   ✅ Limitador operator restarted" || \
-  echo "   ⚠️  Could not restart Limitador operator"
-
-echo "   Waiting for operators to be ready..."
-kubectl rollout status deployment kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
-  echo "   ⚠️  Kuadrant operator taking longer than expected"
-kubectl rollout status deployment authorino-operator -n kuadrant-system --timeout=60s 2>/dev/null || \
-  echo "   ⚠️  Authorino operator taking longer than expected"
-kubectl rollout status deployment limitador-operator-controller-manager -n kuadrant-system --timeout=60s 2>/dev/null || \
-  echo "   ⚠️  Limitador operator taking longer than expected"
 
 echo ""
 echo "========================================="
@@ -625,7 +845,7 @@ echo "6. Test rate limiting (200 OK followed by 429 Rate Limit Exceeded after ab
 echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\"; done"
 echo ""
 echo "7. Run validation script (Runs all the checks again):"
-echo "   ./scripts/validate-deployment.sh"
+echo "   ./scripts/validate-deployment.sh --namespace $MAAS_API_NAMESPACE"
 echo ""
 echo "8. Check metrics generation:"
 echo "   kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080 &"
@@ -635,3 +855,11 @@ echo "9. Access Prometheus to view metrics:"
 echo "   kubectl port-forward -n openshift-monitoring svc/prometheus-k8s 9090:9091 &"
 echo "   # Open http://localhost:9090 in browser and search for: authorized_hits, authorized_calls, limited_calls"
 echo ""
+
+# Run validation
+echo ""
+echo "========================================="
+echo "🔍 Running Deployment Validation..."
+echo "========================================="
+echo ""
+"$SCRIPT_DIR/validate-deployment.sh" --namespace "$MAAS_API_NAMESPACE"
