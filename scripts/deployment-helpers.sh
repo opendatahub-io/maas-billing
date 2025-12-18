@@ -3,6 +3,12 @@
 # Deployment Helper Functions
 # This file contains reusable helper functions for MaaS platform deployment scripts
 
+# Minimum version requirements for operators
+KUADRANT_MIN_VERSION="1.3.0"
+AUTHORINO_MIN_VERSION="0.22.0"
+LIMITADOR_MIN_VERSION="0.16.0"
+DNS_OPERATOR_MIN_VERSION="0.15.0"
+
 # Helper function to wait for CRD to be established
 wait_for_crd() {
   local crd="$1"
