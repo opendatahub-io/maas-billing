@@ -9,6 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"knative.dev/pkg/apis"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 )
 
 type GatewayRef struct {
@@ -70,8 +72,9 @@ func (m *Manager) llmInferenceServicesToModels(items []*kservev1alpha1.LLMInfere
 				OwnedBy: item.Namespace,
 				Created: item.CreationTimestamp.Unix(),
 			},
-			URL:   url,
-			Ready: m.checkLLMInferenceServiceReadiness(item),
+			URL:     url,
+			Ready:   m.checkLLMInferenceServiceReadiness(item),
+			Details: m.extractModelDetails(item),
 		})
 	}
 
@@ -96,6 +99,28 @@ func (m *Manager) findLLMInferenceServiceURL(llmIsvc *kservev1alpha1.LLMInferenc
 		"name", llmIsvc.Name,
 	)
 	return nil
+}
+
+func (m *Manager) extractModelDetails(llmIsvc *kservev1alpha1.LLMInferenceService) *Details {
+	annotations := llmIsvc.GetAnnotations()
+	if annotations == nil {
+		return nil
+	}
+
+	genaiUseCase := annotations[constant.AnnotationGenAIUseCase]
+	description := annotations[constant.AnnotationDescription]
+	displayName := annotations[constant.AnnotationDisplayName]
+
+	// Only return Details if at least one field is populated
+	if genaiUseCase == "" && description == "" && displayName == "" {
+		return nil
+	}
+
+	return &Details{
+		GenAIUseCase: genaiUseCase,
+		Description:  description,
+		DisplayName:  displayName,
+	}
 }
 
 func (m *Manager) checkLLMInferenceServiceReadiness(llmIsvc *kservev1alpha1.LLMInferenceService) bool {

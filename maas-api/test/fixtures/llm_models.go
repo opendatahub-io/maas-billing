@@ -1,6 +1,8 @@
 package fixtures
 
 import (
+	"maps"
+	"testing"
 	"time"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
@@ -11,6 +13,8 @@ import (
 	"knative.dev/pkg/apis"
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
 )
 
 type ModelURL interface {
@@ -89,6 +93,19 @@ func WithGatewaySpec(name, namespace string) LLMInferenceServiceOption {
 	}
 }
 
+// WithAnnotations sets the annotations on the LLMInferenceService.
+func WithAnnotations(annotations map[string]string) LLMInferenceServiceOption {
+	return func(llm *kservev1alpha1.LLMInferenceService) {
+		if llm.Annotations == nil {
+			llm.Annotations = make(map[string]string)
+		}
+		maps.Copy(llm.Annotations, annotations)
+	}
+}
+
+// ModelAssertion is a function for scenario-specific model assertions.
+type ModelAssertion func(t *testing.T, model models.Model)
+
 // LLMTestScenario defines a test scenario for LLM models.
 type LLMTestScenario struct {
 	Name             string
@@ -98,6 +115,9 @@ type LLMTestScenario struct {
 	SpecModelName    *string
 	GatewayName      string
 	GatewayNamespace string
+	Annotations      map[string]string
+	// AssertDetails is an optional hook for scenario-specific assertions on model details.
+	AssertDetails ModelAssertion
 }
 
 // CreateLLMInferenceService creates a test LLMInferenceService object with optional configuration.
@@ -163,6 +183,10 @@ func CreateLLMInferenceServices(scenarios ...LLMTestScenario) []runtime.Object {
 
 		if scenario.GatewayName != "" {
 			opts = append(opts, WithGatewaySpec(scenario.GatewayName, scenario.GatewayNamespace))
+		}
+
+		if len(scenario.Annotations) > 0 {
+			opts = append(opts, WithAnnotations(scenario.Annotations))
 		}
 
 		obj := CreateLLMInferenceService(scenario.Name, scenario.Namespace, scenario.Ready, opts...)
