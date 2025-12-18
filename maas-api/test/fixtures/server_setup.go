@@ -222,6 +222,7 @@ func StubServiceAccountTokenCreation(clientset kubernetes.Interface) {
 		// Generate valid JWT
 		claims := jwt.MapClaims{
 			"jti": fmt.Sprintf("mock-jti-%d", time.Now().UnixNano()),
+			"iat": time.Now().Unix(),
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"sub": "system:serviceaccount:test-namespace:test-sa",
 		}
