@@ -9,3 +9,5 @@ resources:
 - gateway-auth-policy.yaml
 - token-limit-policy.yaml
 - rate-limit-policy.yaml
+# RBAC for tier ServiceAccounts to access LLMInferenceServices
+- tier-rbac.yaml
