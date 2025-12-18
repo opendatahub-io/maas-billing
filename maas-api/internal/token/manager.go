@@ -95,9 +95,11 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		}
 	}
 
-	// Extract iat (issued at) claim from JWT
+	// Extract iat (issued at) claim from JWT (optional, defaults to 0 if unavailable)
 	var issuedAt int64
-	if iat, err := claims.GetIssuedAt(); err == nil && iat != nil {
+	if iat, err := claims.GetIssuedAt(); err != nil {
+		log.Debug("Failed to extract iat claim from token", "error", err)
+	} else if iat != nil {
 		issuedAt = iat.Unix()
 	}
 

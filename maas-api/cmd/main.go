@@ -199,15 +199,12 @@ func registerHandlers(ctx context.Context, log *logger.Logger, router *gin.Engin
 	apiKeyHandler := api_keys.NewHandler(log, apiKeyService)
 
 	// Model listing endpoint (v1Routes is grouped under /v1, so this creates /v1/models)
-	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler
 	v1Routes.GET("/models", tokenHandler.ExtractUserInfo(), modelsHandler.ListLLMs)
 
-	//nolint:contextcheck
 	tokenRoutes := v1Routes.Group("/tokens", tokenHandler.ExtractUserInfo())
 	tokenRoutes.POST("", tokenHandler.IssueToken)
 	tokenRoutes.DELETE("", apiKeyHandler.RevokeAllTokens)
 
-	//nolint:contextcheck
 	apiKeyRoutes := v1Routes.Group("/api-keys", tokenHandler.ExtractUserInfo())
 	apiKeyRoutes.POST("", apiKeyHandler.CreateAPIKey)
 	apiKeyRoutes.GET("", apiKeyHandler.ListAPIKeys)
