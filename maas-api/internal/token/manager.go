@@ -53,7 +53,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	// name parameter is ignored - kept for interface compatibility
 	_ = name
 
-	log := m.logger.WithContext(ctx).WithFields(
+	log := m.logger.WithFields(
 		"expiration", expiration.String(),
 	)
 
@@ -119,7 +119,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account.
 func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
-	log := m.logger.WithContext(ctx)
+	log := m.logger
 
 	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
@@ -193,7 +193,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 		return "", fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Info("Created tier namespace",
+	m.logger.Info("Created tier namespace",
 		"tier", tier,
 	)
 	return namespace, nil
@@ -232,7 +232,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 		return "", fmt.Errorf("failed to create service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Debug("Created service account",
+	m.logger.Debug("Created service account",
 		"tier", userTier,
 	)
 	return saName, nil
@@ -268,7 +268,7 @@ func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName st
 		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Debug("Deleted service account")
+	m.logger.Debug("Deleted service account")
 	return nil
 }
 

@@ -58,7 +58,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	store, err := initStore(ctx, cfg, appLogger)
+	store, err := initStore(ctx, appLogger, cfg)
 	if err != nil {
 		appLogger.Fatal("Failed to initialize token store",
 			"error", err,
@@ -72,7 +72,7 @@ func main() {
 		}
 	}()
 
-	registerHandlers(ctx, router, cfg, store, appLogger)
+	registerHandlers(ctx, appLogger, router, cfg, store)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -122,7 +122,7 @@ func main() {
 //   - external: External database (PostgreSQL), supports multiple replicas
 //
 //nolint:ireturn // Returns MetadataStore interface by design for pluggable storage backends.
-func initStore(ctx context.Context, cfg *config.Config, log *logger.Logger) (api_keys.MetadataStore, error) {
+func initStore(ctx context.Context, log *logger.Logger, cfg *config.Config) (api_keys.MetadataStore, error) {
 	switch cfg.StorageMode {
 	case config.StorageModeInMemory, "":
 		log.Info("Using in-memory storage (data will be lost on restart). " +
@@ -150,27 +150,27 @@ func initStore(ctx context.Context, cfg *config.Config, log *logger.Logger) (api
 	}
 }
 
-func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Config, store api_keys.MetadataStore, appLogger *logger.Logger) {
+func registerHandlers(ctx context.Context, log *logger.Logger, router *gin.Engine, cfg *config.Config, store api_keys.MetadataStore) {
 	router.GET("/health", handlers.NewHealthHandler().HealthCheck)
 
 	cluster, err := config.NewClusterConfig(cfg.Namespace, constant.DefaultResyncPeriod)
 	if err != nil {
-		appLogger.Fatal("Failed to create cluster config",
+		log.Fatal("Failed to create cluster config",
 			"error", err,
 		)
 	}
 
 	if !cluster.StartAndWaitForSync(ctx.Done()) {
-		appLogger.Fatal("Failed to sync informer caches")
+		log.Fatal("Failed to sync informer caches")
 	}
 
 	v1Routes := router.Group("/v1")
 
-	tierMapper := tier.NewMapper(appLogger, cluster.ConfigMapLister, cfg.Name, cfg.Namespace)
+	tierMapper := tier.NewMapper(log, cluster.ConfigMapLister, cfg.Name, cfg.Namespace)
 	v1Routes.POST("/tiers/lookup", tier.NewHandler(tierMapper).TierLookup)
 
 	modelMgr, errMgr := models.NewManager(
-		appLogger,
+		log,
 		cluster.InferenceServiceLister,
 		cluster.LLMInferenceServiceLister,
 		cluster.HTTPRouteLister,
@@ -178,25 +178,25 @@ func registerHandlers(ctx context.Context, router *gin.Engine, cfg *config.Confi
 	)
 
 	if errMgr != nil {
-		appLogger.Fatal("Failed to create model manager",
+		log.Fatal("Failed to create model manager",
 			"error", errMgr,
 		)
 	}
 
-	modelsHandler := handlers.NewModelsHandler(appLogger, modelMgr)
+	modelsHandler := handlers.NewModelsHandler(log, modelMgr)
 
 	tokenManager := token.NewManager(
-		appLogger,
+		log,
 		cfg.Name,
 		tierMapper,
 		cluster.ClientSet,
 		cluster.NamespaceLister,
 		cluster.ServiceAccountLister,
 	)
-	tokenHandler := token.NewHandler(appLogger, cfg.Name, tokenManager)
+	tokenHandler := token.NewHandler(log, cfg.Name, tokenManager)
 
 	apiKeyService := api_keys.NewService(tokenManager, store)
-	apiKeyHandler := api_keys.NewHandler(appLogger, apiKeyService)
+	apiKeyHandler := api_keys.NewHandler(log, apiKeyService)
 
 	// Model listing endpoint (v1Routes is grouped under /v1, so this creates /v1/models)
 	//nolint:contextcheck // Context is properly accessed via gin.Context in the returned handler

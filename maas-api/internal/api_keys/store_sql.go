@@ -63,7 +63,6 @@ func NewSQLiteStore(ctx context.Context, log *logger.Logger, dbPath string) (*SQ
 	return s, nil
 }
 
-
 func (s *SQLStore) Close() error {
 	return s.db.Close()
 }
