@@ -75,23 +75,34 @@ wait_for_csv_with_min_version() {
   
   echo "⏳ Looking for ${operator_prefix} (minimum version: ${min_version})..."
   
-  local csv_name=$(find_csv_with_min_version "$operator_prefix" "$min_version" "$namespace")
-  if [ -z "$csv_name" ]; then
-    # Check if any version exists (for better error message)
+  local end_time=$((SECONDS + timeout))
+  
+  while [ $SECONDS -lt $end_time ]; do
+    local csv_name=$(find_csv_with_min_version "$operator_prefix" "$min_version" "$namespace")
+    
+    if [ -n "$csv_name" ]; then
+      # Found a CSV with suitable version
+      local installed_version=$(extract_version_from_csv "$csv_name")
+      echo "✅ Found CSV: ${csv_name} (version: ${installed_version} >= ${min_version})"
+      wait_for_csv "$csv_name" "$namespace" "$timeout"
+      return $?
+    fi
+    
+    # Check if any version exists (for progress feedback)
     local any_csv=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}' || echo "")
     if [ -n "$any_csv" ]; then
       local installed_version=$(extract_version_from_csv "$any_csv")
-      echo "❌ Found ${any_csv} with version ${installed_version}, but minimum required is ${min_version}"
-      return 1
+      echo "   Found ${any_csv} with version ${installed_version}, waiting for version >= ${min_version}..."
     else
-      echo "❌ No CSV found for operator ${operator_prefix} in namespace ${namespace}"
-      return 1
+      echo "   No CSV found for ${operator_prefix} yet, waiting for installation..."
     fi
-  fi
+    
+    sleep 10
+  done
   
-  local installed_version=$(extract_version_from_csv "$csv_name")
-  echo "✅ Found CSV: ${csv_name} (version: ${installed_version} >= ${min_version})"
-  wait_for_csv "$csv_name" "$namespace" "$timeout"
+  # Timeout reached
+  echo "❌ Timed out waiting for ${operator_prefix} with minimum version ${min_version}"
+  return 1
 }
 
 # Helper function to wait for CSV to reach Succeeded state
