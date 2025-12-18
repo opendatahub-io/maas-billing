@@ -95,13 +95,15 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		}
 	}
 
-	// Extract iat (issued at) claim from JWT (optional, defaults to 0 if unavailable)
-	var issuedAt int64
-	if iat, err := claims.GetIssuedAt(); err != nil {
-		log.Debug("Failed to extract iat claim from token", "error", err)
-	} else if iat != nil {
-		issuedAt = iat.Unix()
+	// Extract iat (issued at) claim from JWT - required for K8s SA tokens
+	iat, err := claims.GetIssuedAt()
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract iat claim: %w", err)
 	}
+	if iat == nil {
+		return nil, fmt.Errorf("token is missing required 'iat' claim")
+	}
+	issuedAt := iat.Unix()
 
 	log.Debug("Successfully generated token",
 		"expires_at", token.Status.ExpirationTimestamp.Unix(),
