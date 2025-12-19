@@ -1,7 +1,10 @@
 package models
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"time"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	"github.com/openai/openai-go/v2"
@@ -32,6 +35,93 @@ func (m *Manager) ListAvailableLLMs() ([]Model, error) {
 	}
 
 	return m.llmInferenceServicesToModels(instanceLLMs)
+}
+
+// ListAvailableLLMsForUser lists LLM models that the user has access to based on authorization checks
+func (m *Manager) ListAvailableLLMsForUser(ctx context.Context, saToken string) ([]Model, error) {
+	list, err := m.llmIsvcLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list LLMInferenceServices: %w", err)
+	}
+
+	var instanceLLMs []*kservev1alpha1.LLMInferenceService
+	for _, llmIsvc := range list {
+		if m.partOfMaaSInstance(llmIsvc) {
+			instanceLLMs = append(instanceLLMs, llmIsvc)
+		}
+	}
+
+	// Convert to models first, then filter based on authorization
+	allModels, err := m.llmInferenceServicesToModels(instanceLLMs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter models based on user authorization
+	var authorizedModels []Model
+	for _, model := range allModels {
+		if m.userCanAccessModel(ctx, model, saToken) {
+			authorizedModels = append(authorizedModels, model)
+		}
+	}
+
+	return authorizedModels, nil
+}
+
+// userCanAccessModel checks if the user can access a specific model by making an authorization request
+func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken string) bool {
+	if model.URL == nil {
+		m.logger.Debug("Model URL is nil, denying access",
+			"modelID", model.ID,
+		)
+		return false
+	}
+
+	modelURLStr := model.URL.String()
+	
+	// Create HTTP POST request for authorization check
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, modelURLStr, nil)
+	if err != nil {
+		m.logger.Debug("Failed to create authorization request",
+			"modelURL", modelURLStr,
+			"error", err,
+		)
+		return false
+	}
+
+	// Add authorization header
+	req.Header.Set("Authorization", "Bearer "+saToken)
+	
+	// Set a reasonable timeout for the authorization check
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Perform the authorization check
+	resp, err := client.Do(req)
+	if err != nil {
+		m.logger.Debug("Authorization request failed",
+			"modelURL", modelURLStr,
+			"error", err,
+		)
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Check if the user has access (2xx status codes indicate success)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		m.logger.Debug("User authorized for model",
+			"modelID", model.ID,
+			"statusCode", resp.StatusCode,
+		)
+		return true
+	}
+
+	m.logger.Debug("User not authorized for model",
+		"modelID", model.ID,
+		"statusCode", resp.StatusCode,
+	)
+	return false
 }
 
 // partOfMaaSInstance checks if the given LLMInferenceService is part of this "MaaS instance". This means that it is

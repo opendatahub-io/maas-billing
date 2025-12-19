@@ -46,7 +46,37 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 
 // ListLLMs handles GET /v1/models.
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
-	modelList, err := h.modelMgr.ListAvailableLLMs()
+	// Extract user context from request
+	_, exists := c.Get("user")
+	if !exists {
+		h.logger.Error("User context not found in request")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "Authentication context missing",
+				"type":    "server_error",
+			}})
+		return
+	}
+
+	// Extract service account token for authorization
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		h.logger.Error("Authorization header missing")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{
+				"message": "Authorization token required",
+				"type":    "authentication_error",
+			}})
+		return
+	}
+
+	// Remove "Bearer " prefix if present
+	saToken := authHeader
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		saToken = authHeader[7:]
+	}
+
+	modelList, err := h.modelMgr.ListAvailableLLMsForUser(c.Request.Context(), saToken)
 	if err != nil {
 		h.logger.Error("Failed to get available LLM models",
 			"error", err,

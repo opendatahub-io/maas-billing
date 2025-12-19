@@ -1,6 +1,9 @@
 package models_test
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
@@ -279,4 +282,76 @@ func TestListAvailableLLMs(t *testing.T) {
 
 func ptrTo[T any](v T) *T {
 	return &v
+}
+
+func TestListAvailableLLMsForUser(t *testing.T) {
+	testLogger := logger.Development()
+	gateway := models.GatewayRef{Name: "maas-gateway", Namespace: "gateway-ns"}
+
+	// Create a test LLM service with a gateway reference
+	llmService := &kservev1alpha1.LLMInferenceService{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-llm", Namespace: "test-ns"},
+		Spec: kservev1alpha1.LLMInferenceServiceSpec{
+			Router: &kservev1alpha1.RouterSpec{
+				Gateway: &kservev1alpha1.GatewaySpec{
+					Refs: []kservev1alpha1.UntypedObjectReference{
+						{Name: "maas-gateway", Namespace: "gateway-ns"},
+					},
+				},
+			},
+		},
+	}
+
+	// Create mock HTTP server to simulate authorization responses
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the request has the authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "Bearer valid-token" {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	defer authServer.Close()
+
+	t.Run("user with valid token has access", func(t *testing.T) {
+		manager, errMgr := models.NewManager(
+			testLogger,
+			fixtures.NewInferenceServiceLister(),
+			fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects([]*kservev1alpha1.LLMInferenceService{llmService})...),
+			fixtures.NewHTTPRouteLister(),
+			gateway,
+		)
+		require.NoError(t, errMgr)
+
+		// Mock the URL to point to our test server
+		llmService.Status.URL = fixtures.MustParseURL(authServer.URL)
+
+		ctx := context.Background()
+		authorizedModels, err := manager.ListAvailableLLMsForUser(ctx, "valid-token")
+		require.NoError(t, err)
+
+		assert.Len(t, authorizedModels, 1, "Expected 1 authorized model")
+		assert.Equal(t, "test-llm", authorizedModels[0].ID)
+	})
+
+	t.Run("user with invalid token has no access", func(t *testing.T) {
+		manager, errMgr := models.NewManager(
+			testLogger,
+			fixtures.NewInferenceServiceLister(),
+			fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects([]*kservev1alpha1.LLMInferenceService{llmService})...),
+			fixtures.NewHTTPRouteLister(),
+			gateway,
+		)
+		require.NoError(t, errMgr)
+
+		// Mock the URL to point to our test server
+		llmService.Status.URL = fixtures.MustParseURL(authServer.URL)
+
+		ctx := context.Background()
+		authorizedModels, err := manager.ListAvailableLLMsForUser(ctx, "invalid-token")
+		require.NoError(t, err)
+
+		assert.Len(t, authorizedModels, 0, "Expected 0 authorized models for invalid token")
+	})
 }
