@@ -32,5 +32,5 @@ spec:
        certificateRefs:
        - group: ''
          kind: Secret
-         name: default-ingress-cert
+         name: ${CERT_NAME}
        mode: Terminate

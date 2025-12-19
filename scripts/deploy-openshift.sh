@@ -240,7 +240,29 @@ echo "   Cluster domain: $CLUSTER_DOMAIN"
 echo "   Deploying Gateway and GatewayClass..."
 cd "$PROJECT_ROOT"
 kubectl apply --server-side=true --force-conflicts -f deployment/base/networking/odh/odh-gateway-api.yaml
-kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml)
+
+# Detect which TLS certificate secret exists for the MaaS gateway
+CERT_CANDIDATES=("default-gateway-cert" "data-science-gateway-service-tls")
+CERT_NAME=""
+for cert in "${CERT_CANDIDATES[@]}"; do
+    if kubectl get secret -n openshift-ingress "$cert" &>/dev/null; then
+        CERT_NAME="$cert"
+        echo "   Found TLS certificate secret: $cert"
+        break
+    fi
+done
+if [ -z "$CERT_NAME" ]; then
+    echo "   ⚠️  No TLS certificate secret found (checked: ${CERT_CANDIDATES[*]})"
+    echo "      HTTPS listener will not be configured for MaaS gateway"
+fi
+export CERT_NAME
+
+if [ -n "$CERT_NAME" ]; then
+    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN $CERT_NAME' < deployment/base/networking/maas/maas-gateway-api.yaml)
+else
+    # Apply without HTTPS listener if no cert is found
+    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml | sed '/- name: https/,/mode: Terminate/d')
+fi
 
 echo ""
 echo "5️⃣ Checking for OpenDataHub/RHOAI KServe..."
