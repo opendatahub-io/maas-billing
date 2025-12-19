@@ -162,7 +162,7 @@ func TestListingModels(t *testing.T) {
 
 	// Add middleware to simulate user context extraction
 	v1.Use(func(c *gin.Context) {
-		c.Set("user", map[string]interface{}{
+		c.Set("user", map[string]any{
 			"username": "testuser",
 			"groups":   []string{"testgroup"},
 		})

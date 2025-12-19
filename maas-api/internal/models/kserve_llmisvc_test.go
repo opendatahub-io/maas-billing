@@ -364,6 +364,6 @@ func TestListAvailableLLMsForUser(t *testing.T) {
 		authorizedModels, err := manager.ListAvailableLLMsForUser(ctx, "invalid-token")
 		require.NoError(t, err)
 
-		assert.Len(t, authorizedModels, 0, "Expected 0 authorized models for invalid token")
+		assert.Empty(t, authorizedModels, "Expected 0 authorized models for invalid token")
 	})
 }
