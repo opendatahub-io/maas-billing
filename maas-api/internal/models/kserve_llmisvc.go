@@ -37,7 +37,7 @@ func (m *Manager) ListAvailableLLMs() ([]Model, error) {
 	return m.llmInferenceServicesToModels(instanceLLMs)
 }
 
-// ListAvailableLLMsForUser lists LLM models that the user has access to based on authorization checks
+// ListAvailableLLMsForUser lists LLM models that the user has access to based on authorization checks.
 func (m *Manager) ListAvailableLLMsForUser(ctx context.Context, saToken string) ([]Model, error) {
 	list, err := m.llmIsvcLister.List(labels.Everything())
 	if err != nil {
