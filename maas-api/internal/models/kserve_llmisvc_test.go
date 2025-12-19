@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/pkg/apis"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
@@ -284,6 +285,17 @@ func ptrTo[T any](v T) *T {
 	return &v
 }
 
+func mustParseURL(rawURL string) *apis.URL {
+	if rawURL == "" {
+		return nil
+	}
+	u, err := apis.ParseURL(rawURL)
+	if err != nil {
+		panic("test setup failed: invalid URL: " + err.Error())
+	}
+	return u
+}
+
 func TestListAvailableLLMsForUser(t *testing.T) {
 	testLogger := logger.Development()
 	gateway := models.GatewayRef{Name: "maas-gateway", Namespace: "gateway-ns"}
@@ -325,7 +337,7 @@ func TestListAvailableLLMsForUser(t *testing.T) {
 		require.NoError(t, errMgr)
 
 		// Mock the URL to point to our test server
-		llmService.Status.URL = fixtures.MustParseURL(authServer.URL)
+		llmService.Status.URL = mustParseURL(authServer.URL)
 
 		ctx := context.Background()
 		authorizedModels, err := manager.ListAvailableLLMsForUser(ctx, "valid-token")
@@ -346,7 +358,7 @@ func TestListAvailableLLMsForUser(t *testing.T) {
 		require.NoError(t, errMgr)
 
 		// Mock the URL to point to our test server
-		llmService.Status.URL = fixtures.MustParseURL(authServer.URL)
+		llmService.Status.URL = mustParseURL(authServer.URL)
 
 		ctx := context.Background()
 		authorizedModels, err := manager.ListAvailableLLMsForUser(ctx, "invalid-token")

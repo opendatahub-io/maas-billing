@@ -78,7 +78,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 	}
 
 	modelURLStr := model.URL.String()
-	
+
 	// Create HTTP POST request for authorization check
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, modelURLStr, nil)
 	if err != nil {
@@ -91,7 +91,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 
 	// Add authorization header
 	req.Header.Set("Authorization", "Bearer "+saToken)
-	
+
 	// Set a reasonable timeout for the authorization check
 	client := &http.Client{
 		Timeout: 5 * time.Second,

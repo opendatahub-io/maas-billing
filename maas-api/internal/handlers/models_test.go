@@ -1,12 +1,12 @@
 package handlers_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/openai/openai-go/v2/packages/pagination"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -159,7 +159,7 @@ func TestListingModels(t *testing.T) {
 
 	modelsHandler := handlers.NewModelsHandler(testLogger, modelMgr)
 	v1 := router.Group("/v1")
-	
+
 	// Add middleware to simulate user context extraction
 	v1.Use(func(c *gin.Context) {
 		c.Set("user", map[string]interface{}{
@@ -168,7 +168,7 @@ func TestListingModels(t *testing.T) {
 		})
 		c.Next()
 	})
-	
+
 	v1.GET("/models", modelsHandler.ListLLMs)
 
 	w := httptest.NewRecorder()
