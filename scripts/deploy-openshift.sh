@@ -319,7 +319,7 @@ if [ -n "$CERT_NAME" ]; then
     kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN $CERT_NAME' < deployment/base/networking/maas/maas-gateway-api.yaml)
 else
     # Apply without HTTPS listener if no cert is found
-    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml | sed '/- name: https/,/mode: Terminate/d')
+    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml | yq eval 'del(.spec.listeners[] | select(.name == "https"))' -)
 fi
 
 
