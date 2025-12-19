@@ -68,7 +68,7 @@ func (m *Manager) ListAvailableLLMsForUser(ctx context.Context, saToken string) 
 	return authorizedModels, nil
 }
 
-// userCanAccessModel checks if the user can access a specific model by making an authorization request
+// userCanAccessModel checks if the user can access a specific model by making an authorization request.
 func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken string) bool {
 	if model.URL == nil {
 		m.logger.Debug("Model URL is nil, denying access",
