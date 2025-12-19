@@ -4,7 +4,7 @@
 # This file contains reusable helper functions for MaaS platform deployment scripts
 
 # Minimum version requirements for operators
-KUADRANT_MIN_VERSION="1.3.0"
+KUADRANT_MIN_VERSION="1.3.1"
 AUTHORINO_MIN_VERSION="0.22.0"
 LIMITADOR_MIN_VERSION="0.16.0"
 DNS_OPERATOR_MIN_VERSION="0.15.0"
