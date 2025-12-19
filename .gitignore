@@ -20,7 +20,6 @@ coverage.html
 
 # Go binaries
 bin/
-maas-api/main
 
 # Python
 __pycache__/

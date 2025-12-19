@@ -2,7 +2,6 @@ package models
 
 import (
 	"fmt"
-	"log"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	"github.com/openai/openai-go/v2"
@@ -32,7 +31,7 @@ func (m *Manager) ListAvailableLLMs() ([]Model, error) {
 		}
 	}
 
-	return llmInferenceServicesToModels(instanceLLMs)
+	return m.llmInferenceServicesToModels(instanceLLMs)
 }
 
 // partOfMaaSInstance checks if the given LLMInferenceService is part of this "MaaS instance". This means that it is
@@ -49,13 +48,16 @@ func (m *Manager) partOfMaaSInstance(llmIsvc *kservev1alpha1.LLMInferenceService
 		m.hasManagedRouteAttachedToGateway(llmIsvc)
 }
 
-func llmInferenceServicesToModels(items []*kservev1alpha1.LLMInferenceService) ([]Model, error) {
+func (m *Manager) llmInferenceServicesToModels(items []*kservev1alpha1.LLMInferenceService) ([]Model, error) {
 	models := make([]Model, 0, len(items))
 
 	for _, item := range items {
-		url := findLLMInferenceServiceURL(item)
+		url := m.findLLMInferenceServiceURL(item)
 		if url == nil {
-			log.Printf("DEBUG: Failed to find URL for LLMInferenceService %s/%s", item.Namespace, item.Name)
+			m.logger.Debug("Failed to find URL for LLMInferenceService",
+				"namespace", item.Namespace,
+				"name", item.Name,
+			)
 		}
 
 		modelID := item.Name
@@ -71,15 +73,15 @@ func llmInferenceServicesToModels(items []*kservev1alpha1.LLMInferenceService) (
 				Created: item.CreationTimestamp.Unix(),
 			},
 			URL:     url,
-			Ready:   checkLLMInferenceServiceReadiness(item),
-			Details: extractModelDetails(item),
+			Ready:   m.checkLLMInferenceServiceReadiness(item),
+			Details: m.extractModelDetails(item),
 		})
 	}
 
 	return models, nil
 }
 
-func findLLMInferenceServiceURL(llmIsvc *kservev1alpha1.LLMInferenceService) *apis.URL {
+func (m *Manager) findLLMInferenceServiceURL(llmIsvc *kservev1alpha1.LLMInferenceService) *apis.URL {
 	if llmIsvc.Status.URL != nil {
 		return llmIsvc.Status.URL
 	}
@@ -92,11 +94,14 @@ func findLLMInferenceServiceURL(llmIsvc *kservev1alpha1.LLMInferenceService) *ap
 		return llmIsvc.Status.Addresses[0].URL
 	}
 
-	log.Printf("DEBUG: No URL found for LLMInferenceService %s/%s", llmIsvc.Namespace, llmIsvc.Name)
+	m.logger.Debug("No URL found for LLMInferenceService",
+		"namespace", llmIsvc.Namespace,
+		"name", llmIsvc.Name,
+	)
 	return nil
 }
 
-func extractModelDetails(llmIsvc *kservev1alpha1.LLMInferenceService) *Details {
+func (m *Manager) extractModelDetails(llmIsvc *kservev1alpha1.LLMInferenceService) *Details {
 	annotations := llmIsvc.GetAnnotations()
 	if annotations == nil {
 		return nil
@@ -118,19 +123,24 @@ func extractModelDetails(llmIsvc *kservev1alpha1.LLMInferenceService) *Details {
 	}
 }
 
-func checkLLMInferenceServiceReadiness(llmIsvc *kservev1alpha1.LLMInferenceService) bool {
+func (m *Manager) checkLLMInferenceServiceReadiness(llmIsvc *kservev1alpha1.LLMInferenceService) bool {
 	if llmIsvc.DeletionTimestamp != nil {
 		return false
 	}
 
 	if llmIsvc.Generation > 0 && llmIsvc.Status.ObservedGeneration != llmIsvc.Generation {
-		log.Printf("DEBUG: observedGeneration %d is stale (expected %d), not ready yet",
-			llmIsvc.Status.ObservedGeneration, llmIsvc.Generation)
+		m.logger.Debug("ObservedGeneration is stale, not ready yet",
+			"observed_generation", llmIsvc.Status.ObservedGeneration,
+			"expected_generation", llmIsvc.Generation,
+		)
 		return false
 	}
 
 	if len(llmIsvc.Status.Conditions) == 0 {
-		log.Printf("DEBUG: No conditions found for LLMInferenceService %s/%s", llmIsvc.Namespace, llmIsvc.Name)
+		m.logger.Debug("No conditions found for LLMInferenceService",
+			"namespace", llmIsvc.Namespace,
+			"name", llmIsvc.Name,
+		)
 		return false
 	}
 
@@ -197,7 +207,11 @@ func (m *Manager) hasReferencedRouteAttachedToGateway(llmIsvc *kservev1alpha1.LL
 	for _, routeRef := range llmIsvc.Spec.Router.Route.HTTP.Refs {
 		route, err := m.httpRouteLister.HTTPRoutes(llmIsvc.Namespace).Get(routeRef.Name)
 		if err != nil {
-			log.Printf("DEBUG: HTTPRoute %s/%s not in cache: %v", llmIsvc.Namespace, routeRef.Name, err)
+			m.logger.Debug("HTTPRoute not in cache",
+				"namespace", llmIsvc.Namespace,
+				"name", routeRef.Name,
+				"error", err,
+			)
 			continue
 		}
 		if route == nil {
@@ -230,7 +244,11 @@ func (m *Manager) hasManagedRouteAttachedToGateway(llmIsvc *kservev1alpha1.LLMIn
 
 	routes, err := m.httpRouteLister.HTTPRoutes(llmIsvc.Namespace).List(selector)
 	if err != nil {
-		log.Printf("DEBUG: Failed to list HTTPRoutes for LLM %s/%s: %v", llmIsvc.Namespace, llmIsvc.Name, err)
+		m.logger.Debug("Failed to list HTTPRoutes for LLM",
+			"namespace", llmIsvc.Namespace,
+			"name", llmIsvc.Name,
+			"error", err,
+		)
 		return false
 	}
 

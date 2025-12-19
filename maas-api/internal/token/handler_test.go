@@ -2,50 +2,28 @@ package token_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/test/fixtures"
 )
-
-// MockManager is a mock type for the Manager.
-type MockManager struct {
-	mock.Mock
-}
-
-func (m *MockManager) GenerateToken(ctx context.Context, user *token.UserContext, expiration time.Duration, name string) (*token.Token, error) {
-	args := m.Called(ctx, user, expiration, name)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	tok, ok := args.Get(0).(*token.Token)
-	if !ok {
-		return nil, args.Error(1)
-	}
-	return tok, args.Error(1)
-}
-
-func (m *MockManager) GetNamespaceForUser(ctx context.Context, user *token.UserContext) (string, error) {
-	args := m.Called(ctx, user)
-	return args.String(0), args.Error(1)
-}
 
 func TestAPIEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	testLogger := logger.Development()
-	mockManager := new(MockManager)
-	handler := token.NewHandler(testLogger, "test", mockManager)
+	manager, _, cleanup := fixtures.StubTokenProviderAPIs(t, true)
+	defer cleanup()
+
+	handler := token.NewHandler(testLogger, "test", manager)
 
 	router := gin.New()
 	router.Use(handler.ExtractUserInfo())
@@ -65,7 +43,7 @@ func TestAPIEndpoints(t *testing.T) {
 		{
 			name:            "Ephemeral",
 			username:        "test-user",
-			group:           `["test-group","system:authenticated"]`,
+			group:           `["maas-users","system:authenticated"]`,
 			expectedStatus:  http.StatusCreated,
 			shouldHaveToken: true,
 			description:     "Valid headers should issue token",
@@ -73,7 +51,7 @@ func TestAPIEndpoints(t *testing.T) {
 		{
 			name:           "Missing Username Header",
 			username:       "",
-			group:          `["test-group"]`,
+			group:          `["maas-users"]`,
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  "Exception thrown while generating token",
 			expectedCode:   "AUTH_FAILURE",
@@ -104,12 +82,6 @@ func TestAPIEndpoints(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.shouldHaveToken {
-				// Setup expectation for successful token generation
-				expectedToken := &token.Token{Token: "ephemeral-jwt", ExpiresAt: time.Now().Add(1 * time.Hour).Unix()}
-				mockManager.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "").Return(expectedToken, nil).Once()
-			}
-
 			reqBody, _ := json.Marshal(map[string]any{})
 			req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/tokens", bytes.NewBuffer(reqBody))
 
@@ -125,7 +97,7 @@ func TestAPIEndpoints(t *testing.T) {
 			router.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d. Description: %s", tt.expectedStatus, w.Code, tt.description)
+				t.Errorf("expected status %d, got %d. Description: %s. Body: %s", tt.expectedStatus, w.Code, tt.description, w.Body.String())
 			}
 
 			var response map[string]any
@@ -136,7 +108,6 @@ func TestAPIEndpoints(t *testing.T) {
 				if response["token"] == nil || response["token"] == "" {
 					t.Errorf("expected non-empty token. Description: %s", tt.description)
 				}
-				mockManager.AssertExpectations(t)
 			} else {
 				if response["error"] == nil {
 					t.Errorf("expected error. Description: %s", tt.description)

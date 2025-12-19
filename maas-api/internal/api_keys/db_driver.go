@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 	_ "github.com/mattn/go-sqlite3"    // SQLite driver
 	"k8s.io/utils/env"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 )
 
 type DBType string
@@ -26,7 +27,7 @@ const (
 )
 
 // Currently supports PostgreSQL only.
-func NewExternalStore(ctx context.Context, databaseURL string) (*SQLStore, error) {
+func NewExternalStore(ctx context.Context, log *logger.Logger, databaseURL string) (*SQLStore, error) {
 	databaseURL = strings.TrimSpace(databaseURL)
 
 	if !strings.HasPrefix(databaseURL, "postgresql://") && !strings.HasPrefix(databaseURL, "postgres://") {
@@ -47,13 +48,13 @@ func NewExternalStore(ctx context.Context, databaseURL string) (*SQLStore, error
 		return nil, fmt.Errorf("failed to connect to PostgreSQL database: %w", err)
 	}
 
-	s := &SQLStore{db: db, dbType: DBTypePostgres}
+	s := &SQLStore{db: db, dbType: DBTypePostgres, logger: log}
 	if err := s.initSchema(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	log.Printf("Connected to external PostgreSQL database")
+	log.Info("Connected to external PostgreSQL database")
 	return s, nil
 }
 

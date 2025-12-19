@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1" //nolint:gosec // SHA1 used for non-cryptographic hashing of usernames, not for security
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -12,7 +13,7 @@ import (
 
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	corelistersv1 "k8s.io/client-go/listers/core/v1"
@@ -53,7 +54,7 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 	// name parameter is ignored - kept for interface compatibility
 	_ = name
 
-	log := m.logger.WithContext(ctx).WithFields(
+	log := m.logger.WithFields(
 		"expiration", expiration.String(),
 	)
 
@@ -95,18 +96,15 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 		}
 	}
 
-	// Extract iat (issued at) claim from JWT
-	var issuedAt int64
-	if iatClaim, ok := claims["iat"]; ok {
-		switch v := iatClaim.(type) {
-		case float64:
-			issuedAt = int64(v)
-		case int64:
-			issuedAt = v
-		case int:
-			issuedAt = int64(v)
-		}
+	// Extract iat (issued at) claim from JWT - required for K8s SA tokens
+	iat, err := claims.GetIssuedAt()
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract iat claim: %w", err)
 	}
+	if iat == nil {
+		return nil, errors.New("token is missing required 'iat' claim")
+	}
+	issuedAt := iat.Unix()
 
 	log.Debug("Successfully generated token",
 		"expires_at", token.Status.ExpirationTimestamp.Unix(),
@@ -125,59 +123,47 @@ func (m *Manager) GenerateToken(ctx context.Context, user *UserContext, expirati
 }
 
 // RevokeTokens revokes all tokens for a user by recreating their Service Account.
-// Returns the namespace where the revocation happened.
-func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) (string, error) {
-	log := m.logger.WithContext(ctx)
+func (m *Manager) RevokeTokens(ctx context.Context, user *UserContext) error {
+	log := m.logger
 
 	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
 	if err != nil {
-		return "", fmt.Errorf("failed to determine user tier for %s (groups: %v): %w", user.Username, user.Groups, err)
+		return fmt.Errorf("failed to determine user tier for %s (groups: %v): %w", user.Username, user.Groups, err)
 	}
 
 	log = log.WithFields("tier", userTier.Name)
 	namespace, errNS := m.tierMapper.Namespace(userTier.Name)
 	if errNS != nil {
-		return "", fmt.Errorf("failed to determine namespace for tier %s: %w", userTier.Name, errNS)
+		return fmt.Errorf("failed to determine namespace for tier %s: %w", userTier.Name, errNS)
 	}
 
 	saName, errName := m.sanitizeServiceAccountName(user.Username)
 	if errName != nil {
-		return namespace, fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
+		return fmt.Errorf("failed to sanitize service account name for user %s: %w", user.Username, errName)
 	}
 
 	_, err = m.serviceAccountLister.ServiceAccounts(namespace).Get(saName)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		log.Debug("Service account not found, nothing to revoke")
-		return namespace, nil
+		return nil
 	}
 
 	if err != nil {
-		return namespace, fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
+		return fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	err = m.deleteServiceAccount(ctx, namespace, saName)
 	if err != nil {
-		return namespace, fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
+		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
 	_, err = m.ensureServiceAccount(ctx, namespace, user.Username, userTier.Name)
 	if err != nil {
-		return namespace, fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
+		return fmt.Errorf("failed to recreate service account for user %s in namespace %s: %w", user.Username, namespace, err)
 	}
 
 	log.Debug("Successfully revoked all tokens for user")
-	return namespace, nil
-}
-
-// GetNamespaceForUser returns the namespace for a user based on their tier.
-func (m *Manager) GetNamespaceForUser(ctx context.Context, user *UserContext) (string, error) {
-	userTier, err := m.tierMapper.GetTierForGroups(user.Groups...)
-	if err != nil {
-		return "", fmt.Errorf("failed to determine user tier for %s: %w", user.Username, err)
-	}
-
-	namespace := m.tierMapper.ProjectedNsName(userTier)
-	return namespace, nil
+	return nil
 }
 
 // ensureTierNamespace creates a tier-based namespace if it doesn't exist.
@@ -193,7 +179,7 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 		return namespace, nil
 	}
 
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check namespace %s: %w", namespace, err)
 	}
 
@@ -206,13 +192,13 @@ func (m *Manager) ensureTierNamespace(ctx context.Context, tier string) (string,
 
 	_, err = m.clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			return namespace, nil
 		}
 		return "", fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Info("Created tier namespace",
+	m.logger.Info("Created tier namespace",
 		"tier", tier,
 	)
 	return namespace, nil
@@ -231,7 +217,7 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 		return saName, nil
 	}
 
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return "", fmt.Errorf("failed to check service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
@@ -245,13 +231,13 @@ func (m *Manager) ensureServiceAccount(ctx context.Context, namespace, username,
 
 	_, err = m.clientset.CoreV1().ServiceAccounts(namespace).Create(ctx, sa, metav1.CreateOptions{})
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			return saName, nil
 		}
 		return "", fmt.Errorf("failed to create service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Debug("Created service account",
+	m.logger.Debug("Created service account",
 		"tier", userTier,
 	)
 	return saName, nil
@@ -281,13 +267,13 @@ func (m *Manager) createServiceAccountToken(ctx context.Context, namespace, saNa
 func (m *Manager) deleteServiceAccount(ctx context.Context, namespace, saName string) error {
 	err := m.clientset.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("failed to delete service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	m.logger.WithContext(ctx).Debug("Deleted service account")
+	m.logger.Debug("Deleted service account")
 	return nil
 }
 

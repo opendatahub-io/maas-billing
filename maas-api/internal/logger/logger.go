@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"context"
 	"os"
 
 	"go.uber.org/zap"
@@ -80,13 +79,6 @@ func New(debug bool) *Logger {
 func NewFromEnv() *Logger {
 	debug := os.Getenv("DEBUG_MODE") == "true" || os.Getenv("DEBUG_MODE") == "1"
 	return New(debug)
-}
-
-// WithContext returns the logger as-is.
-// Callers should use WithFields() to add context-specific fields explicitly.
-// This approach is more explicit and avoids magic context key lookups.
-func (l *Logger) WithContext(_ context.Context) *Logger {
-	return l
 }
 
 // WithFields returns a logger with additional structured fields.

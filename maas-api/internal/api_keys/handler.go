@@ -76,7 +76,7 @@ func (h *Handler) CreateAPIKey(c *gin.Context) {
 
 	tok, err := h.service.CreateAPIKey(c.Request.Context(), user, req.Name, req.Description, expiration)
 	if err != nil {
-		h.logger.WithContext(c.Request.Context()).Error("Failed to generate API key",
+		h.logger.Error("Failed to generate API key",
 			"error", err,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate api key"})
@@ -108,7 +108,7 @@ func (h *Handler) ListAPIKeys(c *gin.Context) {
 
 	tokens, err := h.service.ListAPIKeys(c.Request.Context(), user)
 	if err != nil {
-		h.logger.WithContext(c.Request.Context()).Error("Failed to list API keys",
+		h.logger.Error("Failed to list API keys",
 			"error", err,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list api keys"})
@@ -125,25 +125,13 @@ func (h *Handler) GetAPIKey(c *gin.Context) {
 		return
 	}
 
-	userCtx, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "User context not found"})
-		return
-	}
-
-	user, ok := userCtx.(*token.UserContext)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user context type"})
-		return
-	}
-
-	tok, err := h.service.GetAPIKey(c.Request.Context(), user, tokenID)
+	tok, err := h.service.GetAPIKey(c.Request.Context(), tokenID)
 	if err != nil {
 		if errors.Is(err, ErrTokenNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
 			return
 		}
-		h.logger.WithContext(c.Request.Context()).Error("Failed to get API key",
+		h.logger.Error("Failed to get API key",
 			"error", err,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve API key"})
@@ -168,13 +156,13 @@ func (h *Handler) RevokeAllTokens(c *gin.Context) {
 	}
 
 	if err := h.service.RevokeAll(c.Request.Context(), user); err != nil {
-		h.logger.WithContext(c.Request.Context()).Error("Failed to revoke tokens",
+		h.logger.Error("Failed to revoke tokens",
 			"error", err,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke tokens"})
 		return
 	}
 
-	h.logger.WithContext(c.Request.Context()).Debug("Successfully revoked tokens")
+	h.logger.Debug("Successfully revoked tokens")
 	c.Status(http.StatusNoContent)
 }

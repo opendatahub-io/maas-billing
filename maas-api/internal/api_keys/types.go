@@ -9,7 +9,6 @@ type APIKey struct {
 
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Namespace   string `json:"-"` // Internal use only
 }
 
 // ApiKeyMetadata represents metadata for a single API key (without the token itself).
