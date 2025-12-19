@@ -210,7 +210,7 @@ func TestListingModels(t *testing.T) {
 		if scenario.Name == "model-without-url" {
 			continue
 		}
-		
+
 		// expected ID mirrors toModels(): fallback to metadata.name unless spec.model.name is non-empty
 		expectedModelID := scenario.Name
 		if scenario.SpecModelName != nil && *scenario.SpecModelName != "" {
