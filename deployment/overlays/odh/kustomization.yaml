@@ -67,6 +67,7 @@ replacements:
     - spec.parentRefs.0.namespace
   - select:
       kind: AuthPolicy
+      name: gateway-auth-policy
     fieldPaths:
     - metadata.namespace
 - source:
@@ -82,5 +83,6 @@ replacements:
     - spec.parentRefs.0.name
   - select:
       kind: AuthPolicy
+      name: gateway-auth-policy
     fieldPaths:
     - spec.targetRef.name
