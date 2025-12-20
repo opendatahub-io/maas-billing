@@ -69,6 +69,7 @@ func (m *Manager) ListAvailableLLMsForUser(ctx context.Context, saToken string) 
 }
 
 // userCanAccessModel checks if the user can access a specific model by making an authorization request.
+// Uses HEAD request with retry logic as recommended in PR feedback for production resilience.
 func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken string) bool {
 	if model.URL == nil {
 		m.logger.Debug("Model URL is nil, denying access",
@@ -79,47 +80,96 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 
 	modelURLStr := model.URL.String()
 
-	// Create HTTP POST request for authorization check
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, modelURLStr, nil)
-	if err != nil {
-		m.logger.Debug("Failed to create authorization request",
-			"modelURL", modelURLStr,
-			"error", err,
-		)
-		return false
+	// Retry logic with exponential backoff as specified in PR feedback
+	retryDelays := []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond}
+
+	for attempt := 0; attempt < len(retryDelays); attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return false
+			case <-time.After(retryDelays[attempt-1]):
+				// Continue with retry
+			}
+		}
+
+		// Create HTTP HEAD request for lightweight authorization check
+		// HEAD aligns with gateway policies while avoiding POST issues on inference endpoints
+		req, err := http.NewRequestWithContext(ctx, http.MethodHead, modelURLStr, nil)
+		if err != nil {
+			m.logger.Debug("Failed to create authorization request",
+				"modelURL", modelURLStr,
+				"attempt", attempt+1,
+				"error", err,
+			)
+			continue
+		}
+
+		// Add authorization header
+		req.Header.Set("Authorization", "Bearer "+saToken)
+
+		// Set a reasonable timeout for the authorization check
+		client := &http.Client{
+			Timeout: 3 * time.Second,
+		}
+
+		// Perform the authorization check
+		resp, err := client.Do(req)
+		if err != nil {
+			m.logger.Debug("Authorization request failed",
+				"modelURL", modelURLStr,
+				"attempt", attempt+1,
+				"error", err,
+			)
+			// Continue to next retry
+			continue
+		}
+		resp.Body.Close()
+
+		// Check if the user has access (2xx status codes indicate success)
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			m.logger.Debug("User authorized for model",
+				"modelID", model.ID,
+				"statusCode", resp.StatusCode,
+				"attempt", attempt+1,
+			)
+			return true
+		}
+
+		// Handle specific HTTP status codes
+		switch resp.StatusCode {
+		case 401, 403:
+			// Clear authorization failure - user is not authorized
+			m.logger.Debug("User not authorized for model",
+				"modelID", model.ID,
+				"statusCode", resp.StatusCode,
+				"attempt", attempt+1,
+			)
+			return false
+		case 404, 405:
+			// Model endpoint doesn't support HEAD requests
+			// Fall back to allowing access since endpoint exists but doesn't support auth check
+			m.logger.Debug("Model endpoint doesn't support HEAD request, allowing access",
+				"modelID", model.ID,
+				"statusCode", resp.StatusCode,
+				"attempt", attempt+1,
+			)
+			return true
+		default:
+			// Retry on server errors (5xx) or other unexpected codes
+			m.logger.Debug("Unexpected status code, retrying",
+				"modelID", model.ID,
+				"statusCode", resp.StatusCode,
+				"attempt", attempt+1,
+			)
+			continue
+		}
 	}
 
-	// Add authorization header
-	req.Header.Set("Authorization", "Bearer "+saToken)
-
-	// Set a reasonable timeout for the authorization check
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	// Perform the authorization check
-	resp, err := client.Do(req)
-	if err != nil {
-		m.logger.Debug("Authorization request failed",
-			"modelURL", modelURLStr,
-			"error", err,
-		)
-		return false
-	}
-	defer resp.Body.Close()
-
-	// Check if the user has access (2xx status codes indicate success)
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		m.logger.Debug("User authorized for model",
-			"modelID", model.ID,
-			"statusCode", resp.StatusCode,
-		)
-		return true
-	}
-
-	m.logger.Debug("User not authorized for model",
+	// All retries exhausted, deny access
+	m.logger.Debug("All authorization attempts failed, denying access",
 		"modelID", model.ID,
-		"statusCode", resp.StatusCode,
+		"attempts", len(retryDelays),
 	)
 	return false
 }

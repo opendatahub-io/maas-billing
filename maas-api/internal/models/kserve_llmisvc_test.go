@@ -314,8 +314,14 @@ func TestListAvailableLLMsForUser(t *testing.T) {
 		},
 	}
 
-	// Create mock HTTP server to simulate authorization responses
+	// Create mock HTTP server to simulate authorization responses for HEAD requests
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify this is a HEAD request as per new implementation
+		if r.Method != http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
 		// Check if the request has the authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "Bearer valid-token" {
