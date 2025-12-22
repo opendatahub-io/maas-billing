@@ -147,14 +147,14 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 			)
 			return false
 		case http.StatusNotFound, http.StatusMethodNotAllowed:
-			// Model endpoint doesn't support HEAD requests
-			// Fall back to allowing access since endpoint exists but doesn't support auth check
-			m.logger.Debug("Model endpoint doesn't support HEAD request, allowing access",
+			// Model endpoint doesn't support HEAD requests - this indicates authorization enforcement is not available
+			// SECURITY: Deny access when authorization cannot be verified
+			m.logger.Debug("Model endpoint doesn't support HEAD request, denying access due to unverifiable authorization",
 				"modelID", model.ID,
 				"statusCode", resp.StatusCode,
 				"attempt", attempt+1,
 			)
-			return true
+			return false
 		default:
 			// Retry on server errors (5xx) or other unexpected codes
 			m.logger.Debug("Unexpected status code, retrying",

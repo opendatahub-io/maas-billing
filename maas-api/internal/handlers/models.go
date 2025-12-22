@@ -47,18 +47,6 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 
 // ListLLMs handles GET /v1/models.
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
-	// Extract user context from request
-	_, exists := c.Get("user")
-	if !exists {
-		h.logger.Error("User context not found in request")
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": "Authentication context missing",
-				"type":    "server_error",
-			}})
-		return
-	}
-
 	// Extract service account token for authorization as recommended in PR feedback
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
@@ -73,8 +61,22 @@ func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 
 	// Use strings.TrimSpace and strings.CutPrefix as suggested in PR feedback
 	saToken := strings.TrimSpace(authHeader)
-	saToken, _ = strings.CutPrefix(saToken, "Bearer ")
+	saToken, hasBearerPrefix := strings.CutPrefix(saToken, "Bearer ")
 	saToken = strings.TrimSpace(saToken)
+
+	// Validate token is non-empty after processing
+	if saToken == "" {
+		h.logger.Error("Empty token after processing authorization header",
+			"authHeader", authHeader,
+			"hasBearerPrefix", hasBearerPrefix,
+		)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{
+				"message": "Valid authorization token required",
+				"type":    "authentication_error",
+			}})
+		return
+	}
 
 	modelList, err := h.modelMgr.ListAvailableLLMsForUser(c.Request.Context(), saToken)
 	if err != nil {
