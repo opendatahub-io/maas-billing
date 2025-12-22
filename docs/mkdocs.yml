@@ -68,6 +68,7 @@ nav:
     - Model Setup: configuration-and-management/model-setup.md
     - Known Issues:
       - Group Membership: configuration-and-management/group-membership-known-issues.md
+      - Tier Modification: configuration-and-management/tier-modification-known-issues.md
     - Advanced Administration:
       - Observability: advanced-administration/observability.md
       - Limitador Persistence: advanced-administration/limitador-persistence.md
