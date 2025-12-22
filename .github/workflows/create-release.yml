@@ -1,3 +1,29 @@
+# Create Release Workflow
+#
+# This workflow creates a release tag and optionally builds/pushes the maas-api image.
+#
+# Usage:
+#   1. Go to Actions > Create Release > Run workflow
+#   2. Enter the tag (e.g., v1.0.0)
+#   3. Optionally enable "Build and push maas-api image to quay.io"
+#   4. Optionally enable "Create GitHub release"
+#
+# What it does:
+#   - Updates kustomization files with the new tag
+#   - Commits the changes locally
+#   - Creates and pushes a git tag (tag only, not the branch)
+#   - Optionally builds and pushes the maas-api image to quay.io
+#   - Optionally creates a GitHub release
+#
+# Tag Management:
+#   The workflow updates image tags in these files:
+#   - deployment/base/maas-api/kustomization.yaml
+#   - maas-api/deploy/overlays/dev/kustomization.yaml
+#   - maas-api/deploy/overlays/odh/params.env
+#
+# Note: The tag is pushed separately from the branch. The commit with updated
+#       tags exists only in the tag, not on the main branch.
+
 name: Create Release
 
 on:
@@ -7,6 +33,16 @@ on:
         description: 'Release tag (e.g., v1.0.0)'
         required: true
         type: string
+      build_and_push:
+        description: 'Build and push maas-api image to quay.io'
+        required: false
+        type: boolean
+        default: false
+      quay_repo:
+        description: 'Quay.io repository (e.g., quay.io/maas/maas-api)'
+        required: false
+        type: string
+        default: 'quay.io/maas/maas-api'
       create_release:
         description: 'Create GitHub release'
         required: false
@@ -41,6 +77,7 @@ jobs:
             echo "Continuing anyway..."
           fi
 
+      # Update all kustomization files with the new tag using the helper script
       - name: Update kustomization files with new tag
         run: |
           chmod +x scripts/update-kustomize-tag.sh
@@ -71,6 +108,8 @@ jobs:
           
           git commit -m "chore: update image tag to ${{ inputs.tag }}"
           
+      # Create and push the git tag. Note: Only the tag is pushed, not the branch.
+      # The commit with updated tags exists in the tag but not on the main branch.
       - name: Create and push git tag
         run: |
           TAG="${{ inputs.tag }}"
@@ -84,7 +123,7 @@ jobs:
           
           # Create annotated tag pointing to current commit
           git tag -a "$TAG" -m "Release $TAG"
-          # Push only the tag, not the branch
+          # Push only the tag, not the branch (this ensures tag-specific changes stay in the tag)
           git push origin "$TAG"
 
       - name: Setup Go
