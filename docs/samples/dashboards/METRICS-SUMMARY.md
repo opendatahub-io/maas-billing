@@ -308,10 +308,30 @@ sum by (user) (authorized_calls) / (sum by (user) (authorized_calls) + sum by (u
 
 - **TelemetryPolicy**: `deployment/base/observability/telemetry-policy.yaml`
 - **ServiceMonitor**: `deployment/base/observability/servicemonitor.yaml`
-- **Platform Admin Dashboard**: `docs/samples/dashboards/platform-admin-dashboard.json`
-- **AI Engineer Dashboard**: `docs/samples/dashboards/ai-engineer-dashboard.json`
-- **Token Metrics Dashboard**: `docs/samples/dashboards/maas-token-metrics-dashboard.json`
+- **Platform Admin Dashboard JSON**: `docs/samples/dashboards/platform-admin-dashboard.json`
+- **AI Engineer Dashboard JSON**: `docs/samples/dashboards/ai-engineer-dashboard.json`
+- **Token Metrics Dashboard JSON**: `docs/samples/dashboards/maas-token-metrics-dashboard.json`
 - **Deployment Script**: `deployment/scripts/observability/deploy-openshift-observability.sh`
+
+### GitOps Dashboard Installation (Persistent)
+
+- **Dashboard Kustomization**: `deployment/components/observability/dashboards/kustomization.yaml`
+- **Platform Admin CRD**: `deployment/components/observability/dashboards/dashboard-platform-admin.yaml`
+- **AI Engineer CRD**: `deployment/components/observability/dashboards/dashboard-ai-engineer.yaml`
+
+**Deploy persistent dashboards:**
+```bash
+# Ensure Grafana instance has the label
+oc label grafana grafana -n llm-observability app=grafana
+
+# Apply dashboard CRDs
+oc apply -k deployment/components/observability/dashboards
+```
+
+**Dashboards installed via CRDs:**
+- ✅ Platform Admin Dashboard → `MaaS v1.0` folder
+- ✅ AI Engineer Dashboard → `MaaS v1.0` folder
+- ⚠️ Token Metrics Dashboard → Manual import only (source in `docs/samples/dashboards/`)
 
 ---
 
