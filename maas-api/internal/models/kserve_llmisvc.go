@@ -83,7 +83,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 	// Retry logic with exponential backoff as specified in PR feedback
 	retryDelays := []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond}
 
-	for attempt := 0; attempt < len(retryDelays); attempt++ {
+	for attempt := range len(retryDelays) {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -138,7 +138,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 
 		// Handle specific HTTP status codes
 		switch resp.StatusCode {
-		case 401, 403:
+		case http.StatusUnauthorized, http.StatusForbidden:
 			// Clear authorization failure - user is not authorized
 			m.logger.Debug("User not authorized for model",
 				"modelID", model.ID,
@@ -146,7 +146,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 				"attempt", attempt+1,
 			)
 			return false
-		case 404, 405:
+		case http.StatusNotFound, http.StatusMethodNotAllowed:
 			// Model endpoint doesn't support HEAD requests
 			// Fall back to allowing access since endpoint exists but doesn't support auth check
 			m.logger.Debug("Model endpoint doesn't support HEAD request, allowing access",
