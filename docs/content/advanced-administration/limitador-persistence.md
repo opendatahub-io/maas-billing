@@ -71,7 +71,7 @@ For detailed, official instructions on production Redis setup, refer to the Red 
 
 A basic Redis setup script is provided for local development and validation. This script deploys a non-production Redis instance.
 
-**Script Location:** [`deployment/scripts/setup-redis.sh`](https://github.com/opendatahub-io/models-as-a-service/blob/main/deployment/scripts/setup-redis.sh)
+**Script Location:** [`scripts/setup-redis.sh`](https://github.com/opendatahub-io/models-as-a-service/blob/main/scripts/setup-redis.sh)
 
 ### Namespace Selection
 
@@ -86,13 +86,13 @@ This opinionated default simplifies troubleshooting and ensures consistent deplo
 
 ```bash
 # Make the script executable
-chmod +x deployment/scripts/setup-redis.sh
+chmod +x scripts/setup-redis.sh
 
 # Run with default namespace (redis-limitador)
-./deployment/scripts/setup-redis.sh
+./scripts/setup-redis.sh
 
 # Or override with environment variable
-NAMESPACE=my-namespace ./deployment/scripts/setup-redis.sh
+NAMESPACE=my-namespace ./scripts/setup-redis.sh
 ```
 
 The script will:
@@ -103,13 +103,13 @@ The script will:
 - Output instructions for creating a Secret and configuring your Limitador CR
 
 !!! note
-    **Single Source of Truth**: The script content is maintained only in `deployment/scripts/setup-redis.sh`. Any updates to the script are automatically reflected when users download and run it.
+    **Single Source of Truth**: The script content is maintained only in `scripts/setup-redis.sh`. Any updates to the script are automatically reflected when users download and run it.
 
 ---
 
 ## How to Validate Persistence
 
-. **Run the script**: `./deployment/scripts/setup-redis.sh`
+. **Run the script**: `./scripts/setup-redis.sh`
 
    This will deploy Redis to the `redis-limitador` namespace by default (or use your `NAMESPACE` env var).
 

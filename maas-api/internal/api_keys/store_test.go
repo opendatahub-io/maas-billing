@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/api_keys"
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,8 @@ import (
 func createTestStore(t *testing.T) api_keys.MetadataStore {
 	t.Helper()
 	ctx := context.Background()
-	store, err := api_keys.NewSQLiteStore(ctx, ":memory:")
+	testLogger := logger.Development()
+	store, err := api_keys.NewSQLiteStore(ctx, testLogger, ":memory:")
 	require.NoError(t, err, "failed to create test store")
 	return store
 }
@@ -23,7 +25,7 @@ func createTestStore(t *testing.T) api_keys.MetadataStore {
 func TestStore(t *testing.T) {
 	ctx := t.Context()
 
-store := createTestStore(t)
+	store := createTestStore(t)
 	defer store.Close()
 
 	t.Run("AddTokenMetadata", func(t *testing.T) {
@@ -34,10 +36,10 @@ store := createTestStore(t)
 			},
 			Name: "token1",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token1", tokens[0].Name)
@@ -52,10 +54,10 @@ store := createTestStore(t)
 			},
 			Name: "token2",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 2)
 	})
@@ -68,20 +70,20 @@ store := createTestStore(t)
 			},
 			Name: "token3",
 		}
-		err := store.Add(ctx, "test-ns", "user2", apiKey)
+		err := store.Add(ctx, "user2", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user2")
+		tokens, err := store.List(ctx, "user2")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, "token3", tokens[0].Name)
 	})
 
 	t.Run("MarkTokensAsExpiredForUser", func(t *testing.T) {
-		err := store.InvalidateAll(ctx, "test-ns", "user1")
+		err := store.InvalidateAll(ctx, "user1")
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user1")
+		tokens, err := store.List(ctx, "user1")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 2)
 		for _, tok := range tokens {
@@ -89,13 +91,13 @@ store := createTestStore(t)
 		}
 
 		// User2 should still exist
-		tokens2, err := store.List(ctx, "test-ns", "user2")
+		tokens2, err := store.List(ctx, "user2")
 		require.NoError(t, err)
 		assert.Len(t, tokens2, 1)
 	})
 
 	t.Run("GetToken", func(t *testing.T) {
-		gotToken, err := store.Get(ctx, "test-ns", "user2", "jti3")
+		gotToken, err := store.Get(ctx, "jti3")
 		require.NoError(t, err)
 		assert.NotNil(t, gotToken)
 		assert.Equal(t, "token3", gotToken.Name)
@@ -109,60 +111,18 @@ store := createTestStore(t)
 			},
 			Name: "expired-token",
 		}
-		err := store.Add(ctx, "test-ns", "user4", apiKey)
+		err := store.Add(ctx, "user4", apiKey)
 		require.NoError(t, err)
 
-		tokens, err := store.List(ctx, "test-ns", "user4")
+		tokens, err := store.List(ctx, "user4")
 		require.NoError(t, err)
 		assert.Len(t, tokens, 1)
 		assert.Equal(t, api_keys.TokenStatusExpired, tokens[0].Status)
 
 		// Get single token check
-		gotToken, err := store.Get(ctx, "test-ns", "user4", "jti-expired")
+		gotToken, err := store.Get(ctx, "jti-expired")
 		require.NoError(t, err)
 		assert.Equal(t, api_keys.TokenStatusExpired, gotToken.Status)
-	})
-
-	t.Run("CrossNamespaceIsolation", func(t *testing.T) {
-		apiKey1 := &api_keys.APIKey{
-			Token: token.Token{
-				JTI:       "jti-ns1",
-				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
-			},
-			Name: "ns1-token",
-		}
-		err := store.Add(ctx, "namespace-1", "shared-user", apiKey1)
-		require.NoError(t, err)
-
-		apiKey2 := &api_keys.APIKey{
-			Token: token.Token{
-				JTI:       "jti-ns2",
-				ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
-			},
-			Name: "ns2-token",
-		}
-		err = store.Add(ctx, "namespace-2", "shared-user", apiKey2)
-		require.NoError(t, err)
-
-		tokens1, err := store.List(ctx, "namespace-1", "shared-user")
-		require.NoError(t, err)
-		assert.Len(t, tokens1, 1)
-		assert.Equal(t, "ns1-token", tokens1[0].Name)
-		assert.Equal(t, "jti-ns1", tokens1[0].ID)
-
-		tokens2, err := store.List(ctx, "namespace-2", "shared-user")
-		require.NoError(t, err)
-		assert.Len(t, tokens2, 1)
-		assert.Equal(t, "ns2-token", tokens2[0].Name)
-		assert.Equal(t, "jti-ns2", tokens2[0].ID)
-
-		gotToken1, err := store.Get(ctx, "namespace-1", "shared-user", "jti-ns1")
-		require.NoError(t, err)
-		assert.Equal(t, "ns1-token", gotToken1.Name)
-
-		_, err = store.Get(ctx, "namespace-1", "shared-user", "jti-ns2")
-		require.Error(t, err)
-		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
 }
 
@@ -179,7 +139,7 @@ func TestStoreValidation(t *testing.T) {
 			},
 			Name: "token-no-jti",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, api_keys.ErrEmptyJTI)
 	})
@@ -192,13 +152,13 @@ func TestStoreValidation(t *testing.T) {
 			},
 			Name: "",
 		}
-		err := store.Add(ctx, "test-ns", "user1", apiKey)
+		err := store.Add(ctx, "user1", apiKey)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, api_keys.ErrEmptyName)
 	})
 
 	t.Run("TokenNotFound", func(t *testing.T) {
-		_, err := store.Get(ctx, "test-ns", "nonexistent-user", "nonexistent-jti")
+		_, err := store.Get(ctx, "nonexistent-jti")
 		require.Error(t, err)
 		assert.Equal(t, api_keys.ErrTokenNotFound, err)
 	})
@@ -206,24 +166,25 @@ func TestStoreValidation(t *testing.T) {
 
 func TestSQLiteStore(t *testing.T) {
 	ctx := context.Background()
+	testLogger := logger.Development()
 
 	t.Run("InMemory", func(t *testing.T) {
-		store, err := api_keys.NewSQLiteStore(ctx, ":memory:")
+		store, err := api_keys.NewSQLiteStore(ctx, testLogger, ":memory:")
 		require.NoError(t, err)
 		defer store.Close()
 
-		tokens, err := store.List(ctx, "test", "user")
+		tokens, err := store.List(ctx, "user")
 		require.NoError(t, err)
 		assert.Empty(t, tokens)
 	})
 
 	t.Run("EmptyPath", func(t *testing.T) {
 		// Empty path should default to in-memory
-		store, err := api_keys.NewSQLiteStore(ctx, "")
+		store, err := api_keys.NewSQLiteStore(ctx, testLogger, "")
 		require.NoError(t, err)
 		defer store.Close()
 
-		tokens, err := store.List(ctx, "test", "user")
+		tokens, err := store.List(ctx, "user")
 		require.NoError(t, err)
 		assert.Empty(t, tokens)
 	})
@@ -231,15 +192,16 @@ func TestSQLiteStore(t *testing.T) {
 
 func TestExternalStore(t *testing.T) {
 	ctx := context.Background()
+	testLogger := logger.Development()
 
 	t.Run("InvalidURL", func(t *testing.T) {
-		_, err := api_keys.NewExternalStore(ctx, "mysql://localhost:3306/db")
+		_, err := api_keys.NewExternalStore(ctx, testLogger, "mysql://localhost:3306/db")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported external database URL")
 	})
 
 	t.Run("EmptyURL", func(t *testing.T) {
-		_, err := api_keys.NewExternalStore(ctx, "")
+		_, err := api_keys.NewExternalStore(ctx, testLogger, "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported external database URL")
 	})

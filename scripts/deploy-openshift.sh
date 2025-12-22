@@ -159,8 +159,9 @@ fi
 echo "📋 Checking prerequisites..."
 echo ""
 echo "Required tools:"
-echo "  - oc: $(oc version --client --short 2>/dev/null | head -n1 || echo 'not found')"
+echo "  - oc: $(oc version --client 2>/dev/null | head -n1 || echo 'not found')"
 echo "  - jq: $(jq --version 2>/dev/null || echo 'not found')"
+echo "  - yq: $(yq --version 2>/dev/null | head -n1 || echo 'not found')"
 echo "  - kustomize: $(kustomize version --short 2>/dev/null || echo 'not found')"
 echo "  - git: $(git --version 2>/dev/null || echo 'not found')"
 echo ""
@@ -198,7 +199,7 @@ echo "   ℹ️  Note: If ODH/RHOAI is already installed, some namespaces may al
 
 # Determine MaaS API namespace: use MAAS_API_NAMESPACE env var if set, otherwise default to maas-api
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
 export MAAS_API_NAMESPACE
 echo "   MaaS API namespace: $MAAS_API_NAMESPACE (set MAAS_API_NAMESPACE env var to override)"
@@ -228,22 +229,7 @@ echo "   Installing Kuadrant..."
 "$SCRIPT_DIR/install-dependencies.sh" --kuadrant
 
 echo ""
-echo "4️⃣ Deploying Gateway infrastructure..."
-CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
-if [ -z "$CLUSTER_DOMAIN" ]; then
-    echo "❌ Failed to retrieve cluster domain from OpenShift"
-    exit 1
-fi
-export CLUSTER_DOMAIN
-echo "   Cluster domain: $CLUSTER_DOMAIN"
-
-echo "   Deploying Gateway and GatewayClass..."
-cd "$PROJECT_ROOT"
-kubectl apply --server-side=true --force-conflicts -f deployment/base/networking/odh/odh-gateway-api.yaml
-kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml)
-
-echo ""
-echo "5️⃣ Checking for OpenDataHub/RHOAI KServe..."
+echo "4️⃣ Checking for OpenDataHub/RHOAI KServe..."
 if kubectl get crd llminferenceservices.serving.kserve.io &>/dev/null 2>&1; then
     echo "   ✅ KServe CRDs already present (ODH/RHOAI detected)"
 else
@@ -285,6 +271,58 @@ else
     echo "   ⚠️  odh-model-controller deployment not found in opendatahub namespace, skipping patch"
     echo "      (The deployment may be created later by the ODH operator)"
 fi
+
+# Patch GatewayConfig to use LoadBalancer instead of OcpRoute (default mode)
+echo ""
+echo "   Patching GatewayConfig to use LoadBalancer ingress mode..."
+if kubectl get gatewayconfig.services.platform.opendatahub.io default-gateway &>/dev/null; then
+    kubectl patch gatewayconfig.services.platform.opendatahub.io default-gateway \
+      --type='merge' \
+      -p '{"spec":{"ingressMode":"LoadBalancer"}}' && \
+      echo "   ✅ GatewayConfig patched to use LoadBalancer mode" || \
+      echo "   ⚠️  Failed to patch GatewayConfig"
+else
+    echo "   ⚠️  GatewayConfig default-gateway not found, skipping patch"
+    echo "      (It may be created later by the ODH operator)"
+fi
+
+echo ""
+echo "5️⃣ Deploying Gateway infrastructure..."
+CLUSTER_DOMAIN=$(kubectl get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+if [ -z "$CLUSTER_DOMAIN" ]; then
+    echo "❌ Failed to retrieve cluster domain from OpenShift"
+    exit 1
+fi
+export CLUSTER_DOMAIN
+echo "   Cluster domain: $CLUSTER_DOMAIN"
+
+echo "   Deploying Gateway and GatewayClass..."
+cd "$PROJECT_ROOT"
+kubectl apply --server-side=true --force-conflicts -f deployment/base/networking/odh/odh-gateway-api.yaml
+
+# Detect which TLS certificate secret exists for the MaaS gateway
+CERT_CANDIDATES=("default-gateway-cert" "data-science-gatewayconfig-tls" "data-science-gateway-service-tls")
+CERT_NAME=""
+for cert in "${CERT_CANDIDATES[@]}"; do
+    if kubectl get secret -n openshift-ingress "$cert" &>/dev/null; then
+        CERT_NAME="$cert"
+        echo "   Found TLS certificate secret: $cert"
+        break
+    fi
+done
+if [ -z "$CERT_NAME" ]; then
+    echo "   ⚠️  No TLS certificate secret found (checked: ${CERT_CANDIDATES[*]})"
+    echo "      HTTPS listener will not be configured for MaaS gateway"
+fi
+export CERT_NAME
+
+if [ -n "$CERT_NAME" ]; then
+    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN $CERT_NAME' < deployment/base/networking/maas/maas-gateway-api.yaml)
+else
+    # Apply without HTTPS listener if no cert is found
+    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml | yq eval 'del(.spec.listeners[] | select(.name == "https"))' -)
+fi
+
 
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
@@ -587,7 +625,7 @@ echo "6. Test rate limiting (200 OK followed by 429 Rate Limit Exceeded after ab
 echo "   for i in {1..16}; do curl -sSk -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer \$TOKEN\" -H \"Content-Type: application/json\" -d \"{\\\"model\\\": \\\"\${MODEL_NAME}\\\", \\\"prompt\\\": \\\"Hello\\\", \\\"max_tokens\\\": 50}\" \"\${MODEL_URL}\"; done"
 echo ""
 echo "7. Run validation script (Runs all the checks again):"
-echo "   ./deployment/scripts/validate-deployment.sh"
+echo "   ./scripts/validate-deployment.sh"
 echo ""
 echo "8. Check metrics generation:"
 echo "   kubectl port-forward -n kuadrant-system svc/limitador-limitador 8080:8080 &"

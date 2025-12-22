@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
+
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 )
 
 var (
@@ -18,6 +19,7 @@ var (
 type SQLStore struct {
 	db     *sql.DB
 	dbType DBType
+	logger *logger.Logger
 }
 
 var _ MetadataStore = (*SQLStore)(nil)
@@ -25,11 +27,11 @@ var _ MetadataStore = (*SQLStore)(nil)
 // NewSQLiteStore creates a SQLite store with a file path.
 // Use ":memory:" for an in-memory database (ephemeral, for testing).
 // Use a file path like "/data/maas-api.db" for persistent storage.
-func NewSQLiteStore(ctx context.Context, dbPath string) (*SQLStore, error) {
+func NewSQLiteStore(ctx context.Context, log *logger.Logger, dbPath string) (*SQLStore, error) {
 	if dbPath == "" {
 		dbPath = sqliteMemory
 	}
-	
+
 	dsn := dbPath
 	if dbPath != sqliteMemory {
 		dsn = fmt.Sprintf("%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", dbPath)
@@ -47,20 +49,19 @@ func NewSQLiteStore(ctx context.Context, dbPath string) (*SQLStore, error) {
 		return nil, fmt.Errorf("failed to ping SQLite database: %w", err)
 	}
 
-	s := &SQLStore{db: db, dbType: DBTypeSQLite}
+	s := &SQLStore{db: db, dbType: DBTypeSQLite, logger: log}
 	if err := s.initSchema(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
 	if dbPath == sqliteMemory {
-		log.Printf("Connected to SQLite in-memory database (ephemeral - data will be lost on restart)")
+		log.Info("Connected to SQLite in-memory database (ephemeral - data will be lost on restart)")
 	} else {
-		log.Printf("Connected to SQLite database at %s", dbPath)
+		log.Info("Connected to SQLite database", "path", dbPath)
 	}
 	return s, nil
 }
-
 
 func (s *SQLStore) Close() error {
 	return s.db.Close()
@@ -75,7 +76,6 @@ func (s *SQLStore) initSchema(ctx context.Context) error {
 		username TEXT NOT NULL,
 		name TEXT NOT NULL,
 		description TEXT,
-		namespace TEXT NOT NULL,
 		creation_date TEXT NOT NULL,
 		expiration_date TEXT NOT NULL
 	)`
@@ -88,10 +88,6 @@ func (s *SQLStore) initSchema(ctx context.Context) error {
 		return fmt.Errorf("failed to create username index: %w", err)
 	}
 
-	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tokens_username_namespace ON tokens(username, namespace)`); err != nil {
-		return fmt.Errorf("failed to create username-namespace composite index: %w", err)
-	}
-
 	return nil
 }
 
@@ -101,7 +97,7 @@ func (s *SQLStore) placeholder(index int) string {
 	return placeholder(s.dbType, index)
 }
 
-func (s *SQLStore) Add(ctx context.Context, namespace, username string, apiKey *APIKey) error {
+func (s *SQLStore) Add(ctx context.Context, username string, apiKey *APIKey) error {
 	jti := strings.TrimSpace(apiKey.JTI)
 	if jti == "" {
 		return ErrEmptyJTI
@@ -126,26 +122,26 @@ func (s *SQLStore) Add(ctx context.Context, namespace, username string, apiKey *
 
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
-	INSERT INTO tokens (id, username, name, description, namespace, creation_date, expiration_date)
-	VALUES (%s, %s, %s, %s, %s, %s, %s)
-	`, s.placeholder(1), s.placeholder(2), s.placeholder(3), s.placeholder(4), s.placeholder(5), s.placeholder(6), s.placeholder(7))
+	INSERT INTO tokens (id, username, name, description, creation_date, expiration_date)
+	VALUES (%s, %s, %s, %s, %s, %s)
+	`, s.placeholder(1), s.placeholder(2), s.placeholder(3), s.placeholder(4), s.placeholder(5), s.placeholder(6))
 
 	description := strings.TrimSpace(apiKey.Description)
-	_, err := s.db.ExecContext(ctx, query, jti, username, name, description, namespace, creationStr, expirationStr)
+	_, err := s.db.ExecContext(ctx, query, jti, username, name, description, creationStr, expirationStr)
 	if err != nil {
 		return fmt.Errorf("failed to insert token metadata: %w", err)
 	}
 	return nil
 }
 
-func (s *SQLStore) InvalidateAll(ctx context.Context, namespace, username string) error {
+func (s *SQLStore) InvalidateAll(ctx context.Context, username string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
-	query := fmt.Sprintf(`UPDATE tokens SET expiration_date = %s WHERE username = %s AND namespace = %s AND expiration_date > %s`,
-		s.placeholder(1), s.placeholder(2), s.placeholder(3), s.placeholder(4))
+	query := fmt.Sprintf(`UPDATE tokens SET expiration_date = %s WHERE username = %s AND expiration_date > %s`,
+		s.placeholder(1), s.placeholder(2), s.placeholder(3))
 
-	result, err := s.db.ExecContext(ctx, query, now, username, namespace, now)
+	result, err := s.db.ExecContext(ctx, query, now, username, now)
 	if err != nil {
 		return fmt.Errorf("failed to mark tokens as expired: %w", err)
 	}
@@ -154,20 +150,20 @@ func (s *SQLStore) InvalidateAll(ctx context.Context, namespace, username string
 	if err != nil {
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-	log.Printf("Marked %d tokens as expired in namespace %s", rows, namespace)
+	s.logger.Info("Marked tokens as expired", "count", rows, "user", username)
 	return nil
 }
 
-func (s *SQLStore) List(ctx context.Context, namespace, username string) ([]ApiKeyMetadata, error) {
+func (s *SQLStore) List(ctx context.Context, username string) ([]ApiKeyMetadata, error) {
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
 	SELECT id, name, COALESCE(description, ''), creation_date, expiration_date
 	FROM tokens 
-	WHERE username = %s AND namespace = %s
+	WHERE username = %s
 	ORDER BY creation_date DESC
-	`, s.placeholder(1), s.placeholder(2))
+	`, s.placeholder(1))
 
-	rows, err := s.db.QueryContext(ctx, query, username, namespace)
+	rows, err := s.db.QueryContext(ctx, query, username)
 	if err != nil {
 		return nil, err
 	}
@@ -197,15 +193,15 @@ func (s *SQLStore) List(ctx context.Context, namespace, username string) ([]ApiK
 	return tokens, nil
 }
 
-func (s *SQLStore) Get(ctx context.Context, namespace, username, jti string) (*ApiKeyMetadata, error) {
+func (s *SQLStore) Get(ctx context.Context, jti string) (*ApiKeyMetadata, error) {
 	//nolint:gosec // G201: Safe - using placeholder indices, not user input
 	query := fmt.Sprintf(`
 	SELECT id, name, COALESCE(description, ''), creation_date, expiration_date
 	FROM tokens 
-	WHERE username = %s AND namespace = %s AND id = %s
-	`, s.placeholder(1), s.placeholder(2), s.placeholder(3))
+	WHERE id = %s
+	`, s.placeholder(1))
 
-	row := s.db.QueryRowContext(ctx, query, username, namespace, jti)
+	row := s.db.QueryRowContext(ctx, query, jti)
 
 	var t ApiKeyMetadata
 	var creationStr, expirationStr string

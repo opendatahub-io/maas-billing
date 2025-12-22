@@ -157,7 +157,7 @@ func SetupTestRouter(manager *token.Manager) (*gin.Engine, func() error) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	store, err := api_keys.NewSQLiteStore(context.Background(), ":memory:")
+	store, err := api_keys.NewSQLiteStore(context.Background(), testLogger, ":memory:")
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test store: %v", err))
 	}
@@ -222,6 +222,7 @@ func StubServiceAccountTokenCreation(clientset kubernetes.Interface) {
 		// Generate valid JWT
 		claims := jwt.MapClaims{
 			"jti": fmt.Sprintf("mock-jti-%d", time.Now().UnixNano()),
+			"iat": time.Now().Unix(),
 			"exp": time.Now().Add(time.Hour).Unix(),
 			"sub": "system:serviceaccount:test-namespace:test-sa",
 		}
