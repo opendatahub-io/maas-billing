@@ -86,3 +86,17 @@ replacements:
       name: gateway-auth-policy
     fieldPaths:
     - spec.targetRef.name
+- source:
+    kind: ConfigMap
+    version: v1
+    name: maas-parameters
+    fieldPath: metadata.namespace
+  targets:
+  - select:
+      kind: AuthPolicy
+      name: gateway-auth-policy
+    fieldPaths:
+    - spec.rules.metadata.matchedTier.http.url
+    options:
+      delimiter: "."
+      index: 1
