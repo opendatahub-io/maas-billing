@@ -83,7 +83,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 	// Retry logic with exponential backoff as specified in PR feedback
 	retryDelays := []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond}
 
-	for attempt := range len(retryDelays) {
+	for attempt := range retryDelays {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
