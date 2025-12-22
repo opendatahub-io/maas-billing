@@ -96,7 +96,7 @@ deploy_maas_platform() {
     popd > /dev/null
 
     echo "Deploying MaaS platform on OpenShift..."
-    if ! "$PROJECT_ROOT/deployment/scripts/deploy-openshift.sh"; then
+    if ! "$PROJECT_ROOT/scripts/deploy-openshift.sh"; then
         echo "❌ ERROR: MaaS platform deployment failed"
         exit 1
     fi
@@ -119,7 +119,7 @@ deploy_models() {
 validate_deployment() {
     echo "Deployment Validation"
     if [ "$SKIP_VALIDATION" = false ]; then
-        if ! "$PROJECT_ROOT/deployment/scripts/validate-deployment.sh"; then
+        if ! "$PROJECT_ROOT/scripts/validate-deployment.sh"; then
             echo "❌ ERROR: Deployment validation failed"
             exit 1
         else

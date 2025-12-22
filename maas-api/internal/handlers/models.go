@@ -31,7 +31,7 @@ func NewModelsHandler(log *logger.Logger, modelMgr *models.Manager) *ModelsHandl
 func (h *ModelsHandler) ListModels(c *gin.Context) {
 	modelList, err := h.modelMgr.ListAvailableModels()
 	if err != nil {
-		h.logger.WithContext(c.Request.Context()).Error("Failed to get available models",
+		h.logger.Error("Failed to get available models",
 			"error", err,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve models"})
@@ -48,7 +48,7 @@ func (h *ModelsHandler) ListModels(c *gin.Context) {
 func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 	modelList, err := h.modelMgr.ListAvailableLLMs()
 	if err != nil {
-		h.logger.WithContext(c.Request.Context()).Error("Failed to get available LLM models",
+		h.logger.Error("Failed to get available LLM models",
 			"error", err,
 		)
 		c.JSON(http.StatusInternalServerError, gin.H{

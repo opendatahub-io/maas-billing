@@ -6,12 +6,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/pagination"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"knative.dev/pkg/apis"
 
+	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/constant"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/handlers"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/logger"
 	"github.com/opendatahub-io/models-as-a-service/maas-api/internal/models"
@@ -35,6 +35,10 @@ func TestListingModels(t *testing.T) {
 			Ready:            true,
 			GatewayName:      testGatewayName,
 			GatewayNamespace: testGatewayNamespace,
+			AssertDetails: func(t *testing.T, model models.Model) {
+				t.Helper()
+				assert.Nil(t, model.Details, "Expected modelDetails to be nil for model without annotations")
+			},
 		},
 		{
 			Name:             "gpt-3-turbo",
@@ -76,6 +80,59 @@ func TestListingModels(t *testing.T) {
 			SpecModelName:    strptr("fallback-model-name"),
 			GatewayName:      testGatewayName,
 			GatewayNamespace: testGatewayNamespace,
+		},
+		{
+			Name:             "model-with-metadata",
+			Namespace:        "model-serving",
+			URL:              fixtures.PublicURL("http://model-with-metadata.model-serving.acme.com/v1"),
+			Ready:            true,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
+			Annotations: map[string]string{
+				constant.AnnotationGenAIUseCase: "General purpose LLM",
+				constant.AnnotationDescription:  "A large language model for general AI tasks",
+				constant.AnnotationDisplayName:  "Test Model Alpha",
+			},
+			AssertDetails: func(t *testing.T, model models.Model) {
+				t.Helper()
+				require.NotNil(t, model.Details, "Expected modelDetails to be present")
+				assert.Equal(t, "General purpose LLM", model.Details.GenAIUseCase)
+				assert.Equal(t, "A large language model for general AI tasks", model.Details.Description)
+				assert.Equal(t, "Test Model Alpha", model.Details.DisplayName)
+			},
+		},
+		{
+			Name:             "model-with-partial-metadata",
+			Namespace:        "model-serving",
+			URL:              fixtures.PublicURL("http://model-with-partial-metadata.model-serving.acme.com/v1"),
+			Ready:            true,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
+			Annotations: map[string]string{
+				constant.AnnotationDisplayName: "Test Model Beta",
+			},
+			AssertDetails: func(t *testing.T, model models.Model) {
+				t.Helper()
+				require.NotNil(t, model.Details, "Expected modelDetails to be present")
+				assert.Empty(t, model.Details.GenAIUseCase)
+				assert.Empty(t, model.Details.Description)
+				assert.Equal(t, "Test Model Beta", model.Details.DisplayName)
+			},
+		},
+		{
+			Name:             "model-with-empty-metadata",
+			Namespace:        "model-serving",
+			URL:              fixtures.PublicURL("http://model-with-empty-metadata.model-serving.acme.com/v1"),
+			Ready:            true,
+			GatewayName:      testGatewayName,
+			GatewayNamespace: testGatewayNamespace,
+			Annotations: map[string]string{
+				constant.AnnotationDisplayName: "",
+			},
+			AssertDetails: func(t *testing.T, model models.Model) {
+				t.Helper()
+				assert.Nil(t, model.Details, "Expected modelDetails to be nil when annotation values are empty strings")
+			},
 		},
 	}
 	llmInferenceServices := fixtures.CreateLLMInferenceServices(llmTestScenarios...)
@@ -124,44 +181,28 @@ func TestListingModels(t *testing.T) {
 		modelsByName[model.ID] = model
 	}
 
-	type expectedModel struct {
-		name          string
-		expectedModel models.Model
-	}
-	testCases := make([]expectedModel, 0, len(llmTestScenarios))
-
-	for _, llmTestScenario := range llmTestScenarios {
+	for _, scenario := range llmTestScenarios {
 		// expected ID mirrors toModels(): fallback to metadata.name unless spec.model.name is non-empty
-		expectedModelID := llmTestScenario.Name
-		if llmTestScenario.SpecModelName != nil && *llmTestScenario.SpecModelName != "" {
-			expectedModelID = *llmTestScenario.SpecModelName
+		expectedModelID := scenario.Name
+		if scenario.SpecModelName != nil && *scenario.SpecModelName != "" {
+			expectedModelID = *scenario.SpecModelName
 		}
 
-		testCases = append(testCases, expectedModel{
-			name: expectedModelID,
-			expectedModel: models.Model{
-				Model: openai.Model{
-					ID:      expectedModelID,
-					Object:  "model",
-					OwnedBy: llmTestScenario.Namespace,
-				},
-				URL:   mustParseURL(llmTestScenario.URL.String()),
-				Ready: llmTestScenario.Ready,
-			},
-		})
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			actualModel, exists := modelsByName[tc.name]
-			require.True(t, exists, "Model '%s' not found in response", tc.name)
+		t.Run(expectedModelID, func(t *testing.T) {
+			actualModel, exists := modelsByName[expectedModelID]
+			require.True(t, exists, "Model '%s' not found in response", expectedModelID)
 
 			assert.NotZero(t, actualModel.Created, "Expected 'Created' timestamp to be set")
 
-			assert.Equal(t, tc.expectedModel.ID, actualModel.ID)
-			assert.Equal(t, tc.expectedModel.Object, actualModel.Object)
-			assert.Equal(t, tc.expectedModel.URL, actualModel.URL)
-			assert.Equal(t, tc.expectedModel.Ready, actualModel.Ready)
+			assert.Equal(t, expectedModelID, actualModel.ID)
+			assert.Equal(t, "model", string(actualModel.Object))
+			assert.Equal(t, mustParseURL(scenario.URL.String()), actualModel.URL)
+			assert.Equal(t, scenario.Ready, actualModel.Ready)
+
+			// Run scenario-specific assertions if defined
+			if scenario.AssertDetails != nil {
+				scenario.AssertDetails(t, actualModel)
+			}
 		})
 	}
 }
