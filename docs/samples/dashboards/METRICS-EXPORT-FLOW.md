@@ -139,3 +139,36 @@ oc exec -n kuadrant-system deploy/limitador-limitador -- curl -s localhost:8080/
 # Check HAProxy latency metrics
 oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- curl -s 'http://localhost:9090/api/v1/query?query=haproxy_backend_http_average_response_latency_milliseconds{route=~"maas.*"}'
 ```
+
+---
+
+## Dashboard Deployment
+
+### GitOps Installation (Persistent)
+
+Dashboards can be deployed as Kubernetes CRDs for GitOps management:
+
+```bash
+# Ensure Grafana instance has the required label
+oc label grafana grafana -n llm-observability app=grafana
+
+# Deploy dashboards via Kustomize
+oc apply -k deployment/components/observability/dashboards
+```
+
+### Dashboard CRD Structure
+
+```
+deployment/components/observability/dashboards/
+├── kustomization.yaml           # Kustomize config
+├── dashboard-platform-admin.yaml # GrafanaDashboard CRD
+└── dashboard-ai-engineer.yaml    # GrafanaDashboard CRD
+```
+
+### Installed Dashboards
+
+| Dashboard | Folder | Installation Method |
+|-----------|--------|---------------------|
+| Platform Admin | MaaS v1.0 | ✅ GitOps (CRD) |
+| AI Engineer | MaaS v1.0 | ✅ GitOps (CRD) |
+| Token Metrics | - | Manual import from `docs/samples/dashboards/` |

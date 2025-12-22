@@ -216,7 +216,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "count(kube_pod_status_phase{namespace=\"maas-api\", phase=\"Running\"} == 1) OR on() vector(0)",
+          "expr": "count(kube_pod_status_phase{namespace=\"${maas_namespace}\", phase=\"Running\"} == 1) OR on() vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -1194,6 +1194,35 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "maas-api",
+          "value": "maas-api"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)",
+        "description": "Auto-detected namespace where MaaS API is deployed",
+        "hide": 0,
+        "includeAll": false,
+        "label": "MaaS Namespace",
+        "multi": false,
+        "name": "maas_namespace",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },

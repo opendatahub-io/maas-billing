@@ -58,3 +58,10 @@ spec:
             path: /ready
             port: https
             scheme: HTTPS
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
