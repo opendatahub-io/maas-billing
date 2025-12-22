@@ -172,19 +172,21 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Tag**: \`${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Git Tag**: Created and pushed" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ inputs.build_and_push }}" == "true" ]; then
-            echo "✅ **Image Built & Pushed**: \`${{ inputs.quay_repo }}:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
-          fi
-          if [ "${{ inputs.create_release }}" == "true" ]; then
-            echo "✅ **GitHub Release**: Created" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Updated Files" >> $GITHUB_STEP_SUMMARY
-          echo "- \`deployment/base/maas-api/kustomization.yaml\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`maas-api/deploy/overlays/dev/kustomization.yaml\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`maas-api/deploy/overlays/odh/params.env\`" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Release Summary"
+            echo ""
+            echo "✅ **Tag**: \`${{ inputs.tag }}\`"
+            echo "✅ **Git Tag**: Created and pushed"
+            if [ "${{ inputs.build_and_push }}" == "true" ]; then
+              echo "✅ **Image Built & Pushed**: \`${{ inputs.quay_repo }}:${{ inputs.tag }}\`"
+            fi
+            if [ "${{ inputs.create_release }}" == "true" ]; then
+              echo "✅ **GitHub Release**: Created"
+            fi
+            echo ""
+            echo "### Updated Files"
+            echo "- \`deployment/base/maas-api/kustomization.yaml\`"
+            echo "- \`maas-api/deploy/overlays/dev/kustomization.yaml\`"
+            echo "- \`maas-api/deploy/overlays/odh/params.env\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
