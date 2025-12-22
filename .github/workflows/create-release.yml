@@ -23,6 +23,8 @@
 #
 # Note: The tag is pushed separately from the branch. The commit with updated
 #       tags exists only in the tag, not on the main branch.
+#
+# The docs-version workflow is automatically triggered when this workflow completes
 
 name: Create Release
 
@@ -110,6 +112,7 @@ jobs:
           
       # Create and push the git tag. Note: Only the tag is pushed, not the branch.
       # The commit with updated tags exists in the tag but not on the main branch.
+      # The docs-version workflow will be triggered via workflow_run when this workflow completes.
       - name: Create and push git tag
         run: |
           TAG="${{ inputs.tag }}"
@@ -125,6 +128,7 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           # Push only the tag, not the branch (this ensures tag-specific changes stay in the tag)
           git push origin "$TAG"
+
 
       - name: Setup Go
         if: inputs.build_and_push == true
