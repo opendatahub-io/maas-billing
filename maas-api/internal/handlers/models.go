@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openai/openai-go/v2/packages/pagination"
@@ -58,7 +59,7 @@ func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 		return
 	}
 
-	// Extract service account token for authorization
+	// Extract service account token for authorization as recommended in PR feedback
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
 		h.logger.Error("Authorization header missing")
@@ -70,11 +71,10 @@ func (h *ModelsHandler) ListLLMs(c *gin.Context) {
 		return
 	}
 
-	// Remove "Bearer " prefix if present
-	saToken := authHeader
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		saToken = authHeader[7:]
-	}
+	// Use strings.TrimSpace and strings.CutPrefix as suggested in PR feedback
+	saToken := strings.TrimSpace(authHeader)
+	saToken, _ = strings.CutPrefix(saToken, "Bearer ")
+	saToken = strings.TrimSpace(saToken)
 
 	modelList, err := h.modelMgr.ListAvailableLLMsForUser(c.Request.Context(), saToken)
 	if err != nil {
