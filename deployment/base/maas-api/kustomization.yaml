@@ -21,4 +21,4 @@ labels:
 images:
   - name: maas-api
     newName: quay.io/opendatahub/maas-api
-    newTag: v0.0.4
+    newTag: latest
