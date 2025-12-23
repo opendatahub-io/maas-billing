@@ -172,7 +172,8 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 		case http.StatusMethodNotAllowed:
 			// 405 Method Not Allowed - this should not happen, something is misconfigured
 			// Deny access as we cannot verify authorization
-			m.logger.Debug("UNEXPECTED: Model endpoint returned 405 Method Not Allowed - this indicates a configuration issue. HEAD requests should be supported by the gateway. Denying access as authorization cannot be verified",
+			m.logger.Debug("UNEXPECTED: Model endpoint returned 405 Method Not Allowed - this indicates a configuration issue. "+
+				"HEAD requests should be supported by the gateway. Denying access as authorization cannot be verified",
 				"modelID", model.ID,
 				"statusCode", resp.StatusCode,
 				"attempt", attempt+1,
