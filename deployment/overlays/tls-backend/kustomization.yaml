@@ -2,23 +2,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base/maas-api
-  - networking/token-service-destinationrule.yaml
-  - authorino-deployment.yaml
-  - authorino-volume.yaml
-
-generatorOptions:
-  disableNameSuffixHash: true
-
-configMapGenerator:
-  - name: maas-api-ca-cert
-    namespace: kuadrant-system
-    files:
-      - ca-bundle.crt=certs/maas-api-server.crt
+  - ../../base/maas-api/overlays/tls  
+  - ../../base/policies               
+  - service-ca-bundle.yaml
+  - envoyfilter-authorino-tls.yaml    
 
 patches:
-  - path: patches/deployment-https.yaml
-  - path: patches/service-https.yaml
   - target:
       group: kuadrant.io
       version: v1
@@ -37,5 +26,3 @@ patches:
       - op: replace
         path: /spec/rules/1/backendRefs/0/port
         value: 8443
-    options:
-      allowNameChange: false

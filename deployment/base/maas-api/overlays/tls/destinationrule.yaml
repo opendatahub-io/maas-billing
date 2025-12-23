@@ -12,3 +12,7 @@ spec:
       tls:
         mode: SIMPLE
         insecureSkipVerify: true
+        # TODO: For proper certificate verification, mount service-ca to gateway and add:
+        # caCertificates: /etc/istio/service-ca/service-ca.crt
+        # Then remove insecureSkipVerify
+

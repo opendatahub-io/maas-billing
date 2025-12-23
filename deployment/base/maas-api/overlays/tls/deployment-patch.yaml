@@ -8,19 +8,11 @@ spec:
       containers:
       - name: maas-api
         env:
-        - name: TLS_CERT_FILE
+        - name: TLS_CERT
           value: /etc/maas-api/tls/tls.crt
-        - name: TLS_KEY_FILE
+        - name: TLS_KEY
           value: /etc/maas-api/tls/tls.key
-        - name: TLS_PORT
-          value: "8443"
-        - name: DISABLE_HTTP
-          value: "true"
         ports:
-        # HTTP port intentionally disabled; keep the reference for context
-        # - containerPort: 8080
-        #   name: http
-        #   protocol: TCP
         - containerPort: 8443
           name: https
           protocol: TCP
@@ -41,4 +33,5 @@ spec:
       volumes:
       - name: maas-api-tls
         secret:
-          secretName: maas-api-backend-tls
+          secretName: maas-api-serving-cert
+
