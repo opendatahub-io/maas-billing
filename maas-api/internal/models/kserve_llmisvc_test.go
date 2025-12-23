@@ -265,6 +265,7 @@ func TestListAvailableLLMs(t *testing.T) {
 				fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects(tt.llmServices)...),
 				fixtures.NewHTTPRouteLister(fixtures.ToRuntimeObjects(tt.httpRoutes)...),
 				gateway,
+				"v1/models", // authCheckEndpoint for testing
 			)
 			require.NoError(t, errMgr)
 
@@ -339,6 +340,7 @@ func TestListAvailableLLMsForUser(t *testing.T) {
 			fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects([]*kservev1alpha1.LLMInferenceService{llmService})...),
 			fixtures.NewHTTPRouteLister(),
 			gateway,
+			"v1/models", // authCheckEndpoint for testing
 		)
 		require.NoError(t, errMgr)
 
@@ -360,6 +362,7 @@ func TestListAvailableLLMsForUser(t *testing.T) {
 			fixtures.NewLLMInferenceServiceLister(fixtures.ToRuntimeObjects([]*kservev1alpha1.LLMInferenceService{llmService})...),
 			fixtures.NewHTTPRouteLister(),
 			gateway,
+			"v1/models", // authCheckEndpoint for testing
 		)
 		require.NoError(t, errMgr)
 
