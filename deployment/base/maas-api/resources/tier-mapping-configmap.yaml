@@ -9,6 +9,8 @@ metadata:
   labels:
     app: maas-api
     component: tier-mapping
+  annotations:
+    opendatahub.io/managed: "false"
 data:
   tiers: |
     # Free tier - default for all authenticated users
