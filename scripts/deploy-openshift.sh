@@ -5,144 +5,23 @@
 
 set -e
 
-# Helper function to wait for CRD to be established
-wait_for_crd() {
-  local crd="$1"
-  local timeout="${2:-60}"  # timeout in seconds
-  local interval=2
-  local elapsed=0
+ENABLE_TLS_BACKEND=1
 
-  echo "⏳ Waiting for CRD ${crd} to appear (timeout: ${timeout}s)…"
-  while [ $elapsed -lt $timeout ]; do
-    if kubectl get crd "$crd" &>/dev/null; then
-      echo "✅ CRD ${crd} detected, waiting for it to become Established..."
-      kubectl wait --for=condition=Established --timeout="${timeout}s" "crd/$crd" 2>/dev/null
-      return 0
-    fi
-    sleep $interval
-    elapsed=$((elapsed + interval))
-  done
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --insecure)
+      ENABLE_TLS_BACKEND=0
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
 
-  echo "❌ Timed out after ${timeout}s waiting for CRD $crd to appear." >&2
-  return 1
-}
-
-# Helper function to wait for CSV to reach Succeeded state
-wait_for_csv() {
-  local csv_name="$1"
-  local namespace="${2:-kuadrant-system}"
-  local timeout="${3:-180}"  # timeout in seconds
-  local interval=5
-  local elapsed=0
-  local last_status_print=0
-
-  echo "⏳ Waiting for CSV ${csv_name} to succeed (timeout: ${timeout}s)..."
-  while [ $elapsed -lt $timeout ]; do
-    local phase=$(kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
-
-    case "$phase" in
-      "Succeeded")
-        echo "✅ CSV ${csv_name} succeeded"
-        return 0
-        ;;
-      "Failed")
-        echo "❌ CSV ${csv_name} failed" >&2
-        kubectl get csv -n "$namespace" "$csv_name" -o jsonpath='{.status.message}' 2>/dev/null
-        return 1
-        ;;
-      *)
-        if [ $((elapsed - last_status_print)) -ge 30 ]; then
-          echo "   CSV ${csv_name} status: ${phase} (${elapsed}s elapsed)"
-          last_status_print=$elapsed
-        fi
-        ;;
-    esac
-
-    sleep $interval
-    elapsed=$((elapsed + interval))
-  done
-
-  echo "❌ Timed out after ${timeout}s waiting for CSV ${csv_name}" >&2
-  return 1
-}
-
-# Helper function to wait for pods in a namespace to be ready
-wait_for_pods() {
-  local namespace="$1"
-  local timeout="${2:-120}"
-  
-  kubectl get namespace "$namespace" &>/dev/null || return 0
-  
-  echo "⏳ Waiting for pods in $namespace to be ready..."
-  local end=$((SECONDS + timeout))
-  while [ $SECONDS -lt $end ]; do
-    local not_ready=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | grep -v -E 'Running|Completed|Succeeded' | wc -l)
-    [ "$not_ready" -eq 0 ] && return 0
-    sleep 5
-  done
-  echo "⚠️  Timeout waiting for pods in $namespace" >&2
-  return 1
-}
-
-# version_compare <version1> <version2>
-#   Compares two version strings in semantic version format (e.g., "4.19.9")
-#   Returns 0 if version1 >= version2, 1 otherwise
-version_compare() {
-  local version1="$1"
-  local version2="$2"
-  
-  local v1=$(echo "$version1" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
-  local v2=$(echo "$version2" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
-  
-  [ "$v1" -ge "$v2" ]
-}
-
-wait_for_validating_webhooks() {
-    local namespace="$1"
-    local timeout="${2:-60}"
-    local interval=2
-    local end=$((SECONDS+timeout))
-
-    echo "⏳ Waiting for validating webhooks in namespace $namespace (timeout: $timeout sec)..."
-
-    while [ $SECONDS -lt $end ]; do
-        local not_ready=0
-
-        local services
-        services=$(kubectl get validatingwebhookconfigurations \
-          -o jsonpath='{range .items[*].webhooks[*].clientConfig.service}{.namespace}/{.name}{"\n"}{end}' \
-          | grep "^$namespace/" | sort -u)
-
-        if [ -z "$services" ]; then
-            echo "⚠️  No validating webhooks found in namespace $namespace"
-            return 0
-        fi
-
-        for svc in $services; do
-            local ns name ready
-            ns=$(echo "$svc" | cut -d/ -f1)
-            name=$(echo "$svc" | cut -d/ -f2)
-
-            ready=$(kubectl get endpoints -n "$ns" "$name" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
-            if [ -z "$ready" ]; then
-                echo "🔴 Webhook service $ns/$name not ready"
-                not_ready=1
-            else
-                echo "✅ Webhook service $ns/$name has ready endpoints"
-            fi
-        done
-
-        if [ "$not_ready" -eq 0 ]; then
-            echo "🎉 All validating webhook services in $namespace are ready"
-            return 0
-        fi
-
-        sleep $interval
-    done
-
-    echo "❌ Timed out waiting for validating webhooks in $namespace"
-    return 1
-}
+# Load helper functions
+source "$(dirname "$0")/deployment-helpers.sh"
 
 echo "========================================="
 echo "🚀 MaaS Platform OpenShift Deployment"
@@ -353,29 +232,7 @@ cd "$PROJECT_ROOT"
 kubectl apply -f deployment/base/networking/odh/kuadrant.yaml
 
 echo ""
-echo "8️⃣ Deploying MaaS API..."
-cd "$PROJECT_ROOT"
-# Process kustomization.yaml to replace hardcoded namespace, then build
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
-
-cp -r "$PROJECT_ROOT/deployment/base/maas-api/." "$TMP_DIR"
-
-(
-  cd "$TMP_DIR"
-  kustomize edit set namespace "$MAAS_API_NAMESPACE"
-)
-kustomize build "$TMP_DIR" | kubectl apply -f -
-
-# Restart Kuadrant operator to pick up the new configuration
-echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
-kubectl rollout restart deployment/kuadrant-operator-controller-manager -n kuadrant-system
-echo "   Waiting for Kuadrant operator to be ready..."
-kubectl rollout status deployment/kuadrant-operator-controller-manager -n kuadrant-system --timeout=60s || \
-  echo "   ⚠️  Kuadrant operator taking longer than expected, continuing..."
-
-echo ""
-echo "🔟 Waiting for Gateway to be ready..."
+echo "8️⃣ Waiting for Gateway to be ready..."
 echo "   Note: This may take a few minutes if Service Mesh is being automatically installed..."
 
 # Wait for Service Mesh CRDs to be established
@@ -396,12 +253,45 @@ kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshif
   echo "   ⚠️  Gateway is taking longer than expected, continuing..."
 
 echo ""
-echo "1️⃣1️⃣ Applying Gateway Policies..."
-cd "$PROJECT_ROOT"
-kustomize build deployment/base/policies | sed "s/maas-api\.maas-api\.svc/maas-api.${MAAS_API_NAMESPACE}.svc/g" | kubectl apply --server-side=true --force-conflicts -f -
+echo "9️⃣ Deploying MaaS API and policies..."
+
+# Select overlay based on TLS mode (TLS is default)
+OVERLAY="overlays/tls-backend"
+if [[ "$ENABLE_TLS_BACKEND" -eq 0 ]]; then
+  OVERLAY="overlays/http-backend"
+  echo "   ⚠️  TLS disabled, applying HTTP backend overlay..."
+else
+  echo "   Applying TLS backend overlay (maas-api + policies + Authorino TLS)..."
+fi
+
+# Build and apply with correct namespace
+# Use sed to replace default namespace while preserving explicit namespaces (openshift-ingress, kuadrant-system)
+# This avoids `kustomize edit set namespace` which overwrites ALL namespaces
+kustomize build "$PROJECT_ROOT/deployment/$OVERLAY" \
+  | sed "s/namespace: maas-api/namespace: ${MAAS_API_NAMESPACE}/g" \
+  | sed "s/maas-api\.maas-api\.svc/maas-api.${MAAS_API_NAMESPACE}.svc/g" \
+  | kubectl apply --server-side=true --force-conflicts -f -
+
+# Configure Authorino TLS (patches operator-managed resources via kubectl)
+if [[ "$ENABLE_TLS_BACKEND" -eq 1 ]]; then
+  echo "   Configuring Authorino for TLS..."
+  "$PROJECT_ROOT/deployment/overlays/tls-backend/configure-authorino-tls.sh"
+  
+  echo "   Waiting for Authorino deployment to pick up TLS config..."
+  kubectl rollout status deployment/authorino -n kuadrant-system --timeout=120s || \
+    echo "   ⚠️  Authorino rollout taking longer than expected, continuing..."
+  
+  # Restart maas-api to ensure it picks up Authorino TLS config
+  echo "   Restarting MaaS API to pick up Authorino TLS configuration..."
+  kubectl rollout restart deployment/maas-api -n "$MAAS_API_NAMESPACE"
+fi
+
+echo "   Waiting for MaaS API deployment to be ready..."
+kubectl rollout status deployment/maas-api -n "$MAAS_API_NAMESPACE" --timeout=180s || \
+  echo "   ⚠️  MaaS API rollout is taking longer than expected, continuing..."
 
 echo ""
-echo "1️⃣2️⃣ Patching AuthPolicy with correct audience..."
+echo "1️⃣0️⃣ Patching AuthPolicy with correct audience..."
 # Cross-platform base64 decode (macOS uses -D, Linux uses -d)
 if [[ "$OSTYPE" == "darwin"* ]]; then
     BASE64_DECODE="base64 -D"
@@ -444,7 +334,7 @@ else
 fi
 
 echo ""
-echo "1️⃣3️⃣ Updating Limitador image for metrics exposure..."
+echo "1️⃣1️⃣ Updating Limitador image for metrics exposure..."
 kubectl -n kuadrant-system patch limitador limitador --type merge \
   -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}' 2>/dev/null && \
   echo "   ✅ Limitador image updated" || \
@@ -610,7 +500,7 @@ echo "   CLUSTER_DOMAIN=\$(kubectl get ingresses.config.openshift.io cluster -o 
 echo "   HOST=\"maas.\${CLUSTER_DOMAIN}\""
 echo ""
 echo "3. Get authentication token:"
-echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"\${HOST}/maas-api/v1/tokens\")"
+echo "   TOKEN_RESPONSE=\$(curl -sSk -H \"Authorization: Bearer \$(oc whoami -t)\" -H \"Content-Type: application/json\" -X POST -d '{\"expiration\": \"10m\"}' \"https://\${HOST}/maas-api/v1/tokens\")"
 echo "   TOKEN=\$(echo \$TOKEN_RESPONSE | jq -r .token)"
 echo ""
 echo "4. Test model endpoint:"
