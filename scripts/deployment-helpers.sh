@@ -20,8 +20,12 @@ wait_for_crd() {
   while [ $elapsed -lt $timeout ]; do
     if kubectl get crd "$crd" &>/dev/null; then
       echo "✅ CRD ${crd} detected, waiting for it to become Established..."
-      kubectl wait --for=condition=Established --timeout="${timeout}s" "crd/$crd" 2>/dev/null
-      return 0
+      if kubectl wait --for=condition=Established --timeout="${timeout}s" "crd/$crd" 2>/dev/null; then
+        return 0
+      else
+        echo "❌ CRD ${crd} failed to become Established" >&2
+        return 1
+      fi
     fi
     sleep $interval
     elapsed=$((elapsed + interval))
@@ -55,21 +59,26 @@ find_csv_with_min_version() {
   local min_version="$2"
   local namespace="${3:-kuadrant-system}"
   
-  local csv_name=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}' || echo "")
+  local csv_name=$(kubectl get csv -n "$namespace" --no-headers 2>/dev/null | grep "^${operator_prefix}" | head -n1 | awk '{print $1}')
   
   if [ -z "$csv_name" ]; then
-    echo ""
+    echo "   No CSV found for ${operator_prefix} in ${namespace}" >&2
     return 1
   fi
   
   local installed_version=$(extract_version_from_csv "$csv_name")
+  if [ -z "$installed_version" ]; then
+    echo "   Could not parse version from CSV name: ${csv_name}" >&2
+    return 1
+  fi
+  
   if version_compare "$installed_version" "$min_version"; then
     echo "$csv_name"
     return 0
-  else
-    echo ""
-    return 1
   fi
+  
+  echo "   ${csv_name} version ${installed_version} is below minimum ${min_version}" >&2
+  return 1
 }
 
 # Helper function to wait for CSV with minimum version requirement
