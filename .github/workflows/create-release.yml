@@ -1,32 +1,27 @@
 # Create Release Workflow
 #
-# This workflow creates a release tag and optionally builds/pushes the maas-api image.
+# This workflow creates a release following the data-science-pipelines-operator pattern:
+#   1. Creates a release branch (e.g., v1.x) from main
+#   2. Updates kustomization files and MAAS_REF references on the release branch
+#   3. Creates and pushes the release tag from the release branch
+#   4. Builds and pushes the maas-api image
+#   5. Deploys versioned documentation
 #
 # Usage:
 #   1. Go to Actions > Create Release > Run workflow
 #   2. Enter the tag (e.g., v1.0.0)
-#   3. Optionally enable "Build and push maas-api image to quay.io"
+#   3. Optionally enable "Allow overwriting existing tag" (only for pre-release iterations)
 #   4. Optionally enable "Create GitHub release"
 #
-# What it does:
-#   - Updates kustomization files with the new tag
-#   - Commits the changes locally
-#   - Creates and pushes a git tag (tag only, not the branch)
-#   - Optionally builds and pushes the maas-api image to quay.io
-#   - Optionally creates a GitHub release
-#
-# Tag Management:
-#   The workflow updates image tags in these files:
-#   - deployment/base/maas-api/kustomization.yaml
-#   - maas-api/deploy/overlays/dev/kustomization.yaml
-#   - maas-api/deploy/overlays/odh/params.env
-#
-# Note: The tag is pushed separately from the branch. The commit with updated
-#       tags exists only in the tag, not on the main branch.
-#
-# The docs-version workflow is automatically triggered when this workflow completes
+# The workflow will:
+#   - Extract minor version (e.g., v1.0.0 -> v1.x)
+#   - Create/update release branch (e.g., v1.x)
+#   - Update files on the release branch
+#   - Create tag from the release branch
+#   - Build image and deploy docs
 
 name: Create Release
+run-name: Create Release ${{ inputs.tag }}
 
 on:
   workflow_dispatch:
@@ -35,16 +30,11 @@ on:
         description: 'Release tag (e.g., v1.0.0)'
         required: true
         type: string
-      build_and_push:
-        description: 'Build and push maas-api image to quay.io'
+      allow_tag_overwrite:
+        description: 'Allow overwriting existing tag (use only for pre-release iterations)'
         required: false
         type: boolean
         default: false
-      quay_repo:
-        description: 'Quay.io repository (e.g., quay.io/maas/maas-api)'
-        required: false
-        type: string
-        default: 'quay.io/maas/maas-api'
       create_release:
         description: 'Create GitHub release'
         required: false
@@ -53,85 +43,218 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  actions: read
+
+env:
+  MAAS_REPOSITORY: models-as-a-service
+  GH_USER_NAME: github-actions[bot]
+  GH_USER_EMAIL: github-actions[bot]@users.noreply.github.com
 
 jobs:
-  create-release:
+  prepare-release:
+    name: Prepare Release
     runs-on: ubuntu-latest
+    outputs:
+      version_tag: ${{ steps.set_vars.outputs.version_tag }}
+      minor_release_branch: ${{ steps.set_vars.outputs.minor_release_branch }}
+      minor_version: ${{ steps.set_vars.outputs.minor_version }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # Fetch all history for tags
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "${{ env.GH_USER_NAME }}"
+          git config user.email "${{ env.GH_USER_EMAIL }}"
+
+      - name: Set version variables
+        id: set_vars
+        run: |
+          TAG="${{ inputs.tag }}"
+          # Extract minor version (e.g., v1.0.0 -> 1.0 -> v1.x)
+          if [[ "$TAG" =~ ^v?([0-9]+)\.([0-9]+)\. ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            MINOR_VERSION="$MAJOR.$MINOR"
+            MINOR_BRANCH="v$MINOR_VERSION.x"
+          else
+            # Fallback: use tag as-is for non-standard versions
+            MINOR_VERSION="${TAG#v}"
+            MINOR_BRANCH="release-$TAG"
+          fi
+          
+          echo "version_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "minor_version=$MINOR_VERSION" >> $GITHUB_OUTPUT
+          echo "minor_release_branch=$MINOR_BRANCH" >> $GITHUB_OUTPUT
+          
+          echo "Release tag: $TAG"
+          echo "Minor version: $MINOR_VERSION"
+          echo "Release branch: $MINOR_BRANCH"
 
       - name: Validate tag format
         run: |
           TAG="${{ inputs.tag }}"
-          if [[ ! "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+          if [[ ! "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$ ]]; then
             echo "Warning: Tag '$TAG' doesn't follow semantic versioning format (v1.0.0)"
             echo "Continuing anyway..."
           fi
 
-      # Update all kustomization files with the new tag using the helper script
+  create-release-branch:
+    name: Create Release Branch
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    outputs:
+      version_tag: ${{ needs.prepare-release.outputs.version_tag }}
+      minor_release_branch: ${{ needs.prepare-release.outputs.minor_release_branch }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ env.GH_USER_NAME }}"
+          git config user.email "${{ env.GH_USER_EMAIL }}"
+
+      - name: Create or update release branch
+        run: |
+          BRANCH="${{ needs.prepare-release.outputs.minor_release_branch }}"
+          
+          # Check if branch exists
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "Release branch $BRANCH already exists, checking it out"
+            git fetch origin "$BRANCH"
+            git checkout -b "$BRANCH" "origin/$BRANCH" || git checkout "$BRANCH"
+            git merge main --no-edit || echo "Merge conflicts or already up to date"
+          else
+            echo "Creating new release branch $BRANCH from main"
+            git checkout -b "$BRANCH" main
+          fi
+
       - name: Update kustomization files with new tag
         run: |
           chmod +x scripts/update-kustomize-tag.sh
-          ./scripts/update-kustomize-tag.sh "${{ inputs.tag }}"
+          ./scripts/update-kustomize-tag.sh "${{ needs.prepare-release.outputs.version_tag }}"
 
-      - name: Verify changes
+      - name: Update MAAS_REF references
         run: |
-          echo "Verifying tag updates..."
-          git diff --no-color || true
-          
-          # Check if files were actually updated
-          if ! git diff --quiet; then
-            echo "✓ Files updated successfully"
-          else
-            echo "⚠ No changes detected. Tag may already be set."
-          fi
+          TAG="${{ needs.prepare-release.outputs.version_tag }}"
+          # Update MAAS_REF="main" to use the new tag
+          find . -type f \( -name "*.md" -o -name "*.sh" \) -not -path "./.git/*" -not -path "./node_modules/*" -exec sed -i "s|export MAAS_REF=\"main\"|export MAAS_REF=\"$TAG\"|g" {} +
+          find . -type f \( -name "*.md" -o -name "*.sh" \) -not -path "./.git/*" -not -path "./node_modules/*" -exec sed -i "s|MAAS_REF=\"main\"|MAAS_REF=\"$TAG\"|g" {} +
+          find . -type f \( -name "*.md" -o -name "*.sh" \) -not -path "./.git/*" -not -path "./node_modules/*" -exec sed -i "s|MAAS_REF:=main|MAAS_REF:=$TAG|g" {} +
+          echo "Updated MAAS_REF references from 'main' to '$TAG'"
 
-      - name: Commit changes
+      - name: Commit and push release branch
         run: |
           git add deployment/base/maas-api/kustomization.yaml
           git add maas-api/deploy/overlays/dev/kustomization.yaml || true
           git add maas-api/deploy/overlays/odh/params.env || true
+          git add docs/ scripts/ || true
           
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-            exit 0
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update image tag and MAAS_REF to ${{ needs.prepare-release.outputs.version_tag }}"
+            git push origin "${{ needs.prepare-release.outputs.minor_release_branch }}"
+          else
+            echo "No changes to commit on release branch"
           fi
-          
-          git commit -m "chore: update image tag to ${{ inputs.tag }}"
-          
-      # Create and push the git tag. Note: Only the tag is pushed, not the branch.
-      # The commit with updated tags exists in the tag but not on the main branch.
-      # The docs-version workflow will be triggered via workflow_run when this workflow completes.
+
+  create-tag:
+    name: Create Release Tag
+    runs-on: ubuntu-latest
+    needs: create-release-branch
+    outputs:
+      version_tag: ${{ needs.create-release-branch.outputs.version_tag }}
+    
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.create-release-branch.outputs.minor_release_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ env.GH_USER_NAME }}"
+          git config user.email "${{ env.GH_USER_EMAIL }}"
+
       - name: Create and push git tag
         run: |
-          TAG="${{ inputs.tag }}"
+          TAG="${{ needs.create-release-branch.outputs.version_tag }}"
+          BRANCH="${{ needs.create-release-branch.outputs.minor_release_branch }}"
           
           # Check if tag already exists
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Deleting existing tag..."
-            git tag -d "$TAG" || true
-            git push origin ":refs/tags/$TAG" || true
+            if [ "${{ inputs.allow_tag_overwrite }}" != "true" ]; then
+              echo "❌ Error: Tag $TAG already exists!"
+              echo ""
+              echo "Tags should be immutable once released. To overwrite an existing tag:"
+              echo "1. Manually delete the tag if it was created by mistake:"
+              echo "   git tag -d $TAG"
+              echo "   git push origin :refs/tags/$TAG"
+              echo "2. Re-run this workflow with 'Allow overwriting existing tag' enabled"
+              echo ""
+              echo "⚠️  Only enable tag overwrite for pre-release iterations, not for distributed tags!"
+              exit 1
+            else
+              echo "⚠️  Warning: Overwriting existing tag $TAG (allow_tag_overwrite enabled)"
+              echo "   This should only be used for pre-release iterations!"
+              git tag -d "$TAG" || true
+              git push origin ":refs/tags/$TAG" || true
+            fi
           fi
           
-          # Create annotated tag pointing to current commit
+          # Create annotated tag pointing to current commit on release branch
           git tag -a "$TAG" -m "Release $TAG"
-          # Push only the tag, not the branch (this ensures tag-specific changes stay in the tag)
           git push origin "$TAG"
+          echo "Created tag $TAG from release branch $BRANCH"
 
+      - name: Create GitHub Release
+        if: inputs.create_release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.create-release-branch.outputs.version_tag }}
+          name: Release ${{ needs.create-release-branch.outputs.version_tag }}
+          body: |
+            This release updates the MaaS billing deployment manifests to use image tag `${{ needs.create-release-branch.outputs.version_tag }}`.
+            
+            ### Updated Files
+            - `deployment/base/maas-api/kustomization.yaml`
+            - `maas-api/deploy/overlays/dev/kustomization.yaml`
+            - `maas-api/deploy/overlays/odh/params.env`
+            - MAAS_REF references updated to use `${{ needs.create-release-branch.outputs.version_tag }}` instead of `main`
+            
+            ### Release Branch
+            - Branch: `${{ needs.create-release-branch.outputs.minor_release_branch }}`
+            
+            > Note: Release notes can be edited after creation.
+          draft: false
+          prerelease: ${{ contains(inputs.tag, '-') || contains(inputs.tag, 'alpha') || contains(inputs.tag, 'beta') || contains(inputs.tag, 'rc') }}
+
+  build-and-push-image:
+    name: Build and Push Image
+    runs-on: ubuntu-latest
+    needs: [create-release-branch, create-tag]
+    defaults:
+      run:
+        working-directory: maas-api
+    
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.create-release-branch.outputs.minor_release_branch }}
 
       - name: Setup Go
-        if: inputs.build_and_push == true
         uses: actions/setup-go@v6
         with:
           go-version-file: maas-api/go.mod
@@ -139,47 +262,75 @@ jobs:
           cache-dependency-path: maas-api/go.sum
 
       - name: Login to Quay.io
-        if: inputs.build_and_push == true
         uses: docker/login-action@v3
         with:
           registry: quay.io
           username: ${{ secrets.APP_QUAY_USERNAME }}
           password: ${{ secrets.APP_QUAY_TOKEN }}
 
-      - name: Build and Push image to Quay.io
-        if: inputs.build_and_push == true
+      - name: Build and Push maas-api image to Quay.io
         run: |
-          cd maas-api
-          make build-push-image REPO="${{ inputs.quay_repo }}" TAG="${{ inputs.tag }}" CONTAINER_ENGINE=docker
+          make build-push-image REPO=quay.io/maas/maas-api TAG=${{ needs.create-tag.outputs.version_tag }} CONTAINER_ENGINE=docker
 
-      - name: Create GitHub Release
-        if: inputs.create_release == true
-        uses: softprops/action-gh-release@v2
+  deploy-documentation:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: create-tag
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
         with:
-          tag_name: ${{ inputs.tag }}
-          name: Release ${{ inputs.tag }}
-          body: |
-            This release updates the MaaS billing deployment manifests to use image tag `${{ inputs.tag }}`.
-            
-            ### Updated Files
-            - `deployment/base/maas-api/kustomization.yaml`
-            - `maas-api/deploy/overlays/dev/kustomization.yaml`
-            - `maas-api/deploy/overlays/odh/params.env`
-            
-            > Note: Release notes can be edited after creation.
-          draft: false
-          prerelease: ${{ contains(inputs.tag, '-') || contains(inputs.tag, 'alpha') || contains(inputs.tag, 'beta') || contains(inputs.tag, 'rc') }}
+          fetch-depth: 0
+          fetch-tags: true
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('docs/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install -r docs/requirements.txt
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "${{ env.GH_USER_NAME }}"
+          git config --global user.email "${{ env.GH_USER_EMAIL }}"
+
+      - name: Deploy versioned docs with mike
+        run: |
+          cd docs
+          # Deploy the new version and update latest
+          mike deploy --push --update-aliases ${{ needs.create-tag.outputs.version_tag }} latest
+          # Set latest as the default version
+          mike set-default --push latest
+
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [prepare-release, create-release-branch, create-tag, build-and-push-image, deploy-documentation]
+    if: always()
+    
+    steps:
       - name: Summary
         run: |
           {
             echo "## Release Summary"
             echo ""
-            echo "✅ **Tag**: \`${{ inputs.tag }}\`"
-            echo "✅ **Git Tag**: Created and pushed"
-            if [ "${{ inputs.build_and_push }}" == "true" ]; then
-              echo "✅ **Image Built & Pushed**: \`${{ inputs.quay_repo }}:${{ inputs.tag }}\`"
-            fi
+            echo "✅ **Tag**: \`${{ needs.create-tag.outputs.version_tag }}\`"
+            echo "✅ **Release Branch**: \`${{ needs.create-release-branch.outputs.minor_release_branch }}\`"
+            echo "✅ **Git Tag**: Created and pushed from release branch"
+            echo "✅ **Image Built & Pushed**: \`quay.io/maas/maas-api:${{ needs.create-tag.outputs.version_tag }}\`"
+            echo "✅ **Documentation Deployed**: \`${{ needs.create-tag.outputs.version_tag }}\`"
             if [ "${{ inputs.create_release }}" == "true" ]; then
               echo "✅ **GitHub Release**: Created"
             fi
@@ -188,5 +339,10 @@ jobs:
             echo "- \`deployment/base/maas-api/kustomization.yaml\`"
             echo "- \`maas-api/deploy/overlays/dev/kustomization.yaml\`"
             echo "- \`maas-api/deploy/overlays/odh/params.env\`"
+            echo "- MAAS_REF references updated to use \`${{ needs.create-tag.outputs.version_tag }}\`"
+            echo ""
+            echo "### Documentation"
+            echo "- Docs Version: \`${{ needs.create-tag.outputs.version_tag }}\`"
+            echo "- Docs Alias: \`latest\`"
+            echo "- Docs URL: https://opendatahub-io.github.io/models-as-a-service/"
           } >> "$GITHUB_STEP_SUMMARY"
-
