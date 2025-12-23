@@ -29,7 +29,7 @@ This guide provides quickstart instructions for deploying the MaaS Platform infr
 For OpenShift clusters, use the automated deployment script:
 
 ```bash
-export MAAS_REF="v1.0.0"  # Use the latest release tag, or "main" for development
+export MAAS_REF="main"  # Use the latest release tag, or "main" for development
 ./scripts/deploy-rhoai-stable.sh
 ```
 

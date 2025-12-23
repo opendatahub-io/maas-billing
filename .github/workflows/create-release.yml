@@ -244,7 +244,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [create-release-branch, create-tag]
     outputs:
-      image_repo: ${{ steps.set_repo.outputs.repo }}
+      image_repo: ${{ steps.build_image.outputs.repo }}
     defaults:
       run:
         working-directory: maas-api
@@ -270,26 +270,18 @@ jobs:
           username: ${{ secrets.APP_QUAY_USERNAME }}
           password: ${{ secrets.APP_QUAY_TOKEN }}
 
-      - name: Determine repository
-        id: set_repo
-        env:
-          QUAY_REPO: ${{ secrets.APP_QUAY_REPO }}
-        run: |
-          if [ -n "$QUAY_REPO" ]; then
-            echo "repo=$QUAY_REPO" >> $GITHUB_OUTPUT
-            echo "Using custom repository from secret: $QUAY_REPO"
-          else
-            echo "repo=quay.io/opendatahub/maas-api" >> $GITHUB_OUTPUT
-            echo "Using Makefile default repository: quay.io/opendatahub/maas-api"
-          fi
-
       - name: Build and Push maas-api image to Quay.io
+        id: build_image
         env:
           QUAY_REPO: ${{ secrets.APP_QUAY_REPO }}
         run: |
           if [ -n "$QUAY_REPO" ]; then
+            echo "Using custom repository from secret: $QUAY_REPO"
+            echo "repo=$QUAY_REPO" >> $GITHUB_OUTPUT
             make build-push-image REPO="$QUAY_REPO" TAG=${{ needs.create-tag.outputs.version_tag }} CONTAINER_ENGINE=docker
           else
+            echo "Using Makefile default repository: quay.io/opendatahub/maas-api"
+            echo "repo=quay.io/opendatahub/maas-api" >> $GITHUB_OUTPUT
             make build-push-image TAG=${{ needs.create-tag.outputs.version_tag }} CONTAINER_ENGINE=docker
           fi
 
@@ -304,6 +296,8 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          # Ensure we have write access to create gh-pages branch if it doesn't exist
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -331,6 +325,7 @@ jobs:
         run: |
           cd docs
           # Deploy the new version and update latest
+          # Note: mike will automatically create the gh-pages branch if it doesn't exist
           mike deploy --push --update-aliases ${{ needs.create-tag.outputs.version_tag }} latest
           # Set latest as the default version
           mike set-default --push latest
