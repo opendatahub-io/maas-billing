@@ -242,6 +242,7 @@ fi
 echo ""
 echo "   Setting MAAS_NAMESPACE for odh-model-controller deployment..."
 if kubectl get deployment odh-model-controller -n opendatahub &>/dev/null; then
+    kubectl annotate deployment/odh-model-controller opendatahub.io/managed=false -n opendatahub
     # Wait for deployment to be available before patching
     echo "   Waiting for odh-model-controller deployment to be ready..."
     kubectl wait deployment/odh-model-controller -n opendatahub --for=condition=Available=True --timeout=60s 2>/dev/null || \
@@ -355,16 +356,16 @@ echo ""
 echo "8️⃣ Deploying MaaS API..."
 cd "$PROJECT_ROOT"
 # Process kustomization.yaml to replace hardcoded namespace, then build
-TMP_DIR=$(mktemp -d)
-cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
-# Replace hardcoded "namespace: maas-api" with "namespace: ${MAAS_API_NAMESPACE}" in kustomization.yaml
-sed -i "s|namespace: maas-api|namespace: \${MAAS_API_NAMESPACE}|g" "$TMP_DIR/kustomization.yaml"
-# Replace ${MAAS_API_NAMESPACE} placeholder with actual value
-envsubst '$MAAS_API_NAMESPACE' < "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
-mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
-# Build and replace any remaining hardcoded namespace references in the output
-kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | kubectl apply -f -
-rm -rf "$TMP_DIR"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+cp -r "$PROJECT_ROOT/deployment/base/maas-api/." "$TMP_DIR"
+
+(
+  cd "$TMP_DIR"
+  kustomize edit set namespace "$MAAS_API_NAMESPACE"
+)
+kustomize build "$TMP_DIR" | kubectl apply -f -
 
 # Restart Kuadrant operator to pick up the new configuration
 echo "   Restarting Kuadrant operator to apply Gateway API provider recognition..."
@@ -397,10 +398,10 @@ kubectl wait --for=condition=Programmed gateway maas-default-gateway -n openshif
 echo ""
 echo "1️⃣1️⃣ Applying Gateway Policies..."
 cd "$PROJECT_ROOT"
-kustomize build deployment/base/policies | envsubst '$MAAS_API_NAMESPACE' | kubectl apply --server-side=true --force-conflicts -f -
+kustomize build deployment/base/policies | sed "s/maas-api\.maas-api\.svc/maas-api.${MAAS_API_NAMESPACE}.svc/g" | kubectl apply --server-side=true --force-conflicts -f -
 
 echo ""
-echo "1️⃣3️⃣ Patching AuthPolicy with correct audience..."
+echo "1️⃣2️⃣ Patching AuthPolicy with correct audience..."
 # Cross-platform base64 decode (macOS uses -D, Linux uses -d)
 if [[ "$OSTYPE" == "darwin"* ]]; then
     BASE64_DECODE="base64 -D"
@@ -443,7 +444,7 @@ else
 fi
 
 echo ""
-echo "1️⃣4️⃣ Updating Limitador image for metrics exposure..."
+echo "1️⃣3️⃣ Updating Limitador image for metrics exposure..."
 kubectl -n kuadrant-system patch limitador limitador --type merge \
   -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}' 2>/dev/null && \
   echo "   ✅ Limitador image updated" || \
