@@ -92,14 +92,99 @@ This Red Hat documentation provides:
 
 For local development and testing, you can also use our [Limitador Persistence](limitador-persistence.md) guide which includes a basic Redis setup script that works with any Kubernetes cluster.
 
+## Installing the Observability Stack
+
+The observability stack can be installed during the main deployment or separately.
+
+### During Main Deployment
+
+When running `deploy-openshift.sh`, you'll be prompted to install the observability stack:
+
+```bash
+./scripts/deploy-openshift.sh
+# When prompted, answer 'y' to install observability
+```
+
+Or use flags to control installation:
+
+```bash
+# Install with observability
+./scripts/deploy-openshift.sh --with-observability
+
+# Skip observability installation
+./scripts/deploy-openshift.sh --skip-observability
+```
+
+### Standalone Installation
+
+To install the observability stack separately:
+
+```bash
+# Install to default namespace (maas-api)
+./scripts/install-observability.sh
+
+# Install to custom namespace
+./scripts/install-observability.sh --namespace my-namespace
+```
+
+### What Gets Installed
+
+The observability stack includes:
+
+1. **Grafana Operator**: Installed automatically if not present
+2. **Grafana Instance**: Deployed to the target namespace
+3. **Prometheus Datasource**: Configured with authentication token
+4. **Dashboards**:
+   - Platform Admin Dashboard
+   - AI Engineer Dashboard
+
+### Accessing Grafana
+
+After installation, get the Grafana URL:
+
+```bash
+# Get the route
+kubectl get route grafana-ingress -n maas-api -o jsonpath='{.spec.host}'
+
+# Access at: https://<route-host>
+```
+
+**Default Credentials:**
+- Username: `admin`
+- Password: `admin`
+
+!!! warning "Security"
+    Change the default Grafana credentials immediately after first login. The credentials are stored in the Grafana instance manifest and should be updated for production deployments.
+
+### Grafana Datasource Configuration
+
+The Prometheus datasource is automatically configured with:
+- **URL**: `https://thanos-querier.openshift-monitoring.svc.cluster.local:9091`
+- **Authentication**: Bearer token from OpenShift service account
+- **TLS**: Skip verification (internal cluster communication)
+
+The datasource is created dynamically by `install-observability.sh` with proper token injection. A static datasource manifest is not used to ensure authentication tokens are properly configured.
+
 ## Grafana Dashboards
 
-### MaaS Platform Overview Dashboard
+### Available Dashboards
 
-We are providing a basic dashboard for the MaaS Platform that can be used to get a quick
-overview of the system. Its definition can be found and imported from the following 
-link:
-[maas-token-metrics-dashboard.json](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/samples/dashboards/maas-token-metrics-dashboard.json)
+The observability stack includes two pre-configured dashboards:
 
-See more detailed description of the Grafana Dashboard in [its README of the 
-repository](https://github.com/opendatahub-io/models-as-a-service/tree/main/docs/samples/dashboards).
+1. **Platform Admin Dashboard**: Overview of system-wide metrics, usage patterns, and health
+2. **AI Engineer Dashboard**: Model-specific metrics, token usage, and performance
+
+### Manual Dashboard Import
+
+You can also manually import dashboard JSON files:
+
+1. **Import into Grafana:**
+   - Go to Grafana → Dashboards → Import
+   - Upload the JSON file or paste the URL
+
+2. **Available Dashboards:**
+   - [Platform Admin Dashboard](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/samples/dashboards/platform-admin-dashboard.json)
+   - [AI Engineer Dashboard](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/samples/dashboards/ai-engineer-dashboard.json)
+   - [MaaS Token Metrics Dashboard](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/samples/dashboards/maas-token-metrics-dashboard.json)
+
+See more detailed description of the Grafana Dashboards in [its README of the repository](https://github.com/opendatahub-io/models-as-a-service/tree/main/docs/samples/dashboards).

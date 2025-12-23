@@ -80,7 +80,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum(authorized_hits{user=~\"$user\"})",
+          "expr": "sum(authorized_hits{user=~\"^$user$\"})",
           "instant": true,
           "refId": "A"
         }
@@ -134,7 +134,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum(rate(authorized_hits{user=~\"$user\"}[5m]))",
+          "expr": "sum(rate(authorized_hits{user=~\"^$user$\"}[5m]))",
           "instant": true,
           "refId": "A"
         }
@@ -196,7 +196,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum(limited_calls{user=~\"$user\"}) OR vector(0)",
+          "expr": "sum(limited_calls{user=~\"^$user$\"}) OR vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -258,7 +258,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "(sum(authorized_hits{user=~\"$user\"}) / (sum(authorized_hits{user=~\"$user\"}) + sum(limited_calls{user=~\"$user\"}))) OR vector(1)",
+          "expr": "(sum(authorized_hits{user=~\"^$user$\"}) / (sum(authorized_hits{user=~\"^$user$\"}) + sum(limited_calls{user=~\"^$user$\"}))) OR vector(1)",
           "instant": true,
           "refId": "A"
         }
@@ -346,7 +346,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum by (model) (authorized_hits{user=~\"$user\"})",
+          "expr": "sum by (model) (authorized_hits{user=~\"^$user$\"})",
           "legendFormat": "{{model}}",
           "refId": "A"
         }
@@ -437,12 +437,12 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum(rate(authorized_hits{user=~\"$user\"}[5m]))",
+          "expr": "sum(rate(authorized_hits{user=~\"^$user$\"}[5m]))",
           "legendFormat": "Authorized",
           "refId": "A"
         },
         {
-          "expr": "sum(rate(limited_calls{user=~\"$user\"}[5m]))",
+          "expr": "sum(rate(limited_calls{user=~\"^$user$\"}[5m]))",
           "legendFormat": "Rate Limited",
           "refId": "B"
         }
@@ -535,7 +535,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum by (model) (increase(authorized_hits{user=~\"$user\"}[1h]))",
+          "expr": "sum by (model) (increase(authorized_hits{user=~\"^$user$\"}[1h]))",
           "legendFormat": "{{model}}",
           "refId": "A"
         }
@@ -623,7 +623,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum by (model) (increase(authorized_hits{user=~\"$user\"}[$__range]))",
+          "expr": "sum by (model) (increase(authorized_hits{user=~\"^$user$\"}[$__range]))",
           "legendFormat": "{{model}}",
           "refId": "A"
         }
@@ -698,7 +698,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum by (model) (increase(limited_calls{user=~\"$user\"}[$__range]))",
+          "expr": "sum by (model) (increase(limited_calls{user=~\"^$user$\"}[$__range]))",
           "legendFormat": "{{model}} (limited)",
           "refId": "A"
         }
@@ -772,7 +772,7 @@
         ]
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 24,
         "x": 0,
         "y": 33
@@ -797,7 +797,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum by (model, tier) (authorized_hits{user=~\"$user\"})",
+          "expr": "sum by (model, tier) (authorized_hits{user=~\"^$user$\"})",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -828,10 +828,11 @@
         "type": "datasource"
       },
       {
+        "allValue": ".*",
         "current": {
-          "selected": false,
-          "text": ".*",
-          "value": ".*"
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
         },
         "datasource": {
           "type": "prometheus",
@@ -839,7 +840,7 @@
         },
         "definition": "label_values(authorized_hits, user)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "API Key / User",
         "multi": false,
         "name": "user",

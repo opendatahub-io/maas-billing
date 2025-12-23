@@ -44,7 +44,7 @@ spec:
           "fieldConfig": {
             "defaults": {
               "color": {"mode": "thresholds"},
-              "mappings": [{"options": {"0": {"color": "red", "index": 1, "text": "DOWN"}, "1": {"color": "green", "index": 0, "text": "UP"}}, "type": "value"}],
+              "mappings": [],
               "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]},
               "unit": "short"
             },
@@ -92,7 +92,7 @@ spec:
           "id": 12,
           "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "count(kube_pod_status_phase{namespace=\"$maas_namespace\", phase=\"Running\"} == 1) OR on() vector(0)", "instant": true, "refId": "A"}],
+          "targets": [{"expr": "count(kube_pod_status_phase{namespace=~\"$maas_namespace\", phase=\"Running\"} == 1) OR on() vector(0)", "instant": true, "refId": "A"}],
           "title": "🌐 MaaS API Pods",
           "type": "stat"
         },
@@ -286,7 +286,7 @@ spec:
       "templating": {
         "list": [
           {"current": {"selected": true, "text": "prometheus", "value": "prometheus"}, "hide": 0, "includeAll": false, "label": "Datasource", "name": "datasource", "options": [], "query": "prometheus", "refresh": 1, "type": "datasource"},
-          {"current": {"selected": false, "text": "maas-api", "value": "maas-api"}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "definition": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "description": "Auto-detected namespace where MaaS API is deployed", "hide": 0, "includeAll": false, "label": "MaaS Namespace", "multi": false, "name": "maas_namespace", "options": [], "query": {"qryType": 1, "query": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
+          {"current": {"selected": true, "text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "definition": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "description": "Auto-detected namespace where MaaS API is deployed", "hide": 0, "includeAll": true, "allValue": ".*", "label": "MaaS Namespace", "multi": false, "name": "maas_namespace", "options": [], "query": {"qryType": 1, "query": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
         ]
       },
       "time": {"from": "now-1h", "to": "now"},

@@ -44,23 +44,7 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "red",
-                  "index": 1,
-                  "text": "DOWN"
-                },
-                "1": {
-                  "color": "green",
-                  "index": 0,
-                  "text": "UP"
-                }
-              },
-              "type": "value"
-            }
-          ],
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -216,7 +200,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "count(kube_pod_status_phase{namespace=\"${maas_namespace}\", phase=\"Running\"} == 1) OR on() vector(0)",
+          "expr": "count(kube_pod_status_phase{namespace=~\"${maas_namespace}\", phase=\"Running\"} == 1) OR on() vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -1197,9 +1181,9 @@
       },
       {
         "current": {
-          "selected": false,
-          "text": "maas-api",
-          "value": "maas-api"
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
         },
         "datasource": {
           "type": "prometheus",
@@ -1208,7 +1192,8 @@
         "definition": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)",
         "description": "Auto-detected namespace where MaaS API is deployed",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
+        "allValue": ".*",
         "label": "MaaS Namespace",
         "multi": false,
         "name": "maas_namespace",

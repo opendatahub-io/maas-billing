@@ -28,7 +28,7 @@ spec:
           "id": 1,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(authorized_hits{user=~\"$user\"})", "instant": true, "refId": "A"}],
+          "targets": [{"expr": "sum(authorized_hits{user=~\"^$user$\"})", "instant": true, "refId": "A"}],
           "title": "📊 My Total Requests",
           "type": "stat"
         },
@@ -39,7 +39,7 @@ spec:
           "id": 2,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(rate(authorized_hits{user=~\"$user\"}[5m]))", "instant": true, "refId": "A"}],
+          "targets": [{"expr": "sum(rate(authorized_hits{user=~\"^$user$\"}[5m]))", "instant": true, "refId": "A"}],
           "title": "⚡ Current Rate (5m avg)",
           "type": "stat"
         },
@@ -50,7 +50,7 @@ spec:
           "id": 3,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(limited_calls{user=~\"$user\"}) OR vector(0)", "instant": true, "refId": "A"}],
+          "targets": [{"expr": "sum(limited_calls{user=~\"^$user$\"}) OR vector(0)", "instant": true, "refId": "A"}],
           "title": "❌ Rate Limited Requests",
           "type": "stat"
         },
@@ -61,7 +61,7 @@ spec:
           "id": 8,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "(sum(authorized_hits{user=~\"$user\"}) / (sum(authorized_hits{user=~\"$user\"}) + sum(limited_calls{user=~\"$user\"}))) OR vector(1)", "instant": true, "refId": "A"}],
+          "targets": [{"expr": "(sum(authorized_hits{user=~\"^$user$\"}) / (sum(authorized_hits{user=~\"^$user$\"}) + sum(limited_calls{user=~\"^$user$\"}))) OR vector(1)", "instant": true, "refId": "A"}],
           "title": "✅ My Success Rate",
           "type": "stat"
         },
@@ -73,7 +73,7 @@ spec:
           "id": 4,
           "options": {"legend": {"calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum by (model) (authorized_hits{user=~\"$user\"})", "legendFormat": "{{model}}", "refId": "A"}],
+          "targets": [{"expr": "sum by (model) (authorized_hits{user=~\"^$user$\"})", "legendFormat": "{{model}}", "refId": "A"}],
           "title": "📈 Usage by Model",
           "type": "timeseries"
         },
@@ -84,7 +84,7 @@ spec:
           "id": 5,
           "options": {"legend": {"calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(rate(authorized_hits{user=~\"$user\"}[5m]))", "legendFormat": "Authorized", "refId": "A"}, {"expr": "sum(rate(limited_calls{user=~\"$user\"}[5m]))", "legendFormat": "Rate Limited", "refId": "B"}],
+          "targets": [{"expr": "sum(rate(authorized_hits{user=~\"^$user$\"}[5m]))", "legendFormat": "Authorized", "refId": "A"}, {"expr": "sum(rate(limited_calls{user=~\"^$user$\"}[5m]))", "legendFormat": "Rate Limited", "refId": "B"}],
           "title": "📊 Request Trends (Success vs Rate Limited)",
           "type": "timeseries"
         },
@@ -96,7 +96,7 @@ spec:
           "id": 9,
           "options": {"legend": {"calcs": ["sum", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum by (model) (increase(authorized_hits{user=~\"$user\"}[1h]))", "legendFormat": "{{model}}", "refId": "A"}],
+          "targets": [{"expr": "sum by (model) (increase(authorized_hits{user=~\"^$user$\"}[1h]))", "legendFormat": "{{model}}", "refId": "A"}],
           "title": "⏰ Hourly Usage by Model",
           "type": "timeseries"
         },
@@ -108,7 +108,7 @@ spec:
           "id": 6,
           "options": {"legend": {"calcs": ["lastNotNull", "sum"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum by (model) (increase(authorized_hits{user=~\"$user\"}[$__range]))", "legendFormat": "{{model}}", "refId": "A"}],
+          "targets": [{"expr": "sum by (model) (increase(authorized_hits{user=~\"^$user$\"}[$__range]))", "legendFormat": "{{model}}", "refId": "A"}],
           "title": "📊 Request Volume by Model (Selected Range)",
           "type": "timeseries"
         },
@@ -119,18 +119,18 @@ spec:
           "id": 10,
           "options": {"legend": {"calcs": ["lastNotNull", "sum"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum by (model) (increase(limited_calls{user=~\"$user\"}[$__range]))", "legendFormat": "{{model}} (limited)", "refId": "A"}],
+          "targets": [{"expr": "sum by (model) (increase(limited_calls{user=~\"^$user$\"}[$__range]))", "legendFormat": "{{model}} (limited)", "refId": "A"}],
           "title": "❌ Rate Limited by Model (Selected Range)",
           "type": "timeseries"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "model"}, "properties": [{"id": "displayName", "value": "🤖 Model"}]}, {"matcher": {"id": "byName", "options": "tier"}, "properties": [{"id": "displayName", "value": "🏷️ Tier"}]}, {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "📊 Hits"}]}]},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 33},
+          "gridPos": {"h": 6, "w": 24, "x": 0, "y": 33},
           "id": 7,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": true}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Hits"}]},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum by (model, tier) (authorized_hits{user=~\"$user\"})", "format": "table", "instant": true, "refId": "A"}],
+          "targets": [{"expr": "sum by (model, tier) (authorized_hits{user=~\"^$user$\"})", "format": "table", "instant": true, "refId": "A"}],
           "title": "🔍 My Usage Summary by Model & Tier",
           "type": "table"
         }
@@ -141,7 +141,7 @@ spec:
       "templating": {
         "list": [
           {"current": {"selected": true, "text": "prometheus", "value": "prometheus"}, "hide": 0, "includeAll": false, "label": "Datasource", "name": "datasource", "options": [], "query": "prometheus", "refresh": 1, "type": "datasource"},
-          {"current": {"selected": false, "text": ".*", "value": ".*"}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "definition": "label_values(authorized_hits, user)", "hide": 0, "includeAll": false, "label": "API Key / User", "multi": false, "name": "user", "options": [], "query": {"query": "label_values(authorized_hits, user)", "refId": "StandardVariableQuery"}, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
+          {"allValue": ".*", "current": {"selected": true, "text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "definition": "label_values(authorized_hits, user)", "hide": 0, "includeAll": true, "label": "API Key / User", "multi": false, "name": "user", "options": [], "query": {"query": "label_values(authorized_hits, user)", "refId": "StandardVariableQuery"}, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
         ]
       },
       "time": {"from": "now-1h", "to": "now"},

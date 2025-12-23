@@ -102,6 +102,11 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         -n|--namespace)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                echo "Error: --namespace requires a non-empty value"
+                echo "Use --help for usage information"
+                exit 1
+            fi
             NAMESPACE_ARG="$2"
             shift 2
             ;;

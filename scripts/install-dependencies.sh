@@ -366,6 +366,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --kuadrant)
             install_component "kuadrant"
+            COMPONENT_SELECTED=true
             ;;
         -h|--help)
             usage

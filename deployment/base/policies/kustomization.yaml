@@ -8,3 +8,5 @@ resources:
 # Policy folders (upstream structure)
 - auth-policies
 - usage-policies
+# RBAC for tier ServiceAccounts (required for model access authorization)
+- tier-rbac.yaml

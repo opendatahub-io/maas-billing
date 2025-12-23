@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
 - servicemonitor.yaml
 - telemetry-policy.yaml
+- prometheus-servicemonitors.yaml
 
 labels:
 - pairs:

@@ -2,8 +2,74 @@
 
 # OpenShift MaaS Platform Deployment Script
 # This script automates the complete deployment of the MaaS platform on OpenShift
+#
+# Usage: ./deploy-openshift.sh [OPTIONS]
+#
+# Options:
+#   --with-observability     Install observability stack (Grafana + dashboards)
+#   --skip-observability     Skip observability installation (no prompt)
+#   --namespace NAMESPACE    MaaS API namespace (default: maas-api)
+#   -h, --help               Show this help message
 
 set -e
+
+# Parse command line arguments
+INSTALL_OBSERVABILITY=""  # Empty = prompt, set by flags
+MAAS_API_NAMESPACE="${MAAS_API_NAMESPACE:-maas-api}"
+
+show_help() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --with-observability     Install observability stack (Grafana + dashboards)"
+    echo "  --skip-observability     Skip observability installation (no prompt)"
+    echo "  --namespace NAMESPACE    MaaS API namespace (default: maas-api)"
+    echo "  -h, --help               Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                           # Interactive mode, prompts for observability"
+    echo "  $0 --with-observability      # Install with observability"
+    echo "  $0 --skip-observability      # Install without observability"
+    echo "  $0 --namespace my-namespace  # Use custom namespace"
+    echo ""
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --with-observability)
+            INSTALL_OBSERVABILITY="y"
+            shift
+            ;;
+        --skip-observability)
+            INSTALL_OBSERVABILITY="n"
+            shift
+            ;;
+        --namespace|-n)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                echo "Error: --namespace requires a non-empty value"
+                echo "Use --help for usage information"
+                exit 1
+            fi
+            MAAS_API_NAMESPACE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+export MAAS_API_NAMESPACE
+
+# Script directory and project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Helper function to wait for CRD to be established
 wait_for_crd() {
@@ -89,12 +155,31 @@ wait_for_pods() {
   
   echo "⏳ Waiting for pods in $namespace to be ready..."
   local end=$((SECONDS + timeout))
+  local pods_found=false
+  
   while [ $SECONDS -lt $end ]; do
+    local total_pods=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | wc -l)
+    
+    # If no pods exist yet, wait for them to appear
+    if [ "$total_pods" -eq 0 ]; then
+      if [ "$pods_found" = "false" ]; then
+        echo "   Waiting for pods to be created..."
+      fi
+      sleep 5
+      continue
+    fi
+    
+    pods_found=true
     local not_ready=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | grep -v -E 'Running|Completed|Succeeded' | wc -l)
     [ "$not_ready" -eq 0 ] && return 0
     sleep 5
   done
-  echo "⚠️  Timeout waiting for pods in $namespace" >&2
+  
+  if [ "$pods_found" = "false" ]; then
+    echo "⚠️  No pods found in $namespace within timeout" >&2
+  else
+    echo "⚠️  Timeout waiting for pods in $namespace to be ready" >&2
+  fi
   return 1
 }
 
@@ -211,12 +296,8 @@ echo ""
 echo "2️⃣ Creating namespaces..."
 echo "   ℹ️  Note: If ODH/RHOAI is already installed, some namespaces may already exist"
 
-# Determine MaaS API namespace: use MAAS_API_NAMESPACE env var if set, otherwise default to maas-api
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-MAAS_API_NAMESPACE=${MAAS_API_NAMESPACE:-maas-api}
-export MAAS_API_NAMESPACE
-echo "   MaaS API namespace: $MAAS_API_NAMESPACE (set MAAS_API_NAMESPACE env var to override)"
+# MAAS_API_NAMESPACE is set at top of script via --namespace flag or env var
+echo "   MaaS API namespace: $MAAS_API_NAMESPACE (use --namespace to override)"
 
 for ns in opendatahub kserve kuadrant-system llm "$MAAS_API_NAMESPACE"; do
     kubectl create namespace $ns 2>/dev/null || echo "   Namespace $ns already exists"
@@ -255,6 +336,61 @@ fi
 
 echo "   Installing Kuadrant..."
 "$SCRIPT_DIR/install-dependencies.sh" --kuadrant
+
+# Install cert-manager if not present (required for model TLS certificates)
+echo ""
+echo "   Checking for cert-manager..."
+if kubectl get crd clusterissuers.cert-manager.io &>/dev/null; then
+    echo "   ✅ cert-manager CRDs already present"
+elif kubectl get subscription openshift-cert-manager-operator -n cert-manager-operator &>/dev/null; then
+    echo "   ✅ cert-manager subscription exists, waiting for CRDs..."
+    for i in $(seq 1 60); do
+        if kubectl get crd clusterissuers.cert-manager.io &>/dev/null; then
+            echo "   ✅ cert-manager CRDs available"
+            break
+        fi
+        [ $i -eq 60 ] && echo "   ⚠️  cert-manager CRDs not yet available"
+        sleep 5
+    done
+else
+    echo "   Installing cert-manager operator..."
+    # Create namespace first
+    kubectl create namespace cert-manager-operator 2>/dev/null || true
+    # Create OperatorGroup
+    kubectl apply -f - <<EOF
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: cert-manager-operator-group
+  namespace: cert-manager-operator
+spec:
+  targetNamespaces:
+  - cert-manager-operator
+EOF
+    # Create Subscription
+    kubectl apply -f - <<EOF
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-cert-manager-operator
+  namespace: cert-manager-operator
+spec:
+  channel: stable-v1
+  installPlanApproval: Automatic
+  name: openshift-cert-manager-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+EOF
+    echo "   ⏳ Waiting for cert-manager CRDs to be available..."
+    for i in $(seq 1 60); do
+        if kubectl get crd clusterissuers.cert-manager.io &>/dev/null; then
+            echo "   ✅ cert-manager installed"
+            break
+        fi
+        [ $i -eq 60 ] && echo "   ⚠️  cert-manager CRDs not yet available, ClusterIssuer may need to be created later"
+        sleep 5
+    done
+fi
 
 echo ""
 echo "4️⃣ Checking for OpenDataHub/RHOAI KServe..."
@@ -296,21 +432,39 @@ if kubectl get deployment odh-model-controller -n opendatahub &>/dev/null; then
         echo "   ⚠️  Deployment update taking longer than expected, continuing..."
     echo "   ✅ odh-model-controller deployment patched"
 else
-    echo "   ⚠️  odh-model-controller deployment not found in opendatahub namespace, skipping patch"
-    echo "      (The deployment may be created later by the ODH operator)"
+    echo "   ℹ️  odh-model-controller deployment not found in opendatahub namespace"
+    echo "      (This is expected if ODH operator hasn't created it yet - it will be patched automatically when created)"
 fi
 
 # Patch GatewayConfig to use LoadBalancer instead of OcpRoute (default mode)
+# Note: This patch may generate a warning if ingressMode field is not supported in the CRD version
 echo ""
 echo "   Patching GatewayConfig to use LoadBalancer ingress mode..."
 if kubectl get gatewayconfig.services.platform.opendatahub.io default-gateway &>/dev/null; then
-    kubectl patch gatewayconfig.services.platform.opendatahub.io default-gateway \
+    # Suppress stderr warnings about unknown fields (field may not exist in all CRD versions)
+    PATCH_OUTPUT=$(kubectl patch gatewayconfig.services.platform.opendatahub.io default-gateway \
       --type='merge' \
-      -p '{"spec":{"ingressMode":"LoadBalancer"}}' && \
-      echo "   ✅ GatewayConfig patched to use LoadBalancer mode" || \
-      echo "   ⚠️  Failed to patch GatewayConfig"
+      -p '{"spec":{"ingressMode":"LoadBalancer"}}' 2>&1)
+    PATCH_EXIT=$?
+    
+    if [ $PATCH_EXIT -eq 0 ]; then
+        # Check if patch resulted in "no change" (already set) or actual change
+        if echo "$PATCH_OUTPUT" | grep -q "no change"; then
+            echo "   ✅ GatewayConfig already configured for LoadBalancer mode"
+        else
+            echo "   ✅ GatewayConfig patched to use LoadBalancer mode"
+        fi
+    else
+        # Check if error is about unknown field (non-critical)
+        if echo "$PATCH_OUTPUT" | grep -qi "unknown field"; then
+            echo "   ℹ️  GatewayConfig ingressMode field not supported in this CRD version (non-critical)"
+            echo "      Gateway will use default ingress mode"
+        else
+            echo "   ⚠️  GatewayConfig patch failed: $(echo "$PATCH_OUTPUT" | head -1)"
+        fi
+    fi
 else
-    echo "   ⚠️  GatewayConfig default-gateway not found, skipping patch"
+    echo "   ℹ️  GatewayConfig default-gateway not found, skipping patch"
     echo "      (It may be created later by the ODH operator)"
 fi
 
@@ -363,12 +517,13 @@ cd "$PROJECT_ROOT"
 kubectl apply --server-side=true --force-conflicts -f deployment/base/networking/odh/odh-gateway-api.yaml
 
 # Detect which TLS certificate secret exists for the MaaS gateway
-CERT_CANDIDATES=("default-gateway-cert" "data-science-gatewayconfig-tls" "data-science-gateway-service-tls")
+# Check default-gateway-tls first (created above), then ODH-managed certificates
+CERT_CANDIDATES=("default-gateway-tls" "default-gateway-cert" "data-science-gatewayconfig-tls" "data-science-gateway-service-tls")
 CERT_NAME=""
 for cert in "${CERT_CANDIDATES[@]}"; do
     if kubectl get secret -n openshift-ingress "$cert" &>/dev/null; then
         CERT_NAME="$cert"
-        echo "   Found TLS certificate secret: $cert"
+        echo "   ✅ Found TLS certificate secret: $cert"
         break
     fi
 done
@@ -382,9 +537,8 @@ if [ -n "$CERT_NAME" ]; then
     kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN $CERT_NAME' < deployment/base/networking/maas/maas-gateway-api.yaml)
 else
     # Apply without HTTPS listener if no cert is found
-    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml | yq eval 'del(.spec.listeners[] | select(.name == "https"))' -)
+    kubectl apply --server-side=true --force-conflicts -f <(envsubst '$CLUSTER_DOMAIN' < deployment/base/networking/maas/maas-gateway-api.yaml | yq 'del(.spec.listeners[] | select(.name == "https"))' -)
 fi
-
 
 echo ""
 echo "6️⃣ Waiting for Kuadrant operators to be installed by OLM..."
@@ -554,7 +708,7 @@ kubectl rollout status deployment/kuadrant-operator-controller-manager -n kuadra
   echo "   ⚠️  Kuadrant operator taking longer than expected, continuing..."
 
 echo ""
-echo "🔟 Waiting for Gateway to be ready..."
+echo "9️⃣ Waiting for Gateway to be ready..."
 echo "   Note: This may take a few minutes if Service Mesh is being automatically installed..."
 
 # Wait for Service Mesh CRDs to be established
@@ -614,7 +768,7 @@ else
 fi
 
 echo ""
-echo "1️⃣1️⃣ Applying Gateway Policies (includes RBAC for tier ServiceAccounts)..."
+echo "🔟 Applying Gateway Policies (includes RBAC for tier ServiceAccounts)..."
 cd "$PROJECT_ROOT"
 # Substitute MAAS_API_NAMESPACE in gateway-auth-policy.yaml (for tier lookup URL)
 kustomize build deployment/base/policies | envsubst '$MAAS_API_NAMESPACE' | kubectl apply --server-side=true --force-conflicts -f -
@@ -627,7 +781,7 @@ else
 fi
 
 echo ""
-echo "1️⃣2️⃣ Creating ClusterIssuer for cert-manager (for model TLS certificates)..."
+echo "1️⃣1️⃣ Creating ClusterIssuer for cert-manager (for model TLS certificates)..."
 if ! kubectl get clusterissuer selfsigned-issuer &>/dev/null; then
     if kubectl get crd clusterissuers.cert-manager.io &>/dev/null; then
         kubectl apply -f - <<EOF
@@ -647,7 +801,7 @@ else
 fi
 
 echo ""
-echo "1️⃣3️⃣ Verifying AuthPolicy audience and authorization verb..."
+echo "1️⃣2️⃣ Verifying AuthPolicy audience and authorization verb..."
 # Note: Audience is now dynamically set in step 8 via envsubst
 # This step verifies and patches as a fallback if needed
 AUD="$(kubectl create token default --duration=10m 2>/dev/null | cut -d. -f2 | base64 -d 2>/dev/null | jq -r '.aud[0]' 2>/dev/null)"
@@ -691,18 +845,18 @@ else
 fi
 
 echo ""
-echo "1️⃣4️⃣ Updating Limitador image for metrics exposure..."
+echo "1️⃣3️⃣ Updating Limitador image for metrics exposure..."
 kubectl -n kuadrant-system patch limitador limitador --type merge \
   -p '{"spec":{"image":"quay.io/kuadrant/limitador:1a28eac1b42c63658a291056a62b5d940596fd4c","version":""}}' 2>/dev/null && \
   echo "   ✅ Limitador image updated" || \
   echo "   ⚠️  Could not update Limitador image (may not be critical)"
 
 echo ""
-echo "========================================="
-# Deploy observability components (ServiceMonitor and TelemetryPolicy)
-echo "   Deploying observability components..."
+echo "1️⃣4️⃣ Deploying observability components (ServiceMonitors and TelemetryPolicy)..."
+cd "$PROJECT_ROOT"
 kustomize build deployment/base/observability | kubectl apply -f -
 echo "   ✅ Observability components deployed"
+echo "   ℹ️  ServiceMonitors configured for OpenShift Prometheus (user-workload-monitoring)"
 
 # Verification
 echo ""
@@ -728,8 +882,6 @@ echo ""
 echo "Policy Status:"
 kubectl get authpolicy -n openshift-ingress gateway-auth-policy -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null | xargs echo "  AuthPolicy:"
 kubectl get tokenratelimitpolicy -n openshift-ingress gateway-token-rate-limits -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null | xargs echo "  TokenRateLimitPolicy:"
-
-
 
 echo ""
 echo "Policy Enforcement Status:"
@@ -855,6 +1007,42 @@ echo "9. Access Prometheus to view metrics:"
 echo "   kubectl port-forward -n openshift-monitoring svc/prometheus-k8s 9090:9091 &"
 echo "   # Open http://localhost:9090 in browser and search for: authorized_hits, authorized_calls, limited_calls"
 echo ""
+
+# Observability installation
+echo ""
+echo "========================================="
+echo "📊 Observability Stack"
+echo "========================================="
+echo ""
+
+# Check if flag was provided
+if [ "$INSTALL_OBSERVABILITY" = "y" ]; then
+    echo "Installing observability stack..."
+    "$SCRIPT_DIR/install-observability.sh" --namespace "$MAAS_API_NAMESPACE"
+elif [ "$INSTALL_OBSERVABILITY" = "n" ]; then
+    echo "⏭️  Skipping observability installation"
+    echo "   To install later, from project root run: ./scripts/install-observability.sh --namespace $MAAS_API_NAMESPACE"
+else
+    # No flag - prompt if interactive
+    echo "Would you like to install the observability stack (Grafana + dashboards)?"
+    echo "This includes:"
+    echo "  - Grafana instance with Prometheus datasource"
+    echo "  - Platform Admin Dashboard"
+    echo "  - AI Engineer Dashboard"
+    echo ""
+
+    if [ -t 0 ]; then
+        read -p "Install observability? [y/N]: " INSTALL_OBS_ANSWER
+        if [ "$INSTALL_OBS_ANSWER" = "y" ] || [ "$INSTALL_OBS_ANSWER" = "Y" ] || [ "$INSTALL_OBS_ANSWER" = "yes" ] || [ "$INSTALL_OBS_ANSWER" = "YES" ]; then
+            "$SCRIPT_DIR/install-observability.sh" --namespace "$MAAS_API_NAMESPACE"
+        else
+            echo "⏭️  Skipping observability installation"
+            echo "   To install later, from project root run: ./scripts/install-observability.sh --namespace $MAAS_API_NAMESPACE"
+        fi
+    else
+        echo "Non-interactive mode: skipping observability (use --with-observability to install)"
+    fi
+fi
 
 # Run validation
 echo ""
