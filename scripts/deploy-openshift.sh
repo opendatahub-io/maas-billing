@@ -674,18 +674,22 @@ else
     export MAAS_AUTH_AUDIENCE
 
     # Process kustomization.yaml to replace hardcoded namespace, then build
-    TMP_DIR=$(mktemp -d)
-    cp -r "$PROJECT_ROOT/deployment/base/maas-api"/* "$TMP_DIR/"
-    # Replace hardcoded "namespace: maas-api" with "namespace: ${MAAS_API_NAMESPACE}" in kustomization.yaml
-    # Use temp file approach for cross-platform compatibility (macOS sed -i differs from Linux)
-    sed "s|namespace: maas-api|namespace: \${MAAS_API_NAMESPACE}|g" "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
-    mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
-    # Replace ${MAAS_API_NAMESPACE} placeholder with actual value
-    envsubst '$MAAS_API_NAMESPACE' < "$TMP_DIR/kustomization.yaml" > "$TMP_DIR/kustomization.yaml.tmp"
-    mv "$TMP_DIR/kustomization.yaml.tmp" "$TMP_DIR/kustomization.yaml"
+    TMP_DIR="$(mktemp -d)"
+    trap 'rm -rf "$TMP_DIR"' EXIT
 
-    # Build kustomize output, substitute namespace and OIDC audience
-    MAAS_API_MANIFEST=$(kustomize build "$TMP_DIR" | sed "s|namespace: maas-api|namespace: $MAAS_API_NAMESPACE|g" | envsubst '$MAAS_AUTH_AUDIENCE')
+    cp -r "$PROJECT_ROOT/deployment/base/maas-api/." "$TMP_DIR"
+
+    (
+      cd "$TMP_DIR"
+      kustomize edit set namespace "$MAAS_API_NAMESPACE"
+    )
+
+    # Build kustomize output, substitute OIDC audience
+    MAAS_API_MANIFEST=$(kustomize build "$TMP_DIR" | envsubst '$MAAS_AUTH_AUDIENCE')
+
+    # Clear trap now that we're done with TMP_DIR
+    trap - EXIT
+    rm -rf "$TMP_DIR"
 
     # Handle immutable selector error by deleting deployment first if needed
     kubectl apply -f - <<< "$MAAS_API_MANIFEST" 2>&1 | tee /tmp/maas-api-apply.log
@@ -697,7 +701,7 @@ else
             echo "$MAAS_API_MANIFEST" | kubectl apply -f -
         fi
     fi
-    rm -rf "$TMP_DIR" /tmp/maas-api-apply.log 2>/dev/null
+    rm -f /tmp/maas-api-apply.log 2>/dev/null
 fi
 
 # Restart Kuadrant operator to pick up the new configuration
