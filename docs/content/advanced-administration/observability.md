@@ -15,7 +15,8 @@ As part of Dev Preview MaaS Platform includes a basic observability stack that p
     The observability stack will be enhanced in the future.
 
 - **Limitador**: Rate limiting service that exposes metrics
-- **Prometheus**: Metrics collection and storage
+- **Prometheus**: Metrics collection and storage (uses OpenShift platform Prometheus on OpenShift clusters)
+- **ServiceMonitors**: Automatically deployed to configure Prometheus metric scraping
 - **Grafana**: Metrics visualization and dashboards
 - **Future**: Migration to Perses for enhanced dashboard management
 
@@ -47,22 +48,40 @@ Limitador exposes several key metrics that are collected through a ServiceMonito
 
 ### ServiceMonitor Configuration
 
-For automatic discovery of services, use ServiceMonitor resources:
+ServiceMonitors are automatically deployed during the main deployment (step 14) to configure OpenShift's Prometheus to discover and scrape metrics from MaaS components.
+
+**Automatically Deployed ServiceMonitors:**
+
+- **Limitador**: Scrapes rate limiting metrics from Limitador pods
+- **Authorino**: Scrapes authentication metrics from Authorino pods
+- **vLLM Models**: Scrapes metrics from vLLM simulator and model services
+- **MaaS API**: Scrapes metrics from MaaS API services
+
+These ServiceMonitors are deployed in the `maas-api` namespace and use `namespaceSelector` to discover services in other namespaces (e.g., `kuadrant-system`, `llm`).
+
+**Manual ServiceMonitor Creation (Advanced):**
+
+If you need to create additional ServiceMonitors for custom services, use the following template:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: limitador-monitor
-  namespace: monitoring
+  name: your-service-monitor
+  namespace: maas-api
+  labels:
+    app: your-app
 spec:
   selector:
     matchLabels:
-      app: limitador
+      app: your-service
   endpoints:
-  - port: metrics
-    interval: 10s
+  - port: http
     path: /metrics
+    interval: 30s
+  namespaceSelector:
+    matchNames:
+    - your-namespace
 ```
 
 ## High Availability for MaaS Metrics
@@ -133,10 +152,14 @@ The observability stack includes:
 
 1. **Grafana Operator**: Installed automatically if not present
 2. **Grafana Instance**: Deployed to the target namespace
-3. **Prometheus Datasource**: Configured with authentication token
-4. **Dashboards**:
+3. **Prometheus Datasource**: Configured with authentication token (connects to OpenShift platform Prometheus)
+4. **ServiceMonitors**: Automatically deployed during main deployment to configure metric scraping
+5. **Dashboards**:
    - Platform Admin Dashboard
    - AI Engineer Dashboard
+
+!!! note "ServiceMonitors Deployment"
+    ServiceMonitors are deployed automatically in step 14 of `deploy-openshift.sh`, even if the observability stack (Grafana) is not installed. This ensures that OpenShift's Prometheus can collect metrics from MaaS components regardless of whether Grafana is installed.
 
 ### Accessing Grafana
 
@@ -158,10 +181,14 @@ kubectl get route grafana-ingress -n maas-api -o jsonpath='{.spec.host}'
 
 ### Grafana Datasource Configuration
 
-The Prometheus datasource is automatically configured with:
+The Prometheus datasource is automatically configured to connect to OpenShift's platform Prometheus:
+
 - **URL**: `https://thanos-querier.openshift-monitoring.svc.cluster.local:9091`
 - **Authentication**: Bearer token from OpenShift service account
 - **TLS**: Skip verification (internal cluster communication)
+
+!!! note "OpenShift Platform Prometheus"
+    On OpenShift clusters, the platform provides Prometheus in the `openshift-monitoring` namespace. The MaaS Platform does not deploy a custom Prometheus instance. Instead, ServiceMonitors are used to configure the platform Prometheus to scrape metrics from MaaS components.
 
 The datasource is created dynamically by `install-observability.sh` with proper token injection. A static datasource manifest is not used to ensure authentication tokens are properly configured.
 

@@ -62,6 +62,7 @@ The deployment script creates the following core resources:
 - **MaaS API**: Deployment and service in `maas-api` namespace
 - **Operators**: Cert-manager, LWS, Red Hat Connectivity Link and Red Hat OpenShift AI.
 - **Observability** (optional): Grafana instance with dashboards and Prometheus datasource.
+- **ServiceMonitors**: Automatically deployed to configure Prometheus metric scraping (deployed even without observability stack).
 
 Check deployment status:
 
