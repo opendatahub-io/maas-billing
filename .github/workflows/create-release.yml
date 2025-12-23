@@ -243,6 +243,8 @@ jobs:
     name: Build and Push Image
     runs-on: ubuntu-latest
     needs: [create-release-branch, create-tag]
+    outputs:
+      image_repo: ${{ steps.set_repo.outputs.repo }}
     defaults:
       run:
         working-directory: maas-api
@@ -268,9 +270,28 @@ jobs:
           username: ${{ secrets.APP_QUAY_USERNAME }}
           password: ${{ secrets.APP_QUAY_TOKEN }}
 
-      - name: Build and Push maas-api image to Quay.io
+      - name: Determine repository
+        id: set_repo
+        env:
+          QUAY_REPO: ${{ secrets.APP_QUAY_REPO }}
         run: |
-          make build-push-image REPO=quay.io/maas/maas-api TAG=${{ needs.create-tag.outputs.version_tag }} CONTAINER_ENGINE=docker
+          if [ -n "$QUAY_REPO" ]; then
+            echo "repo=$QUAY_REPO" >> $GITHUB_OUTPUT
+            echo "Using custom repository from secret: $QUAY_REPO"
+          else
+            echo "repo=quay.io/opendatahub/maas-api" >> $GITHUB_OUTPUT
+            echo "Using Makefile default repository: quay.io/opendatahub/maas-api"
+          fi
+
+      - name: Build and Push maas-api image to Quay.io
+        env:
+          QUAY_REPO: ${{ secrets.APP_QUAY_REPO }}
+        run: |
+          if [ -n "$QUAY_REPO" ]; then
+            make build-push-image REPO="$QUAY_REPO" TAG=${{ needs.create-tag.outputs.version_tag }} CONTAINER_ENGINE=docker
+          else
+            make build-push-image TAG=${{ needs.create-tag.outputs.version_tag }} CONTAINER_ENGINE=docker
+          fi
 
   deploy-documentation:
     name: Deploy Documentation
@@ -329,7 +350,7 @@ jobs:
             echo "✅ **Tag**: \`${{ needs.create-tag.outputs.version_tag }}\`"
             echo "✅ **Release Branch**: \`${{ needs.create-release-branch.outputs.minor_release_branch }}\`"
             echo "✅ **Git Tag**: Created and pushed from release branch"
-            echo "✅ **Image Built & Pushed**: \`quay.io/maas/maas-api:${{ needs.create-tag.outputs.version_tag }}\`"
+            echo "✅ **Image Built & Pushed**: \`${{ needs.build-and-push-image.outputs.image_repo }}:${{ needs.create-tag.outputs.version_tag }}\`"
             echo "✅ **Documentation Deployed**: \`${{ needs.create-tag.outputs.version_tag }}\`"
             if [ "${{ inputs.create_release }}" == "true" ]; then
               echo "✅ **GitHub Release**: Created"
