@@ -51,7 +51,7 @@ spec:
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
           "targets": [{"expr": "sum(limited_calls{user=~\"^$user$\"}) OR vector(0)", "instant": true, "refId": "A"}],
-          "title": "❌ Rate Limited Requests",
+          "title": "❌ Total Rate Limited Requests",
           "type": "stat"
         },
         {
@@ -59,11 +59,11 @@ spec:
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.9}, {"color": "green", "value": 0.95}]}, "unit": "percentunit"}, "overrides": []},
           "gridPos": {"h": 5, "w": 6, "x": 18, "y": 1},
           "id": 8,
-          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "options": {"orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showThresholdLabels": false, "showThresholdMarkers": true, "text": {}},
           "pluginVersion": "11.3.0",
           "targets": [{"expr": "(sum(authorized_hits{user=~\"^$user$\"}) / (sum(authorized_hits{user=~\"^$user$\"}) + sum(limited_calls{user=~\"^$user$\"}))) OR vector(1)", "instant": true, "refId": "A"}],
           "title": "✅ My Success Rate",
-          "type": "stat"
+          "type": "gauge"
         },
         {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6}, "id": 101, "panels": [], "title": "📈 Usage Trends", "type": "row"},
         {
@@ -85,7 +85,7 @@ spec:
           "options": {"legend": {"calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
           "targets": [{"expr": "sum(rate(authorized_hits{user=~\"^$user$\"}[5m]))", "legendFormat": "Authorized", "refId": "A"}, {"expr": "sum(rate(limited_calls{user=~\"^$user$\"}[5m]))", "legendFormat": "Rate Limited", "refId": "B"}],
-          "title": "📊 Request Trends (Success vs Rate Limited)",
+          "title": "📊 Request Trends (Successful vs Rate Limited Requests)",
           "type": "timeseries"
         },
         {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 15}, "id": 102, "panels": [], "title": "⏰ Hourly Usage Patterns", "type": "row"},

@@ -204,8 +204,8 @@ spec:
           "id": 6,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(rate(limited_calls[5m]))", "legendFormat": "Rate Limited", "refId": "A"}],
-          "title": "❌ Error Rates",
+          "targets": [{"expr": "sum(rate(limited_calls[5m])) + sum(rate(auth_server_response_status_total{authconfig=~\"maas.*\",status=~\"401|Unauthorized\"}[5m]))", "legendFormat": "Overall Error Rate", "refId": "A"}],
+          "title": "❌ Overall Error Rate",
           "type": "timeseries"
         },
         {
@@ -233,6 +233,36 @@ spec:
         {
           "collapsed": false,
           "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28},
+          "id": 105,
+          "panels": [],
+          "title": "❌ Error Breakdown",
+          "type": "row"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}, "unit": "ops"}, "overrides": [{"matcher": {"id": "byName", "options": "Rate Limited"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]}]},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+          "id": 15,
+          "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(rate(limited_calls[5m]))", "legendFormat": "Rate Limited", "refId": "A"}],
+          "title": "🚫 Rate Limited Requests",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}, "unit": "ops"}, "overrides": [{"matcher": {"id": "byName", "options": "Unauthorized"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}]},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+          "id": 16,
+          "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(rate(auth_server_response_status_total{authconfig=~\"maas.*\",status=~\"401|Unauthorized\"}[5m]))", "legendFormat": "Unauthorized", "refId": "A"}],
+          "title": "🔒 Unauthorized Requests",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 37},
           "id": 103,
           "panels": [],
           "title": "🏆 Top Users",
@@ -241,7 +271,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 29},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 38},
           "id": 19,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Hits"}]},
           "pluginVersion": "11.3.0",
@@ -250,8 +280,19 @@ spec:
           "type": "table"
         },
         {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "user"}, "properties": [{"id": "displayName", "value": "👤 User"}]}, {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "📊 Declined Requests"}]}]},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 45},
+          "id": 20,
+          "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Declined Requests"}]},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "topk(10, sum by (user) (limited_calls))", "format": "table", "instant": true, "refId": "A"}],
+          "title": "🏆 Top 10 Users by Declined Requests",
+          "type": "table"
+        },
+        {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 36},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 52},
           "id": 104,
           "panels": [],
           "title": "📋 Detailed Breakdown",
@@ -260,7 +301,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ops"}, "overrides": []},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 37},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 53},
           "id": 8,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
@@ -271,7 +312,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "user"}, "properties": [{"id": "displayName", "value": "👤 User"}]}, {"matcher": {"id": "byName", "options": "model"}, "properties": [{"id": "displayName", "value": "🤖 Model"}]}, {"matcher": {"id": "byName", "options": "tier"}, "properties": [{"id": "displayName", "value": "🏷️ Tier"}]}, {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "📊 Hits"}]}]},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 45},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 61},
           "id": 9,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": true}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Hits"}]},
           "pluginVersion": "11.3.0",
