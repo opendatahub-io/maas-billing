@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	kservev1alpha1 "github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
@@ -79,6 +80,12 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 	}
 
 	modelURLStr := model.URL.String()
+	// Append configured endpoint to the base model URL for authorization check
+	authCheckURL := modelURLStr
+	if !strings.HasSuffix(modelURLStr, "/") {
+		authCheckURL += "/"
+	}
+	authCheckURL += m.authCheckEndpoint
 
 	// Retry logic with exponential backoff as specified in PR feedback
 	retryDelays := []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond}
@@ -95,10 +102,10 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 
 		// Create HTTP HEAD request for lightweight authorization check
 		// HEAD aligns with gateway policies while avoiding POST issues on inference endpoints
-		req, err := http.NewRequestWithContext(ctx, http.MethodHead, modelURLStr, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodHead, authCheckURL, nil)
 		if err != nil {
 			m.logger.Debug("Failed to create authorization request",
-				"modelURL", modelURLStr,
+				"modelURL", authCheckURL,
 				"attempt", attempt+1,
 				"error", err,
 			)
@@ -117,7 +124,7 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 		resp, err := client.Do(req)
 		if err != nil {
 			m.logger.Debug("Authorization request failed",
-				"modelURL", modelURLStr,
+				"modelURL", authCheckURL,
 				"attempt", attempt+1,
 				"error", err,
 			)
@@ -125,6 +132,14 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 			continue
 		}
 		resp.Body.Close()
+
+		// Debug log the status code for all responses
+		m.logger.Debug("Authorization check response",
+			"modelID", model.ID,
+			"statusCode", resp.StatusCode,
+			"attempt", attempt+1,
+			"url", authCheckURL,
+		)
 
 		// Check if the user has access (2xx status codes indicate success)
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -146,13 +161,22 @@ func (m *Manager) userCanAccessModel(ctx context.Context, model Model, saToken s
 				"attempt", attempt+1,
 			)
 			return false
-		case http.StatusNotFound, http.StatusMethodNotAllowed:
-			// Model endpoint doesn't support HEAD requests - this indicates authorization enforcement is not available
-			// SECURITY: Deny access when authorization cannot be verified
-			m.logger.Debug("Model endpoint doesn't support HEAD request, denying access due to unverifiable authorization",
+		case http.StatusNotFound:
+			// 404 is not a failure - endpoint might not exist but that's okay, allow access
+			m.logger.Debug("Model endpoint returned 404, allowing access (not a denial)",
 				"modelID", model.ID,
 				"statusCode", resp.StatusCode,
 				"attempt", attempt+1,
+			)
+			return true
+		case http.StatusMethodNotAllowed:
+			// 405 Method Not Allowed - this should not happen, something is misconfigured
+			// Deny access as we cannot verify authorization
+			m.logger.Debug("UNEXPECTED: Model endpoint returned 405 Method Not Allowed - this indicates a configuration issue. HEAD requests should be supported by the gateway. Denying access as authorization cannot be verified",
+				"modelID", model.ID,
+				"statusCode", resp.StatusCode,
+				"attempt", attempt+1,
+				"url", authCheckURL,
 			)
 			return false
 		default:
