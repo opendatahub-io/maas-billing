@@ -12,38 +12,25 @@ spec:
     matchLabels:
       app: models-aas-observability
 ---
+# ServiceMonitor for ALL KServe LLM models (vLLM, simulators, etc.)
+# Matches any LLMInferenceService workload service
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: vllm-simulator-monitor
+  name: kserve-llm-models
   labels:
-    app: vllm-simulator
+    app.kubernetes.io/part-of: maas-observability
 spec:
   endpoints:
   - interval: 30s
-    port: http
+    targetPort: 8000
     path: /metrics
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
   selector:
     matchLabels:
-      app: vllm-simulator
-  namespaceSelector:
-    matchNames:
-    - llm
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: qwen3-model-monitor
-  labels:
-    app: qwen3-0-6b-instruct
-spec:
-  endpoints:
-  - interval: 30s
-    port: http
-    path: /metrics
-  selector:
-    matchLabels:
-      serving.kserve.io/inferenceservice: qwen3-0-6b-instruct
+      app.kubernetes.io/part-of: llminferenceservice
   namespaceSelector:
     matchNames:
     - llm

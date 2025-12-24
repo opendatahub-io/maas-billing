@@ -107,10 +107,59 @@ for ns in kuadrant-system "$NAMESPACE"; do
 done
 
 # ==========================================
-# Step 3: Install Grafana Operator
+# Step 3: Configure Istio Gateway Metrics Scraping
 # ==========================================
 echo ""
-echo "3️⃣ Installing Grafana Operator..."
+echo "3️⃣ Configuring Istio Gateway metrics scraping..."
+
+# Check if the gateway exists
+if kubectl get deploy -n openshift-ingress maas-default-gateway-openshift-default &>/dev/null; then
+    # Create Service to expose metrics port
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-gateway-metrics
+  namespace: openshift-ingress
+  labels:
+    app: istio-gateway-metrics
+spec:
+  clusterIP: None
+  selector:
+    gateway.networking.k8s.io/gateway-name: maas-default-gateway
+  ports:
+    - name: http-envoy-prom
+      port: 15090
+      targetPort: 15090
+      protocol: TCP
+EOF
+
+    # Create ServiceMonitor to scrape metrics
+    cat <<EOF | kubectl apply -f -
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-gateway-metrics
+  namespace: openshift-ingress
+spec:
+  selector:
+    matchLabels:
+      app: istio-gateway-metrics
+  endpoints:
+    - port: http-envoy-prom
+      path: /stats/prometheus
+      interval: 15s
+EOF
+    echo "   ✅ Istio Gateway metrics scraping configured"
+else
+    echo "   ⚠️  Istio Gateway not found - skipping metrics configuration"
+fi
+
+# ==========================================
+# Step 4: Install Grafana Operator
+# ==========================================
+echo ""
+echo "4️⃣ Installing Grafana Operator..."
 
 if kubectl get csv -n openshift-operators 2>/dev/null | grep -q "grafana-operator"; then
     echo "   ✅ Grafana Operator already installed"
@@ -127,10 +176,10 @@ wait_for_crd "grafanas.grafana.integreatly.org" 120 || {
 }
 
 # ==========================================
-# Step 4: Deploy Grafana Instance
+# Step 5: Deploy Grafana Instance
 # ==========================================
 echo ""
-echo "4️⃣ Deploying Grafana instance to $NAMESPACE..."
+echo "5️⃣ Deploying Grafana instance to $NAMESPACE..."
 
 # Ensure namespace exists
 kubectl create namespace "$NAMESPACE" 2>/dev/null || true
@@ -148,10 +197,10 @@ kubectl wait --for=condition=Ready pods -l app=grafana -n "$NAMESPACE" --timeout
     echo "   ⚠️  Grafana pod still starting, continuing..."
 
 # ==========================================
-# Step 5: Configure Prometheus Datasource
+# Step 6: Configure Prometheus Datasource
 # ==========================================
 echo ""
-echo "5️⃣ Configuring Prometheus datasource..."
+echo "6️⃣ Configuring Prometheus datasource..."
 
 # Get authentication token
 TOKEN=$(oc whoami -t 2>/dev/null || kubectl create token default -n "$NAMESPACE" --duration=8760h 2>/dev/null || echo "")
@@ -214,10 +263,10 @@ EOF
 fi
 
 # ==========================================
-# Step 6: Deploy Dashboards
+# Step 7: Deploy Dashboards
 # ==========================================
 echo ""
-echo "6️⃣ Deploying dashboards..."
+echo "7️⃣ Deploying dashboards..."
 
 kustomize build "$OBSERVABILITY_DIR/dashboards" | \
     sed "s/namespace: maas-api/namespace: $NAMESPACE/g" | \
@@ -250,7 +299,9 @@ echo "   - Platform Admin Dashboard"
 echo "   - AI Engineer Dashboard"
 echo ""
 echo "📝 Metrics available:"
-echo "   - authorized_hits (successful requests)"
-echo "   - limited_calls (rate limited requests)"
-echo "   - authorized_calls (authorized requests)"
+echo "   Limitador: authorized_hits, authorized_calls, limited_calls, limitador_up"
+echo "   Istio:     istio_requests_total, istio_request_duration_milliseconds"
+echo "   vLLM:      vllm:num_requests_running, vllm:num_requests_waiting, vllm:gpu_cache_usage_perc"
+echo "   K8s:       kube_pod_status_phase"
+echo "   Alerts:    ALERTS{alertstate=\"firing\"}"
 echo ""

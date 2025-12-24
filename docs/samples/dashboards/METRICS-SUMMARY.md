@@ -29,33 +29,51 @@ limited_calls{model="facebook-opt-125m-simulated",user="tgitelma-redhat-com-dd26
 
 ### Authorino Metrics
 
-| Metric | Source | Labels Available | Missing Labels | Notes |
-| ------ | ------ | ---------------- | -------------- | ----- |
-| `auth_server_authconfig_total` | Authorino | `authconfig`, `namespace`, `evaluator_type` | N/A | ✅ Working - Auth config evaluation count |
-| `auth_server_response_status_total` | Authorino | `authconfig`, `namespace`, `status` | N/A | ✅ Working - Auth response status codes |
-| `grpc_server_handled_total` | Authorino | `grpc_code`, `grpc_method`, `grpc_service`, `grpc_type` | N/A | ✅ Working - gRPC request handling |
-| `grpc_server_started_total` | Authorino | `grpc_code`, `grpc_method`, `grpc_service`, `grpc_type` | N/A | ✅ Working - gRPC request start counter |
+| Metric | Source | Labels Available | Notes |
+| ------ | ------ | ---------------- | ----- |
+| `controller_runtime_reconcile_errors_total` | Authorino | `controller`, `namespace` | ✅ Working - Operator reconciliation errors |
+| `controller_runtime_reconcile_total` | Authorino | `controller`, `namespace`, `result` | ✅ Working - Operator reconciliation count |
+| `controller_runtime_active_workers` | Authorino | `controller` | ✅ Working - Active reconciliation workers |
+
+**Note**: Authorino only exposes **operator/controller metrics**, NOT auth request metrics like `auth_server_response_status_total`. Auth request tracking is done via Istio gateway metrics.
 
 ---
 
-### Envoy Gateway Metrics
+### Istio Gateway Metrics (NEW - Service Mesh)
 
 | Metric | Source | Labels Available | Notes |
 | ------ | ------ | ---------------- | ----- |
-| `envoy_http_downstream_rq_xx` | Envoy | `envoy_response_code_class`, `namespace` | ✅ Working - HTTP requests by response code class (2xx, 4xx, 5xx) |
+| `istio_requests_total` | Istio Gateway | `response_code`, `destination_service_name`, `destination_service_namespace` | ✅ Working - HTTP requests by status code |
+| `istio_request_duration_milliseconds` | Istio Gateway | `destination_service_name`, `response_code` | ✅ Working - Request latency histograms |
+| `istio_request_bytes` | Istio Gateway | `destination_service_name` | ✅ Working - Request size histograms |
+| `istio_response_bytes` | Istio Gateway | `destination_service_name` | ✅ Working - Response size histograms |
 
 **Useful Queries:**
 
 ```promql
-# Successful requests (2xx)
-sum(envoy_http_downstream_rq_xx{envoy_response_code_class="2",namespace="llm"})
+# Request rate by service
+sum by (destination_service_name) (rate(istio_requests_total[5m]))
 
-# Client errors (4xx) - includes rate limited and auth denied
-sum(envoy_http_downstream_rq_xx{envoy_response_code_class="4",namespace="llm"})
+# Unauthorized requests (401)
+sum(rate(istio_requests_total{response_code="401"}[5m]))
 
-# Server errors (5xx)
-sum(envoy_http_downstream_rq_xx{envoy_response_code_class="5",namespace="llm"})
+# Rate limited requests (429)
+sum(rate(istio_requests_total{response_code="429"}[5m]))
+
+# P95 latency by service
+histogram_quantile(0.95, sum by (destination_service_name, le) (rate(istio_request_duration_milliseconds_bucket[5m])))
+
+# P50 latency (median)
+histogram_quantile(0.5, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))
 ```
+
+**Verified Response Codes:**
+- `200` - Successful inference requests
+- `201` - Successful API key creation
+- `401` - Unauthorized (invalid/missing token)
+- `429` - Rate limited
+- `500` - Server errors
+- `503` - Service unavailable
 
 ---
 
@@ -63,23 +81,19 @@ sum(envoy_http_downstream_rq_xx{envoy_response_code_class="5",namespace="llm"})
 
 | Metric | Source | Labels Available | Notes |
 | ------ | ------ | ---------------- | ----- |
-| `haproxy_backend_http_responses_total` | HAProxy | `code` (2xx, 4xx, 5xx) | ✅ Working - Cluster ingress traffic |
-| `haproxy_backend_http_average_response_latency_milliseconds` | HAProxy | `route` | ✅ Working - Average latency per route |
+| `haproxy_backend_http_responses_total` | HAProxy | `code` (2xx, 4xx, 5xx), `route` | ✅ Working - HTTP routes only |
+| `haproxy_backend_http_average_response_latency_milliseconds` | HAProxy | `route` | ⚠️ Limited - TCP passthrough shows 0ms |
 
-**Useful Queries:**
+**Important**: The `maas-gateway-route` uses **TCP passthrough** (`backend="tcp"`). HAProxy doesn't measure HTTP metrics for TCP passthrough routes - it just forwards raw TCP. Use **Istio gateway metrics** for MaaS latency instead.
+
+**Useful Queries (for HTTP routes only):**
 
 ```promql
-# Total 2xx responses through cluster ingress
+# Total 2xx responses through cluster ingress (HTTP routes)
 sum(haproxy_backend_http_responses_total{code="2xx"})
 
-# 4xx errors in last hour
-sum(increase(haproxy_backend_http_responses_total{code="4xx"}[1h]))
-
-# Average latency for MaaS routes
-avg(haproxy_backend_http_average_response_latency_milliseconds{route=~"maas.*"})
-
-# Latency per route (MaaS only)
-avg by (route) (haproxy_backend_http_average_response_latency_milliseconds{route=~"maas.*"})
+# 4xx errors for non-TCP routes
+sum(rate(haproxy_backend_http_responses_total{code="4xx", backend!="tcp"}[5m]))
 ```
 
 ---
@@ -102,17 +116,17 @@ count(kube_pod_status_phase{namespace="openshift-ingress", pod=~"maas.*", phase=
 
 ---
 
-### vLLM Model Metrics (Potential)
+### vLLM/KServe Model Metrics
 
 | Metric | Source | Labels Available | Notes |
 | ------ | ------ | ---------------- | ----- |
-| `vllm:num_requests_running` | vLLM | `model_name` | ⚠️ Available if vLLM model deployed |
-| `vllm:num_requests_waiting` | vLLM | `model_name` | ⚠️ Available if vLLM model deployed |
-| `vllm:request_latency_seconds` | vLLM | `model_name` | ⚠️ Histogram for latency tracking |
-| `vllm:prompt_tokens_total` | vLLM | `model_name` | ⚠️ Token consumption tracking |
-| `vllm:generation_tokens_total` | vLLM | `model_name` | ⚠️ Token generation tracking |
+| `vllm:num_requests_running` | vLLM/Simulator | `model_name` | ✅ Available - requests currently processing |
+| `vllm:num_requests_waiting` | vLLM/Simulator | `model_name` | ✅ Available - requests in queue |
+| `vllm:gpu_cache_usage_perc` | vLLM/Simulator | `model_name` | ✅ Available - GPU cache utilization |
+| `vllm:prompt_tokens_total` | vLLM (real only) | `model_name` | ⚠️ Requires real vLLM deployment |
+| `vllm:generation_tokens_total` | vLLM (real only) | `model_name` | ⚠️ Requires real vLLM deployment |
 
-**Note**: vLLM metrics are scraped via ServiceMonitor (`vllm-simulator-monitor`, `qwen3-model-monitor`) but require vLLM-based model deployment.
+**Note**: Metrics are scraped via ServiceMonitor `kserve-llm-models` which targets all services with label `app.kubernetes.io/part-of: llminferenceservice`. The current simulator exposes queue depth and GPU cache metrics but NOT token consumption metrics.
 
 ---
 
@@ -208,27 +222,35 @@ sum by (user) (authorized_calls) / (sum by (user) (authorized_calls) + sum by (u
 
 ---
 
-## ❌ MISSING METRICS (Blocked by Dependencies)
+## ✅ RESOLVED: Latency & Error Metrics
 
-### What's NOT Available Yet
+With Istio gateway metrics now scraped, we have:
+
+| Feature | Status | Metric Used |
+|---------|--------|-------------|
+| **P50/P95/P99 Latency** | ✅ Working | `histogram_quantile(0.95, istio_request_duration_milliseconds_bucket)` |
+| **Latency per Service** | ✅ Working | Grouped by `destination_service_name` |
+| **Unauthorized Requests** | ✅ Working | `istio_requests_total{response_code="401"}` |
+| **Rate Limited Requests** | ✅ Working | `istio_requests_total{response_code="429"}` + `limited_calls` |
+
+---
+
+## ❌ REMAINING GAPS (Blocked by Dependencies)
 
 | Missing Feature | Why It's Needed | What's Blocking It | Jira |
 |-----------------|-----------------|-------------------|------|
-| **P50/P99 Latency** | Better latency analysis than averages | HAProxy only exports averages, need histogram metrics | - |
-| **Latency per API Key/User** | Track performance per customer | HAProxy metrics don't include user labels | - |
-| **Token Consumption** | Actual LLM tokens (input/output), not request counts | Requires LLM-level instrumentation | **RHOAIENG-28166** |
-| **Model Status (Ready/Not Ready)** | Show model health in dashboard | KServe doesn't expose model status metrics | **RHOAIENG-25355** |
 | **Model Resource Allocation** | Show CPU/GPU/Memory per model | KServe resource metrics not available | **RHOAIENG-12528** |
 | **Model Inference Latency** | Time spent in LLM inference (not routing) | Requires KServe/vLLM metrics integration | - |
-| **Per-Request Token Counts** | Tokens per request for accurate billing | Not exposed by current LLM simulators | **RHOAIENG-28166** |
+| **Per-Request Token Counts** | Tokens per request for accurate billing | Not exposed by current LLM simulators | - |
+| **Latency per User/API Key** | Track performance per customer | Istio metrics don't include user labels | - |
 
-### Workarounds Currently Used
+### Current Workarounds
 
 | Missing Feature | Current Workaround |
 |-----------------|-------------------|
-| P50/P99 Latency | Using average latency from HAProxy |
 | Model Status | Using `kube_pod_status_phase` to show running pod counts |
 | Token Consumption | Using request counts as proxy for usage |
+| Per-user latency | Showing service-level latency (maas-api vs model service) |
 
 ---
 
@@ -238,13 +260,14 @@ sum by (user) (authorized_calls) / (sum by (user) (authorized_calls) + sum by (u
 
 **Verified on cluster** - All custom labels (`user`, `tier`, `model`) are now being exported by Limitador.
 
-| Component | Status |
-| --------- | ------ |
-| **TelemetryPolicy** | ✅ Correctly configured |
-| **Limitador Export** | ✅ All labels exported |
-| **Prometheus Scraping** | ✅ Working |
-| **HAProxy Latency** | ✅ Working (route-level) |
-| **kube-state-metrics** | ✅ Working (pod status) |
+| Component | Status | Notes |
+| --------- | ------ | ----- |
+| **TelemetryPolicy** | ✅ Correctly configured | Extracts user, tier, model |
+| **Limitador Export** | ✅ All labels exported | Custom Limitador build |
+| **Prometheus Scraping** | ✅ Working | ServiceMonitors deployed |
+| **Istio Gateway Metrics** | ✅ Working | P50/P95/P99 latency, HTTP status codes |
+| **kube-state-metrics** | ✅ Working | Pod status |
+| **HAProxy Metrics** | ⚠️ Limited | TCP passthrough for MaaS - use Istio instead |
 
 ---
 
@@ -253,9 +276,9 @@ sum by (user) (authorized_calls) / (sum by (user) (authorized_calls) + sum by (u
 | Category | Metrics Available | Custom Labels | Status |
 | -------- | ----------------- | ------------- | ------ |
 | **Limitador** | ✅ 4 metrics | ✅ `user`, `tier`, `model`, `limitador_namespace` | ✅ Fully working |
-| **Authorino** | ✅ 4+ metrics | ✅ Standard labels | ✅ Fully working |
-| **Envoy** | ✅ HTTP metrics | ✅ `response_code_class` | ✅ Fully working |
-| **HAProxy** | ✅ Latency + HTTP | ✅ `route` | ✅ Fully working |
+| **Istio Gateway** | ✅ Requests, latency histograms | ✅ `response_code`, `destination_service_name` | ✅ Fully working |
+| **Authorino** | ✅ Controller metrics only | ❌ No auth request metrics | ⚠️ Operator metrics only |
+| **HAProxy** | ✅ HTTP routes only | ✅ `route`, `code` | ⚠️ TCP passthrough shows 0ms |
 | **kube-state-metrics** | ✅ Pod status | ✅ `namespace`, `pod`, `phase` | ✅ Fully working |
 | **TelemetryPolicy** | ✅ Configured | ✅ All labels exported | ✅ Fully working |
 
@@ -272,20 +295,32 @@ sum by (user) (authorized_calls) / (sum by (user) (authorized_calls) + sum by (u
 | `limited_calls` | `user`, `tier`, `model`, `limitador_namespace` | ✅ By user, tier, model, route |
 | `limitador_up` | Standard labels | ✅ Health check |
 
-### ✅ Authorino Metrics
+### ✅ Istio Gateway Metrics (Primary for Latency & Errors)
 
 | Metric Name | Available Labels | Filtering Capability |
 | ----------- | ---------------- | -------------------- |
-| `auth_server_authconfig_total` | `authconfig`, `namespace`, `evaluator_type` | ✅ By authconfig |
-| `auth_server_response_status_total` | `authconfig`, `namespace`, `status` | ✅ By status |
-| `grpc_server_handled_total` | `grpc_code`, `grpc_method`, `grpc_service` | ✅ By gRPC method |
+| `istio_requests_total` | `response_code`, `destination_service_name`, `destination_service_namespace` | ✅ By status code, service |
+| `istio_request_duration_milliseconds_bucket` | `destination_service_name`, `le` | ✅ Histogram for P50/P95/P99 |
+| `istio_request_bytes_bucket` | `destination_service_name`, `le` | ✅ Request size distribution |
+| `istio_response_bytes_bucket` | `destination_service_name`, `le` | ✅ Response size distribution |
 
-### ✅ HAProxy Metrics
+### ⚠️ Authorino Metrics (Operator Only)
 
 | Metric Name | Available Labels | Filtering Capability |
 | ----------- | ---------------- | -------------------- |
-| `haproxy_backend_http_average_response_latency_milliseconds` | `route` | ✅ By route (filter `route=~"maas.*"`) |
-| `haproxy_backend_http_responses_total` | `code` | ✅ By HTTP status code class |
+| `controller_runtime_reconcile_errors_total` | `controller`, `namespace` | ✅ By controller |
+| `controller_runtime_reconcile_total` | `controller`, `result` | ✅ By result |
+
+**Note**: Authorino does NOT expose `auth_server_response_status_total` in this deployment. Use Istio `istio_requests_total{response_code="401"}` for unauthorized requests.
+
+### ⚠️ HAProxy Metrics (Limited for MaaS)
+
+| Metric Name | Available Labels | Filtering Capability |
+| ----------- | ---------------- | -------------------- |
+| `haproxy_backend_http_responses_total` | `code`, `route` | ⚠️ HTTP routes only (not TCP passthrough) |
+| `haproxy_backend_http_average_response_latency_milliseconds` | `route` | ⚠️ Shows 0ms for TCP passthrough |
+
+**Note**: `maas-gateway-route` uses TCP passthrough. Use Istio metrics for MaaS latency.
 
 ### ✅ Kubernetes Metrics
 
@@ -297,10 +332,8 @@ sum by (user) (authorized_calls) / (sum by (user) (authorized_calls) + sum by (u
 
 | Metric Type | Source | Blocked By |
 | ----------- | ------ | ---------- |
-| Token consumption | LLM (vLLM/KServe) | RHOAIENG-28166 |
-| Model status | KServe | RHOAIENG-25355 |
 | Resource allocation | KServe | RHOAIENG-12528 |
-| Latency histograms | Gateway (Envoy/Istio) | Custom instrumentation |
+| Token consumption | vLLM | Requires real vLLM (not simulator) |
 
 ---
 
@@ -345,7 +378,7 @@ oc apply -k deployment/components/observability/dashboards
 
 4. **Latency Metrics**: Available at route level via HAProxy. For per-user latency, additional instrumentation would be needed.
 
-5. **Blocked Features**: P50/P99 latency, token consumption, and model status metrics are blocked by pending Jira tickets (RHOAIENG-25355, RHOAIENG-12528, RHOAIENG-28166).
+5. **Blocked Features**: Model resource allocation metrics are blocked by RHOAIENG-12528.
 
 6. **Verified Users**:
    - `tgitelma-redhat-com-dd264a84`

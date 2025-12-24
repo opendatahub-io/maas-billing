@@ -200,7 +200,7 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "count(kube_pod_status_phase{namespace=~\"${maas_namespace}\", phase=\"Running\"} == 1) OR on() vector(0)",
+          "expr": "count(kube_pod_status_phase{namespace=~\"${maas_namespace}\", pod=~\"maas-api.*\", phase=\"Running\"} == 1) OR on() vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -267,12 +267,201 @@
       "type": "stat"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "No Alerts"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 5
+      },
+      "id": 200,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "11.3.0",
+      "targets": [
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", namespace=~\"llm|kuadrant-system|maas-api|envoy-gateway-system\"}) OR vector(0)",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "🚨 Firing Alerts",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "✅ No active alerts"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertname"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Alert"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Severity"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "namespace"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Namespace"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 18,
+        "x": 6,
+        "y": 5
+      },
+      "id": 201,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": ["sum"],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.3.0",
+      "targets": [
+        {
+          "expr": "ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", namespace=~\"llm|kuadrant-system|maas-api|envoy-gateway-system\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "📋 Active Alerts",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "alertstate": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "severity": 1,
+              "namespace": 2
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 11
       },
       "id": 101,
       "panels": [],
@@ -307,7 +496,7 @@
         "h": 5,
         "w": 5,
         "x": 0,
-        "y": 6
+        "y": 12
       },
       "id": 1,
       "options": {
@@ -361,7 +550,7 @@
         "h": 5,
         "w": 5,
         "x": 5,
-        "y": 6
+        "y": 12
       },
       "id": 3,
       "options": {
@@ -423,7 +612,7 @@
         "h": 5,
         "w": 5,
         "x": 10,
-        "y": 6
+        "y": 12
       },
       "id": 4,
       "options": {
@@ -477,7 +666,7 @@
         "h": 5,
         "w": 4,
         "x": 15,
-        "y": 6
+        "y": 12
       },
       "id": 14,
       "options": {
@@ -539,7 +728,7 @@
         "h": 5,
         "w": 5,
         "x": 19,
-        "y": 6
+        "y": 12
       },
       "id": 17,
       "options": {
@@ -557,12 +746,12 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "avg(haproxy_backend_http_average_response_latency_milliseconds{route=\"maas-gateway-route\"})",
+          "expr": "histogram_quantile(0.5, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))",
           "instant": true,
           "refId": "A"
         }
       ],
-      "title": "⏱️ Avg Response Latency",
+      "title": "⏱️ P50 Response Latency",
       "type": "stat"
     },
     {
@@ -571,7 +760,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 17
       },
       "id": 102,
       "panels": [],
@@ -627,7 +816,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 12
+        "y": 18
       },
       "id": 5,
       "options": {
@@ -702,7 +891,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 18
       },
       "id": 6,
       "options": {
@@ -720,12 +909,22 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "sum(rate(limited_calls[5m]))",
-          "legendFormat": "Rate Limited",
+          "expr": "sum(rate(istio_requests_total{response_code=~\"4..\"}[5m])) OR vector(0)",
+          "legendFormat": "4xx Errors",
           "refId": "A"
+        },
+        {
+          "expr": "sum(rate(istio_requests_total{response_code=~\"5..\"}[5m])) OR vector(0)",
+          "legendFormat": "5xx Errors",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(limited_calls[5m])) OR vector(0)",
+          "legendFormat": "Rate Limited (Limitador)",
+          "refId": "C"
         }
       ],
-      "title": "❌ Error Rates",
+      "title": "❌ Overall Error Rate",
       "type": "timeseries"
     },
     {
@@ -777,7 +976,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 20
+        "y": 26
       },
       "id": 7,
       "options": {
@@ -860,7 +1059,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 20
+        "y": 26
       },
       "id": 18,
       "options": {
@@ -878,12 +1077,12 @@
       "pluginVersion": "11.3.0",
       "targets": [
         {
-          "expr": "avg by (route) (haproxy_backend_http_average_response_latency_milliseconds{route=~\"maas.*\"})",
-          "legendFormat": "{{route}}",
+          "expr": "histogram_quantile(0.95, sum by (destination_service_name, le) (rate(istio_request_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "{{destination_service_name}}",
           "refId": "A"
         }
       ],
-      "title": "⏱️ Response Latency by Route",
+      "title": "⏱️ P95 Latency by Service",
       "type": "timeseries"
     },
     {
@@ -892,7 +1091,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 34
       },
       "id": 103,
       "panels": [],
@@ -927,7 +1126,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 35
       },
       "id": 19,
       "options": {
@@ -964,7 +1163,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 42
       },
       "id": 104,
       "panels": [],
@@ -1020,7 +1219,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 43
       },
       "id": 8,
       "options": {
@@ -1127,7 +1326,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 51
       },
       "id": 9,
       "options": {

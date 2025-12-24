@@ -92,7 +92,7 @@ spec:
           "id": 12,
           "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "count(kube_pod_status_phase{namespace=~\"$maas_namespace\", phase=\"Running\"} == 1) OR on() vector(0)", "instant": true, "refId": "A"}],
+          "targets": [{"expr": "count(kube_pod_status_phase{namespace=~\"$maas_namespace\", pod=~\"maas-api.*\", phase=\"Running\"} == 1) OR on() vector(0)", "instant": true, "refId": "A"}],
           "title": "🌐 MaaS API Pods",
           "type": "stat"
         },
@@ -116,8 +116,52 @@ spec:
           "type": "stat"
         },
         {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [{"options": {"0": {"color": "green", "index": 0, "text": "No Alerts"}}, "type": "value"}],
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 3}]},
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 5},
+          "id": 200,
+          "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "count(ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", namespace=~\"llm|kuadrant-system|maas-api|envoy-gateway-system\"}) OR vector(0)", "instant": true, "refId": "A"}],
+          "title": "🚨 Firing Alerts",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false},
+              "mappings": [],
+              "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]},
+              "noValue": "✅ No active alerts"
+            },
+            "overrides": [
+              {"matcher": {"id": "byName", "options": "alertname"}, "properties": [{"id": "displayName", "value": "Alert"}]},
+              {"matcher": {"id": "byName", "options": "severity"}, "properties": [{"id": "displayName", "value": "Severity"}]},
+              {"matcher": {"id": "byName", "options": "namespace"}, "properties": [{"id": "displayName", "value": "Namespace"}]}
+            ]
+          },
+          "gridPos": {"h": 6, "w": 18, "x": 6, "y": 5},
+          "id": 201,
+          "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\", namespace=~\"llm|kuadrant-system|maas-api|envoy-gateway-system\"}", "format": "table", "instant": true, "refId": "A"}],
+          "title": "📋 Active Alerts",
+          "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true, "Value": true, "__name__": true, "alertstate": true}, "indexByName": {"alertname": 0, "severity": 1, "namespace": 2}, "renameByName": {}}}],
+          "type": "table"
+        },
+        {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 11},
           "id": 101,
           "panels": [],
           "title": "📊 Key Metrics",
@@ -126,7 +170,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
-          "gridPos": {"h": 5, "w": 5, "x": 0, "y": 6},
+          "gridPos": {"h": 5, "w": 5, "x": 0, "y": 12},
           "id": 1,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
@@ -137,7 +181,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ops"}, "overrides": []},
-          "gridPos": {"h": 5, "w": 5, "x": 5, "y": 6},
+          "gridPos": {"h": 5, "w": 5, "x": 5, "y": 12},
           "id": 3,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
@@ -148,7 +192,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.9}, {"color": "red", "value": 0.95}]}, "unit": "percentunit"}, "overrides": []},
-          "gridPos": {"h": 5, "w": 5, "x": 10, "y": 6},
+          "gridPos": {"h": 5, "w": 5, "x": 10, "y": 12},
           "id": 4,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
@@ -159,7 +203,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
-          "gridPos": {"h": 5, "w": 4, "x": 15, "y": 6},
+          "gridPos": {"h": 5, "w": 4, "x": 15, "y": 12},
           "id": 14,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
@@ -170,17 +214,17 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 100}, {"color": "red", "value": 500}]}, "unit": "ms"}, "overrides": []},
-          "gridPos": {"h": 5, "w": 5, "x": 19, "y": 6},
+          "gridPos": {"h": 5, "w": 5, "x": 19, "y": 12},
           "id": 17,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "avg(haproxy_backend_http_average_response_latency_milliseconds{route=\"maas-gateway-route\"})", "instant": true, "refId": "A"}],
-          "title": "⏱️ Avg Response Latency",
+          "targets": [{"expr": "histogram_quantile(0.5, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))", "instant": true, "refId": "A"}],
+          "title": "⏱️ P50 Response Latency",
           "type": "stat"
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 11},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17},
           "id": 102,
           "panels": [],
           "title": "📈 Traffic Analysis",
@@ -189,7 +233,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ops"}, "overrides": []},
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
           "id": 5,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
@@ -200,18 +244,18 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}, "unit": "ops"}, "overrides": []},
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
           "id": 6,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(rate(limited_calls[5m])) + sum(rate(auth_server_response_status_total{authconfig=~\"maas.*\",status=~\"401|Unauthorized\"}[5m]))", "legendFormat": "Overall Error Rate", "refId": "A"}],
+          "targets": [{"expr": "sum(rate(istio_requests_total{response_code=~\"4..\"}[5m])) OR vector(0)", "legendFormat": "4xx Errors", "refId": "A"}, {"expr": "sum(rate(istio_requests_total{response_code=~\"5..\"}[5m])) OR vector(0)", "legendFormat": "5xx Errors", "refId": "B"}, {"expr": "sum(rate(limited_calls[5m])) OR vector(0)", "legendFormat": "Rate Limited (Limitador)", "refId": "C"}],
           "title": "❌ Overall Error Rate",
           "type": "timeseries"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ops"}, "overrides": []},
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
           "id": 7,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
@@ -222,17 +266,17 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 100}, {"color": "red", "value": 500}]}, "unit": "ms"}, "overrides": []},
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
           "id": 18,
           "options": {"legend": {"calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "avg by (route) (haproxy_backend_http_average_response_latency_milliseconds{route=~\"maas.*\"})", "legendFormat": "{{route}}", "refId": "A"}],
-          "title": "⏱️ Response Latency by Route",
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (destination_service_name, le) (rate(istio_request_duration_milliseconds_bucket[5m])))", "legendFormat": "{{destination_service_name}}", "refId": "A"}],
+          "title": "⏱️ P95 Latency by Service",
           "type": "timeseries"
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 34},
           "id": 105,
           "panels": [],
           "title": "❌ Error Breakdown",
@@ -241,7 +285,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}, "unit": "ops"}, "overrides": [{"matcher": {"id": "byName", "options": "Rate Limited"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]}]},
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35},
           "id": 15,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
@@ -252,17 +296,91 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}, "unit": "ops"}, "overrides": [{"matcher": {"id": "byName", "options": "Unauthorized"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}]},
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35},
           "id": 16,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(rate(auth_server_response_status_total{authconfig=~\"maas.*\",status=~\"401|Unauthorized\"}[5m]))", "legendFormat": "Unauthorized", "refId": "A"}],
+          "targets": [{"expr": "sum(rate(istio_requests_total{response_code=\"401\"}[5m])) OR vector(0)", "legendFormat": "Unauthorized (401)", "refId": "A"}],
           "title": "🔒 Unauthorized Requests",
           "type": "timeseries"
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 37},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 43},
+          "id": 106,
+          "panels": [],
+          "title": "🤖 Model Metrics",
+          "type": "row"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 10}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 6, "x": 0, "y": 44},
+          "id": 21,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(vllm:num_requests_running)", "instant": true, "refId": "A"}],
+          "title": "🔄 Requests Running",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 10}, {"color": "red", "value": 50}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 6, "x": 6, "y": 44},
+          "id": 22,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(vllm:num_requests_waiting)", "instant": true, "refId": "A"}],
+          "title": "⏳ Requests Waiting",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.7}, {"color": "red", "value": 0.9}]}, "unit": "percentunit", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 6, "x": 12, "y": 44},
+          "id": 23,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "avg(vllm:gpu_cache_usage_perc)", "instant": true, "refId": "A"}],
+          "title": "💾 GPU Cache Usage",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 6, "x": 18, "y": 44},
+          "id": 24,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(increase(vllm:prompt_tokens_total[1h])) + sum(increase(vllm:generation_tokens_total[1h]))", "instant": true, "refId": "A"}],
+          "title": "🔤 Tokens (1h)",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 49},
+          "id": 25,
+          "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum by (model_name) (vllm:num_requests_running)", "legendFormat": "{{model_name}} running", "refId": "A"}, {"expr": "sum by (model_name) (vllm:num_requests_waiting)", "legendFormat": "{{model_name}} waiting", "refId": "B"}],
+          "title": "📊 Model Queue Depth",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 49},
+          "id": 26,
+          "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(rate(vllm:prompt_tokens_total[5m]))", "legendFormat": "Prompt tokens/s", "refId": "A"}, {"expr": "sum(rate(vllm:generation_tokens_total[5m]))", "legendFormat": "Generation tokens/s", "refId": "B"}],
+          "title": "🔤 Token Throughput",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 55},
           "id": 103,
           "panels": [],
           "title": "🏆 Top Users",
@@ -271,7 +389,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 38},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 56},
           "id": 19,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Hits"}]},
           "pluginVersion": "11.3.0",
@@ -282,7 +400,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "user"}, "properties": [{"id": "displayName", "value": "👤 User"}]}, {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "📊 Declined Requests"}]}]},
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 45},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 63},
           "id": 20,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Declined Requests"}]},
           "pluginVersion": "11.3.0",
@@ -292,7 +410,7 @@ spec:
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 52},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 70},
           "id": 104,
           "panels": [],
           "title": "📋 Detailed Breakdown",
@@ -301,7 +419,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ops"}, "overrides": []},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 53},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 71},
           "id": 8,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
@@ -312,7 +430,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "user"}, "properties": [{"id": "displayName", "value": "👤 User"}]}, {"matcher": {"id": "byName", "options": "model"}, "properties": [{"id": "displayName", "value": "🤖 Model"}]}, {"matcher": {"id": "byName", "options": "tier"}, "properties": [{"id": "displayName", "value": "🏷️ Tier"}]}, {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "📊 Hits"}]}]},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 61},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 79},
           "id": 9,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": true}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Hits"}]},
           "pluginVersion": "11.3.0",
