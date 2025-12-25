@@ -7,7 +7,6 @@ resources:
   - prometheus-config.yaml
   - prometheus-deployment.yaml
   - prometheus-rbac.yaml
-  - models-aas-servicemonitor.yaml
   - kuadrant-servicemonitors.yaml
 
 labels:

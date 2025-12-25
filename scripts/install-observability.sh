@@ -99,7 +99,7 @@ kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=prometheus \
 echo ""
 echo "2️⃣ Labeling namespaces for monitoring..."
 
-for ns in kuadrant-system "$NAMESPACE"; do
+for ns in kuadrant-system "$NAMESPACE" llm; do
     if kubectl get namespace "$ns" &>/dev/null; then
         kubectl label namespace "$ns" openshift.io/cluster-monitoring=true --overwrite 2>/dev/null || true
         echo "   ✅ Labeled namespace: $ns"
@@ -107,52 +107,36 @@ for ns in kuadrant-system "$NAMESPACE"; do
 done
 
 # ==========================================
-# Step 3: Configure Istio Gateway Metrics Scraping
+# Step 3: Deploy TelemetryPolicy and Base ServiceMonitors
 # ==========================================
 echo ""
-echo "3️⃣ Configuring Istio Gateway metrics scraping..."
+echo "3️⃣ Deploying TelemetryPolicy and ServiceMonitors..."
 
-# Check if the gateway exists
-if kubectl get deploy -n openshift-ingress maas-default-gateway-openshift-default &>/dev/null; then
-    # Create Service to expose metrics port
-    cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Service
-metadata:
-  name: istio-gateway-metrics
-  namespace: openshift-ingress
-  labels:
-    app: istio-gateway-metrics
-spec:
-  clusterIP: None
-  selector:
-    gateway.networking.k8s.io/gateway-name: maas-default-gateway
-  ports:
-    - name: http-envoy-prom
-      port: 15090
-      targetPort: 15090
-      protocol: TCP
-EOF
-
-    # Create ServiceMonitor to scrape metrics
-    cat <<EOF | kubectl apply -f -
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: istio-gateway-metrics
-  namespace: openshift-ingress
-spec:
-  selector:
-    matchLabels:
-      app: istio-gateway-metrics
-  endpoints:
-    - port: http-envoy-prom
-      path: /stats/prometheus
-      interval: 15s
-EOF
-    echo "   ✅ Istio Gateway metrics scraping configured"
+# Deploy base observability resources (TelemetryPolicy + ServiceMonitors)
+# TelemetryPolicy is CRITICAL - it extracts user/tier/model labels for Limitador metrics
+BASE_OBSERVABILITY_DIR="$PROJECT_ROOT/deployment/base/observability"
+if [ -d "$BASE_OBSERVABILITY_DIR" ]; then
+    kustomize build "$BASE_OBSERVABILITY_DIR" | kubectl apply -f -
+    echo "   ✅ TelemetryPolicy and base ServiceMonitors deployed"
 else
-    echo "   ⚠️  Istio Gateway not found - skipping metrics configuration"
+    echo "   ⚠️  Base observability directory not found - TelemetryPolicy may be missing!"
+fi
+
+# Deploy Istio Gateway metrics (if gateway exists)
+if kubectl get deploy -n openshift-ingress maas-default-gateway-openshift-default &>/dev/null; then
+    kubectl apply -f "$OBSERVABILITY_DIR/monitors/istio-gateway-service.yaml"
+    kubectl apply -f "$OBSERVABILITY_DIR/monitors/istio-gateway-servicemonitor.yaml"
+    echo "   ✅ Istio Gateway metrics configured"
+else
+    echo "   ⚠️  Istio Gateway not found - skipping Istio metrics"
+fi
+
+# Deploy LLM models ServiceMonitor (for vLLM metrics)
+if kubectl get ns llm &>/dev/null; then
+    kubectl apply -f "$OBSERVABILITY_DIR/monitors/kserve-llm-models-servicemonitor.yaml"
+    echo "   ✅ LLM models metrics configured"
+else
+    echo "   ⚠️  llm namespace not found - skipping LLM metrics"
 fi
 
 # ==========================================

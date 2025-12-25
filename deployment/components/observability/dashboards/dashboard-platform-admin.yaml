@@ -347,40 +347,62 @@ spec:
         },
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]}, "unit": "short", "noValue": "No Data - Generate traffic first"}, "overrides": []},
           "gridPos": {"h": 5, "w": 6, "x": 18, "y": 44},
           "id": 24,
           "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(increase(vllm:prompt_tokens_total[1h])) + sum(increase(vllm:generation_tokens_total[1h]))", "instant": true, "refId": "A"}],
-          "title": "🔤 Tokens (1h)",
+          "targets": [{"expr": "sum(increase(vllm:e2e_request_latency_seconds_count{model_name=~\"$model\"}[$__range]))", "instant": true, "refId": "A"}],
+          "title": "📊 Total Requests",
           "type": "stat"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
-          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 49},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short", "noValue": "No Data - Generate traffic first"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 49},
           "id": 25,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum by (model_name) (vllm:num_requests_running)", "legendFormat": "{{model_name}} running", "refId": "A"}, {"expr": "sum by (model_name) (vllm:num_requests_waiting)", "legendFormat": "{{model_name}} waiting", "refId": "B"}],
+          "targets": [{"expr": "sum by (model_name) (vllm:num_requests_running{model_name=~\"$model\"})", "legendFormat": "{{model_name}} running", "refId": "A"}, {"expr": "sum by (model_name) (vllm:num_requests_waiting{model_name=~\"$model\"})", "legendFormat": "{{model_name}} waiting", "refId": "B"}],
           "title": "📊 Model Queue Depth",
           "type": "timeseries"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short", "noValue": "No Data - Waiting for vLLM deployment"}, "overrides": []},
-          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 49},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "s", "noValue": "No Data - Generate traffic first"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 49},
           "id": 26,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
-          "targets": [{"expr": "sum(rate(vllm:prompt_tokens_total[5m]))", "legendFormat": "Prompt tokens/s", "refId": "A"}, {"expr": "sum(rate(vllm:generation_tokens_total[5m]))", "legendFormat": "Generation tokens/s", "refId": "B"}],
+          "targets": [{"expr": "histogram_quantile(0.5, sum(rate(vllm:e2e_request_latency_seconds_bucket{model_name=~\"$model\"}[5m])) by (le, model_name))", "legendFormat": "{{model_name}} P50", "refId": "A"}, {"expr": "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{model_name=~\"$model\"}[5m])) by (le, model_name))", "legendFormat": "{{model_name}} P95", "refId": "B"}, {"expr": "histogram_quantile(0.99, sum(rate(vllm:e2e_request_latency_seconds_bucket{model_name=~\"$model\"}[5m])) by (le, model_name))", "legendFormat": "{{model_name}} P99", "refId": "C"}],
+          "title": "⏱️ Model Inference Latency",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short", "noValue": "No Data\nDeploy vLLM/llm-d"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 6, "x": 0, "y": 57},
+          "id": 27,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(increase(vllm:prompt_tokens_total{model_name=~\"$model\"}[1h])) + sum(increase(vllm:generation_tokens_total{model_name=~\"$model\"}[1h]))", "instant": true, "refId": "A"}],
+          "title": "🔤 Tokens (1h)",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short", "noValue": "No Data\nDeploy vLLM/llm-d"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 18, "x": 6, "y": 57},
+          "id": 28,
+          "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum(rate(vllm:prompt_tokens_total{model_name=~\"$model\"}[5m]))", "legendFormat": "Prompt tokens/s", "refId": "A"}, {"expr": "sum(rate(vllm:generation_tokens_total{model_name=~\"$model\"}[5m]))", "legendFormat": "Generation tokens/s", "refId": "B"}],
           "title": "🔤 Token Throughput",
           "type": "timeseries"
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 55},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 62},
           "id": 103,
           "panels": [],
           "title": "🏆 Top Users",
@@ -389,7 +411,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 56},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 63},
           "id": 19,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Hits"}]},
           "pluginVersion": "11.3.0",
@@ -400,7 +422,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "user"}, "properties": [{"id": "displayName", "value": "👤 User"}]}, {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "📊 Declined Requests"}]}]},
-          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 63},
+          "gridPos": {"h": 7, "w": 24, "x": 0, "y": 70},
           "id": 20,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Declined Requests"}]},
           "pluginVersion": "11.3.0",
@@ -410,7 +432,7 @@ spec:
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 70},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 77},
           "id": 104,
           "panels": [],
           "title": "📋 Detailed Breakdown",
@@ -419,7 +441,7 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ops"}, "overrides": []},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 71},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 78},
           "id": 8,
           "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "pluginVersion": "11.3.0",
@@ -430,13 +452,75 @@ spec:
         {
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "user"}, "properties": [{"id": "displayName", "value": "👤 User"}]}, {"matcher": {"id": "byName", "options": "model"}, "properties": [{"id": "displayName", "value": "🤖 Model"}]}, {"matcher": {"id": "byName", "options": "tier"}, "properties": [{"id": "displayName", "value": "🏷️ Tier"}]}, {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "📊 Hits"}]}]},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 79},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 86},
           "id": 9,
           "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": true}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "📊 Hits"}]},
           "pluginVersion": "11.3.0",
           "targets": [{"expr": "sum by (user, model, tier) (authorized_hits)", "format": "table", "instant": true, "refId": "A"}],
           "title": "📋 Request Volume by User, Model & Tier",
           "type": "table"
+        },
+        {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 94}, "id": 107, "panels": [], "title": "📦 Resource Allocation", "type": "row"},
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": [{"matcher": {"id": "byName", "options": "pod"}, "properties": [{"id": "displayName", "value": "🤖 Model Pod"}]}, {"matcher": {"id": "byName", "options": "CPU Requests"}, "properties": [{"id": "unit", "value": "short"}, {"id": "custom.width", "value": 120}]}, {"matcher": {"id": "byName", "options": "CPU Limits"}, "properties": [{"id": "unit", "value": "short"}, {"id": "custom.width", "value": 120}]}, {"matcher": {"id": "byName", "options": "Memory Requests"}, "properties": [{"id": "unit", "value": "bytes"}, {"id": "custom.width", "value": 150}]}, {"matcher": {"id": "byName", "options": "Memory Limits"}, "properties": [{"id": "unit", "value": "bytes"}, {"id": "custom.width", "value": 150}]}]},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 95},
+          "id": 29,
+          "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "Memory Requests"}]},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "kube_pod_container_resource_requests{namespace=\"llm\", resource=\"cpu\", container=\"main\"}", "format": "table", "instant": true, "refId": "A"}, {"expr": "kube_pod_container_resource_limits{namespace=\"llm\", resource=\"cpu\", container=\"main\"}", "format": "table", "instant": true, "refId": "B"}, {"expr": "kube_pod_container_resource_requests{namespace=\"llm\", resource=\"memory\", container=\"main\"}", "format": "table", "instant": true, "refId": "C"}, {"expr": "kube_pod_container_resource_limits{namespace=\"llm\", resource=\"memory\", container=\"main\"}", "format": "table", "instant": true, "refId": "D"}],
+          "title": "📦 Resource Allocation per Model",
+          "type": "table",
+          "transformations": [{"id": "merge", "options": {}}, {"id": "filterFieldsByName", "options": {"include": {"names": ["pod", "Value #A", "Value #B", "Value #C", "Value #D"]}}}, {"id": "organize", "options": {"renameByName": {"Value #A": "CPU Requests", "Value #B": "CPU Limits", "Value #C": "Memory Requests", "Value #D": "Memory Limits"}}}]
+        },
+        {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 103}, "id": 109, "panels": [], "title": "👤 User Tracking", "type": "row"},
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"tooltip": false, "viz": false, "legend": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "ops"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 104},
+          "id": 30,
+          "options": {"legend": {"calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum by (user) (rate(authorized_calls[5m]))", "legendFormat": "{{user}} ✅", "refId": "A"}, {"expr": "sum by (user) (rate(limited_calls[5m]))", "legendFormat": "{{user}} 🚫 rate-limited", "refId": "B"}],
+          "title": "👤 Requests & Errors per User",
+          "type": "timeseries"
+        },
+        {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 112}, "id": 108, "panels": [], "title": "🔮 Blocked Features (Placeholders)", "type": "row"},
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "description": "⚠️ BLOCKED: Requires EnvoyFilter to inject 'user' label into Istio metrics.\n\nExpected metric: istio_request_duration_milliseconds{user=\"$user\"}\n\nCurrently Istio metrics only have service-level labels, not user context.",
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "dark-yellow", "value": null}]}, "unit": "ms", "noValue": "Blocked\nRequires EnvoyFilter"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 8, "x": 0, "y": 113},
+          "id": 31,
+          "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (user, le) (rate(istio_request_duration_milliseconds_bucket{user!=\"\"}[5m])))", "instant": true, "refId": "A"}],
+          "title": "⏱️ P95 Latency per User",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "description": "⚠️ BLOCKED: Requires vLLM to accept and label metrics with 'user' context.\n\nExpected metrics:\n- vllm:prompt_tokens_total{user=\"$user\"}\n- vllm:generation_tokens_total{user=\"$user\"}\n\nCurrently vLLM only labels by model_name, not by user.",
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "dark-yellow", "value": null}]}, "unit": "short", "noValue": "Blocked\nRequires vLLM changes"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 8, "x": 8, "y": 113},
+          "id": 32,
+          "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "sum by (user) (increase(vllm:prompt_tokens_total{user!=\"\"}[1h]))", "instant": true, "refId": "A"}],
+          "title": "🔤 Token Consumption per User",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "description": "ℹ️ Required changes to enable blocked features:\n\n**Latency per User:**\n- Add EnvoyFilter to extract 'user' from JWT/header\n- Configure Istio Telemetry to include custom dimensions\n\n**Token per User:**\n- Modify llm-d/vLLM to accept X-User-ID header\n- Label token metrics with user context\n\n**Related Jira:** RHOAIENG-12528",
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "dark-blue", "value": null}]}, "noValue": "See panel description\nfor implementation notes"}, "overrides": []},
+          "gridPos": {"h": 5, "w": 8, "x": 16, "y": 113},
+          "id": 33,
+          "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "pluginVersion": "11.3.0",
+          "targets": [{"expr": "vector(0)", "instant": true, "refId": "A"}],
+          "title": "📝 Implementation Notes",
+          "type": "stat"
         }
       ],
       "refresh": "30s",
@@ -445,7 +529,8 @@ spec:
       "templating": {
         "list": [
           {"current": {"selected": true, "text": "prometheus", "value": "prometheus"}, "hide": 0, "includeAll": false, "label": "Datasource", "name": "datasource", "options": [], "query": "prometheus", "refresh": 1, "type": "datasource"},
-          {"current": {"selected": true, "text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "definition": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "description": "Auto-detected namespace where MaaS API is deployed", "hide": 0, "includeAll": true, "allValue": ".*", "label": "MaaS Namespace", "multi": false, "name": "maas_namespace", "options": [], "query": {"qryType": 1, "query": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
+          {"current": {"selected": true, "text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "definition": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "description": "Auto-detected namespace where MaaS API is deployed", "hide": 0, "includeAll": true, "allValue": ".*", "label": "MaaS Namespace", "multi": false, "name": "maas_namespace", "options": [], "query": {"qryType": 1, "query": "label_values(kube_pod_info{pod=~\"maas-api.*\"}, namespace)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"},
+          {"current": {"selected": true, "text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "definition": "label_values(vllm:num_requests_running, model_name)", "description": "Filter by model", "hide": 0, "includeAll": true, "allValue": ".*", "label": "Model", "multi": true, "name": "model", "options": [], "query": {"qryType": 1, "query": "label_values(vllm:num_requests_running, model_name)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
         ]
       },
       "time": {"from": "now-1h", "to": "now"},

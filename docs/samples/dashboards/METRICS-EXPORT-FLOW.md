@@ -111,7 +111,7 @@ limited_calls{model="facebook-opt-125m-simulated",user="tgitelma-redhat-com-dd26
 
 ---
 
-### Step 7: vLLM/KServe Model Metrics (✅ Partial)
+### Step 7: vLLM/KServe Model Metrics (✅ Working)
 
 **Component**: KServe Model Pods → Prometheus
 
@@ -119,14 +119,18 @@ limited_calls{model="facebook-opt-125m-simulated",user="tgitelma-redhat-com-dd26
 
 - KServe model pods expose vLLM-compatible metrics on port 8000 (HTTPS)
 - ServiceMonitor `kserve-llm-models` scrapes all pods with label `app.kubernetes.io/part-of: llminferenceservice`
-- Provides queue depth, GPU cache usage; token metrics require real vLLM
+- Provides queue depth, GPU cache usage, latency histograms; token metrics require real vLLM
 
 **Key Metrics:**
 - `vllm:num_requests_running` - Requests currently being processed
 - `vllm:num_requests_waiting` - Requests waiting in queue
 - `vllm:gpu_cache_usage_perc` - GPU KV cache utilization
+- `vllm:e2e_request_latency_seconds` - Histogram of end-to-end request latency (P50/P95/P99)
+- `vllm:request_inference_time_seconds` - Histogram of inference processing time
 
-**Status**: ✅ Queue depth metrics available, ⚠️ Token metrics require real vLLM deployment
+**Note**: Latency histogram metrics are **lazy-initialized** and only appear after traffic is generated.
+
+**Status**: ✅ Queue depth and latency histograms available, ⚠️ Token metrics require real vLLM deployment
 
 ---
 
@@ -139,7 +143,7 @@ limited_calls{model="facebook-opt-125m-simulated",user="tgitelma-redhat-com-dd26
 | **Istio Gateway** | ✅ Yes (HTTP metrics, histograms) | ✅ `destination_service_name`, `response_code` | ✅ Working |
 | **Authorino** | ✅ Yes (operator metrics only) | ❌ No auth request metrics | ⚠️ Limited |
 | **Limitador** | ✅ Yes | ✅ Yes - exports all labels | ✅ Working |
-| **vLLM/KServe** | ✅ Yes (queue, GPU cache) | ✅ `model_name` | ✅ Working (tokens need real vLLM) |
+| **vLLM/KServe** | ✅ Yes (queue, GPU cache, latency histograms) | ✅ `model_name` | ✅ Working (tokens need real vLLM) |
 | **HAProxy** | ✅ Yes (HTTP routes only) | ❌ No (route-level only) | ⚠️ TCP passthrough = 0ms |
 | **Prometheus** | ❌ No | ❌ No | ✅ Working |
 
@@ -171,8 +175,10 @@ limited_calls{model="facebook-opt-125m-simulated",user="tgitelma-redhat-com-dd26
 |-----------------|-----|------------|
 | **Latency per API Key/User** | Istio metrics don't include user labels | Would need custom Envoy filter |
 | **Model Resource Allocation** | CPU/GPU/Memory per model | RHOAIENG-12528 - Resource metrics |
-| **Model Inference Latency** | Time spent in model inference vs routing | Requires KServe/vLLM metrics |
-| **Per-Request Token Counts** | Token counts not exposed by simulators | Requires vLLM integration |
+| **Per-Request Token Counts** | Token counts not exposed by simulators | Requires real vLLM (not simulator) |
+
+**Resolved:**
+- ✅ **Model Inference Latency** - Available via `vllm:e2e_request_latency_seconds` (P50/P95/P99)
 
 ---
 
@@ -188,8 +194,11 @@ oc exec -n openshift-ingress deploy/maas-default-gateway-openshift-default -- pi
 # Check Istio latency histograms
 oc exec -n openshift-ingress deploy/maas-default-gateway-openshift-default -- pilot-agent request GET /stats/prometheus | grep "istio_request_duration"
 
-# Check vLLM/KServe model metrics (replace with actual model pod)
-oc exec -n llm <model-pod-name> -- curl -sk https://localhost:8000/metrics | grep "vllm:"
+# Check vLLM/KServe model metrics (generates traffic first, then check metrics)
+kubectl exec -n llm deploy/facebook-opt-125m-simulated-kserve -- curl -sk https://localhost:8000/metrics | grep "vllm:"
+
+# Check latency histograms (only available after traffic)
+kubectl exec -n llm deploy/facebook-opt-125m-simulated-kserve -- curl -sk https://localhost:8000/metrics | grep -E "vllm:(e2e_request_latency|request_inference_time)"
 
 # Verify ServiceMonitors exist
 oc get servicemonitor istio-gateway-metrics -n openshift-ingress

@@ -123,10 +123,14 @@ count(kube_pod_status_phase{namespace="openshift-ingress", pod=~"maas.*", phase=
 | `vllm:num_requests_running` | vLLM/Simulator | `model_name` | ✅ Available - requests currently processing |
 | `vllm:num_requests_waiting` | vLLM/Simulator | `model_name` | ✅ Available - requests in queue |
 | `vllm:gpu_cache_usage_perc` | vLLM/Simulator | `model_name` | ✅ Available - GPU cache utilization |
+| `vllm:e2e_request_latency_seconds` | vLLM/Simulator (v0.6.1+) | `model_name` | ✅ Available - histogram of end-to-end request latency |
+| `vllm:request_inference_time_seconds` | vLLM/Simulator (v0.6.1+) | `model_name` | ✅ Available - histogram of inference processing time |
 | `vllm:prompt_tokens_total` | vLLM (real only) | `model_name` | ⚠️ Requires real vLLM deployment |
 | `vllm:generation_tokens_total` | vLLM (real only) | `model_name` | ⚠️ Requires real vLLM deployment |
 
-**Note**: Metrics are scraped via ServiceMonitor `kserve-llm-models` which targets all services with label `app.kubernetes.io/part-of: llminferenceservice`. The current simulator exposes queue depth and GPU cache metrics but NOT token consumption metrics.
+**Note**: Metrics are scraped via ServiceMonitor `kserve-llm-models` which targets all services with label `app.kubernetes.io/part-of: llminferenceservice`. 
+
+**Important**: Latency histogram metrics (`vllm:e2e_request_latency_seconds`, `vllm:request_inference_time_seconds`) only appear **after traffic is generated** - they are lazy-initialized. The simulator (v0.6.1+) exposes queue depth, GPU cache, and latency histograms. Token consumption metrics require a real vLLM deployment.
 
 ---
 
@@ -237,12 +241,18 @@ With Istio gateway metrics now scraped, we have:
 
 ## ❌ REMAINING GAPS (Blocked by Dependencies)
 
-| Missing Feature | Why It's Needed | What's Blocking It | Jira |
-|-----------------|-----------------|-------------------|------|
-| **Model Resource Allocation** | Show CPU/GPU/Memory per model | KServe resource metrics not available | **RHOAIENG-12528** |
-| **Model Inference Latency** | Time spent in LLM inference (not routing) | Requires KServe/vLLM metrics integration | - |
-| **Per-Request Token Counts** | Tokens per request for accurate billing | Not exposed by current LLM simulators | - |
-| **Latency per User/API Key** | Track performance per customer | Istio metrics don't include user labels | - |
+| Missing Feature | Why It's Needed | What's Blocking It |
+|-----------------|-----------------|-------------------|
+| **Latency per User/API Key** | Track response time per customer | Istio metrics don't include `user` label - requires EnvoyFilter |
+| **Token Consumption per User** | Track tokens per customer | vLLM doesn't label metrics with `user` - requires vLLM code changes |
+
+**Recently Resolved ✅:**
+
+| Feature | Solution |
+|---------|----------|
+| **Model Resource Allocation** | ✅ Available via `kube_pod_container_resource_requests{namespace="llm"}` |
+| **Model Inference Latency** | ✅ Available via `vllm:e2e_request_latency_seconds` histogram (P50/P95/P99) |
+| **Request/Error per User** | ✅ Available via Limitador `authorized_calls{user="..."}` and `limited_calls{user="..."}` |
 
 ### Current Workarounds
 
@@ -328,12 +338,16 @@ With Istio gateway metrics now scraped, we have:
 | ----------- | ---------------- | -------------------- |
 | `kube_pod_status_phase` | `namespace`, `pod`, `phase` | ✅ By namespace, pod, phase |
 
-### 📍 Metrics from Other Components (Future)
+### 📍 Metrics Status Summary
 
-| Metric Type | Source | Blocked By |
-| ----------- | ------ | ---------- |
-| Resource allocation | KServe | RHOAIENG-12528 |
-| Token consumption | vLLM | Requires real vLLM (not simulator) |
+| Metric Type | Source | Status |
+| ----------- | ------ | ------ |
+| **Resource allocation** | kube-state-metrics | ✅ **Available** - `kube_pod_container_resource_requests{namespace="llm"}` |
+| **Request/Error per User** | Limitador | ✅ **Available** - `authorized_calls{user="..."}`, `limited_calls{user="..."}` |
+| **Model Inference Latency** | vLLM | ✅ **Available** - `vllm:e2e_request_latency_seconds` (v0.6.1+) |
+| **Token consumption (total)** | vLLM | ⚠️ **Partial** - `vllm:prompt_tokens_total` (requires real vLLM, not simulator) |
+| **Latency per User** | Istio | ❌ **Blocked** - Requires EnvoyFilter to inject user label |
+| **Token per User** | vLLM | ❌ **Blocked** - Requires vLLM code changes to label by user |
 
 ---
 
@@ -378,7 +392,7 @@ oc apply -k deployment/components/observability/dashboards
 
 4. **Latency Metrics**: Available at route level via HAProxy. For per-user latency, additional instrumentation would be needed.
 
-5. **Blocked Features**: Model resource allocation metrics are blocked by RHOAIENG-12528.
+5. **Blocked Features**: Only per-user latency (requires EnvoyFilter) and per-user tokens (requires vLLM changes) remain blocked.
 
 6. **Verified Users**:
    - `tgitelma-redhat-com-dd264a84`

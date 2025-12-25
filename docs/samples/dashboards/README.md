@@ -26,7 +26,7 @@ This directory contains Grafana dashboard samples for the MaaS platform.
 | -------- | ------- | ------ |
 | **Limitador** | `authorized_hits`, `authorized_calls`, `limited_calls`, `limitador_up` | ✅ `user`, `tier`, `model`, `limitador_namespace` |
 | **Istio Gateway** | `istio_requests_total`, `istio_request_duration_milliseconds_bucket` | ✅ `response_code`, `destination_service_name` |
-| **vLLM/KServe** | `vllm:num_requests_running`, `vllm:num_requests_waiting`, `vllm:gpu_cache_usage_perc` | ✅ `model_name` |
+| **vLLM/KServe** | `vllm:num_requests_running`, `vllm:num_requests_waiting`, `vllm:gpu_cache_usage_perc`, `vllm:e2e_request_latency_seconds`, `vllm:request_inference_time_seconds` | ✅ `model_name` |
 | **Kubernetes** | `kube_pod_status_phase`, `ALERTS` | ✅ `namespace`, `pod`, `alertname` |
 | **Authorino** | `controller_runtime_reconcile_*` | ⚠️ Operator metrics only |
 
@@ -83,6 +83,28 @@ sum(rate(istio_requests_total{response_code=~"4.."}[5m])) + sum(rate(istio_reque
 
 # Firing alerts in MaaS namespaces
 count(ALERTS{alertstate="firing", namespace=~"llm|kuadrant-system|maas-api"})
+
+# Model inference P95 latency (vLLM)
+histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le, model_name))
+
+# Total model requests (scales with dashboard time range)
+sum(increase(vllm:e2e_request_latency_seconds_count[$__range]))
+
+# Token throughput (requires real vLLM/llm-d)
+sum(rate(vllm:prompt_tokens_total[5m]))  # Prompt tokens/s
+sum(rate(vllm:generation_tokens_total[5m]))  # Generation tokens/s
+
+# Resource allocation per model pod (CPU requests/limits)
+kube_pod_container_resource_requests{namespace="llm", resource="cpu", container="main"}
+kube_pod_container_resource_limits{namespace="llm", resource="cpu", container="main"}
+
+# Resource allocation per model pod (Memory requests/limits)
+kube_pod_container_resource_requests{namespace="llm", resource="memory", container="main"}
+kube_pod_container_resource_limits{namespace="llm", resource="memory", container="main"}
+
+# Requests & errors per user (authorized vs rate-limited)
+sum by (user) (rate(authorized_calls[5m]))
+sum by (user) (rate(limited_calls[5m]))
 ```
 
 ## 🔗 Related Files
@@ -93,13 +115,27 @@ count(ALERTS{alertstate="firing", namespace=~"llm|kuadrant-system|maas-api"})
 ## 📊 Dashboard Panels
 
 ### Platform Admin Dashboard
-- **Overview**: MaaS API pods, Gateway pods, Model pods, Success rate, P50 latency
-- **Alerts**: Firing alerts count, Active alerts table (filtered to MaaS namespaces)
-- **Rate Limiting**: Request rate by user/model/tier, Rate limited requests
-- **Errors**: Overall error rate (4xx + 5xx from Istio + Limitador)
-- **Latency**: P95 latency by service (from Istio histograms)
-- **Model Metrics**: Requests running/waiting, GPU cache usage, Token throughput
-- **Top Users**: Top 10 by hits, Top 10 by declined requests
+
+**Variables (dropdown selectors):**
+- `Datasource` - Prometheus datasource
+- `MaaS Namespace` - Filter by namespace (default: All)
+- `Model` - Filter model metrics by model name (default: All)
+
+**Sections:**
+
+| Section | Panels |
+| ------- | ------ |
+| **🏥 Component Health** | Limitador status, Authorino status, MaaS API pods, Gateway pods |
+| **🚨 Alerts** | Firing alerts count, Active alerts table (MaaS namespaces only) |
+| **📊 Key Metrics** | Total authorized hits, Current rate, Success rate, Active users, P50 latency |
+| **📈 Traffic Analysis** | Request rate by model, Overall error rate (4xx/5xx/rate-limited), Request rate by tier, P95 latency by service |
+| **🏆 Top Users** | Top 10 by hits, Top 10 by declined requests |
+| **🤖 Model Metrics** | Requests running, Requests waiting, GPU cache usage, Total requests, Model queue depth, Model inference latency (P50/P95/P99) |
+| **🔤 Token Metrics** | Tokens (1h), Token throughput (requires vLLM/llm-d) |
+| **📦 Resource Allocation** | Resource allocation per model table (CPU/Memory requests/limits) |
+| **👤 User Tracking** | Requests & errors per user (authorized vs rate-limited) |
+| **📋 Detailed Breakdown** | Request rate by user, Request volume by user/model/tier |
+| **🔮 Blocked Features** | Latency per user (placeholder), Token consumption per user (placeholder), Implementation notes |
 
 ### AI Engineer Dashboard
 - **User-filtered views**: Per-user request volumes and rate limiting
@@ -111,7 +147,14 @@ count(ALERTS{alertstate="firing", namespace=~"llm|kuadrant-system|maas-api"})
 - ✅ P50/P95/P99 latency from Istio gateway histograms
 - ✅ Error tracking (401, 429, 5xx) from Istio + Limitador
 - ✅ Alert integration (MaaS-filtered firing alerts)
-- ✅ vLLM/KServe model metrics (queue depth, GPU cache)
+- ✅ vLLM/KServe model metrics (queue depth, GPU cache, inference latency)
+- ✅ Model selector dropdown to filter model metrics
+- ✅ **Resource allocation per model** - CPU/Memory requests/limits from kube-state-metrics
+- ✅ **Requests & errors per user** - authorized vs rate-limited from Limitador
+- ⚠️ Token metrics (prompt/generation tokens) require real vLLM/llm-d deployment (simulator doesn't expose them)
+- ⚠️ Model latency histograms only appear after traffic is generated (lazy-initialized)
+- ❌ **Latency per user** - Blocked: Istio metrics don't include `user` label (requires EnvoyFilter)
+- ❌ **Token consumption per user** - Blocked: vLLM doesn't label metrics with `user` (requires vLLM changes)
 - Requires Prometheus Operator for ServiceMonitor support
 - Dashboard auto-refreshes every 30 seconds
 

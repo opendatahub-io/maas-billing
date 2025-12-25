@@ -856,10 +856,33 @@ kubectl -n kuadrant-system patch limitador limitador --type merge \
   echo "   ⚠️  Could not update Limitador image (may not be critical)"
 
 echo ""
-echo "1️⃣4️⃣ Deploying observability components (ServiceMonitors and TelemetryPolicy)..."
+echo "1️⃣4️⃣ Deploying base observability components (TelemetryPolicy and ServiceMonitors)..."
 cd "$PROJECT_ROOT"
+
+# Label namespaces for Prometheus scraping (REQUIRED for ServiceMonitors to work)
+for ns in kuadrant-system "$MAAS_API_NAMESPACE" llm; do
+    if kubectl get namespace "$ns" &>/dev/null; then
+        kubectl label namespace "$ns" openshift.io/cluster-monitoring=true --overwrite 2>/dev/null || true
+        echo "   ✅ Labeled namespace: $ns"
+    fi
+done
+
+# Deploy TelemetryPolicy and base ServiceMonitors (ALWAYS needed for metrics labels)
 kustomize build deployment/base/observability | kubectl apply -f -
-echo "   ✅ Observability components deployed"
+echo "   ✅ TelemetryPolicy and base ServiceMonitors deployed"
+
+# Deploy component-specific monitors (Istio, LLM models) if components exist
+OBSERVABILITY_DIR="$PROJECT_ROOT/deployment/components/observability"
+if kubectl get deploy -n openshift-ingress maas-default-gateway-openshift-default &>/dev/null; then
+    kubectl apply -f "$OBSERVABILITY_DIR/monitors/istio-gateway-service.yaml"
+    kubectl apply -f "$OBSERVABILITY_DIR/monitors/istio-gateway-servicemonitor.yaml"
+    echo "   ✅ Istio Gateway metrics configured"
+fi
+if kubectl get ns llm &>/dev/null; then
+    kubectl apply -f "$OBSERVABILITY_DIR/monitors/kserve-llm-models-servicemonitor.yaml"
+    echo "   ✅ LLM models metrics configured"
+fi
+
 echo "   ℹ️  ServiceMonitors configured for OpenShift Prometheus (user-workload-monitoring)"
 
 # Verification
