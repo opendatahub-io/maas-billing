@@ -38,9 +38,10 @@ Complete automated deployment script for OpenShift clusters.
 - Deploys Gateway infrastructure
 - Deploys KServe components (if not already present)
 - Configures MaaS API
-- Applies policies (AuthPolicy, RateLimitPolicy, TelemetryPolicy)
+- Applies policies (AuthPolicy, RateLimitPolicy, TokenRateLimitPolicy)
+- Deploys base observability (TelemetryPolicy, ServiceMonitors for metrics collection)
 - Creates OpenShift Routes
-- Optionally installs observability stack (Grafana + dashboards)
+- Optionally installs full observability stack (Grafana + dashboards)
 - Runs deployment validation
 
 **Requirements:**
@@ -167,11 +168,15 @@ Installs the observability stack (Grafana instance, dashboards, and Prometheus d
 
 **What it does:**
 - Enables user-workload-monitoring
-- Labels namespaces for monitoring
+- Labels namespaces for monitoring (`kuadrant-system`, `maas-api`, `llm`)
+- Deploys TelemetryPolicy (for user/tier/model labels in metrics)
+- Deploys ServiceMonitors (Limitador, Authorino, Istio Gateway, LLM models)
 - Installs Grafana operator (if not present)
 - Deploys Grafana instance
 - Configures Prometheus datasource with authentication
 - Deploys dashboards (Platform Admin, AI Engineer)
+
+**Note:** This script can run standalone or as part of `deploy-openshift.sh`. When run standalone, it deploys all necessary observability components including TelemetryPolicy and ServiceMonitors.
 
 **Requirements:**
 - Grafana operator installed (installed automatically if missing)
